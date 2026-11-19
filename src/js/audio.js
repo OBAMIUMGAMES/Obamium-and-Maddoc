@@ -54,6 +54,8 @@ export function createAudio() {
     rapid() { tone('sine', 160 + Math.random() * 40, 60, 0.06, 0.35); noise(0.04, 2800, 1.5, 0.25); },
     thruster() { noise(0.35, 500, 0.6, 0.6, 'lowpass'); tone('sawtooth', 90, 180, 0.3, 0.12); },
     jump() { noise(0.1, 700, 0.7, 0.2); },
+    /** Heavy footstep; k = 0 (walk) .. 1 (sprint). */
+    step(k = 0.5) { tone('sine', 62 + Math.random() * 14, 32, 0.1 + k * 0.08, 0.18 + k * 0.32); noise(0.07, 320, 0.7, 0.06 + k * 0.12, 'lowpass'); },
     land() { tone('sine', 90, 40, 0.15, 0.5); noise(0.15, 400, 0.6, 0.3, 'lowpass'); },
     slam() { tone('sine', 80, 30, 0.45, 1); noise(0.4, 300, 0.5, 0.8, 'lowpass'); },
     explode() { noise(0.5, 600, 0.4, 0.8, 'lowpass'); tone('triangle', 120, 30, 0.4, 0.5); },

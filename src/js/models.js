@@ -186,6 +186,7 @@ export function buildToaku() {
     add(ft, box(0.32, 0.1, 0.2), gun, [0, 0.02, 0.38], [-0.3, 0, 0]);
     j['hip' + S] = hp;
     j['kn' + S] = kn;
+    j['ft' + S] = ft;
   }
   j.chest = chest;
 

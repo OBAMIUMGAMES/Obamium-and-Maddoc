@@ -1,11 +1,13 @@
 /**
  * Fighters: Toaku (player), Tonua (rival) and Scrapbot drones (horde).
- * Each fighter owns a procedural rig and a small state machine; animation is procedural
- * (target poses blended per frame), so there are no external animation files.
+ * Each fighter owns a rig and a small state machine. Toaku is animated by ToakuAnimator
+ * (skinned Meshy model, IK legs, keyframed moves); enemies use the lightweight procedural
+ * pose blending below. No external animation files.
  */
 import * as THREE from 'three';
 import { buildToaku, buildTonua, buildDrone } from './models.js';
 import { inArc, angleDiff, applyDamage, addMeter } from './combat.js';
+import { ToakuAnimator } from './toakuAnimator.js';
 
 const JOINTS = ['hips', 'spine', 'head', 'shL', 'shR', 'elL', 'elR', 'hipL', 'hipR', 'knL', 'knR'];
 const tmpV = new THREE.Vector3();
@@ -116,11 +118,22 @@ class Fighter {
 /*  TOAKU                                                                   */
 /* ======================================================================= */
 
-/** The player-controlled heavyweight. */
+/**
+ * The player-controlled heavyweight. Gameplay/state logic lives here; every pose comes from
+ * the ToakuAnimator (IK legs, keyframed moves), so the same logic drives the skinned Meshy
+ * model and the procedural fallback.
+ */
 export class Toaku extends Fighter {
-  constructor(cfg) {
-    super(buildToaku(), { radius: cfg.radius, height: cfg.height, maxHp: cfg.maxHp });
+  /**
+   * @param {object} cfg CONFIG.toaku
+   * @param {object} [rig] skinned rig from buildToakuSkinned(); the procedural model is used if omitted
+   */
+  constructor(cfg, rig) {
+    super(rig || buildToaku(), { radius: cfg.radius, height: cfg.height, maxHp: cfg.maxHp });
     this.cfg = cfg;
+    if (!this.rig.tiltNode) this.rig.tiltNode = this.rig.mesh || this.root;
+    this.anim = new ToakuAnimator(this.rig, cfg);
+    this.anim.onFootstep = (side, k) => this.footstep(side, k);
     this.meter = 0;
     this.jumps = 0;
     this.thrust = 0;
@@ -130,14 +143,17 @@ export class Toaku extends Fighter {
     this.hitDone = false;
     this.invuln = 0;
     this.specialHitT = 0;
-    this.specialArm = 0;
     this.combo = 0;
     this.comboTimer = 0;
+    this.slamPhase = 'rise';
+    this.slamLandT = 0;
+    this.world = null;
     this.kind = 'toaku';
   }
 
   /** Main per-frame update; `input` is the polled input state, `camYaw` the camera yaw. */
   update(dt, input, camYaw, world) {
+    this.world = world;
     const cfg = this.cfg;
     this.stateT += dt;
     this.invuln = Math.max(0, this.invuln - dt);
@@ -154,21 +170,11 @@ export class Toaku extends Fighter {
     if (this.alive && input.special && this.meter >= cfg.special.meterMax && this.state !== 'special' && this.state !== 'slam') {
       this.startSpecial(world);
     } else if (this.alive && input.jump && (this.state === 'idle' || this.state === 'attack')) {
-      if (this.onGround) {
-        this.vel.y = cfg.jumpVelocity; this.jumps = 1; this.onGround = false;
-        world.audio.jump(); world.fx.dust(this.pos, 8, 3);
-        if (this.state === 'attack') this.setState('idle');
-      } else if (this.jumps < 2) {
-        this.vel.y = cfg.thrusterVelocity; this.jumps = 2; this.thrust = 0.55;
-        world.audio.thruster();
-        if (mag > 0.15) { this.facing = wishYaw; this.vel.x = Math.sin(wishYaw) * cfg.moveSpeed * 1.3; this.vel.z = Math.cos(wishYaw) * cfg.moveSpeed * 1.3; }
-        if (this.state === 'attack') this.setState('idle');
-      }
+      if (this.onGround) this.setState('jumpSquat');
+      else if (this.jumps < 2) this.thrusterJump(world, mag, wishYaw);
     } else if (input.punch && this.alive) {
       if (!this.onGround && this.pos.y > 1.2 && this.state === 'idle') {
-        this.setState('slam');
-        this.vel.y = 4; this.vel.x *= 0.3; this.vel.z *= 0.3;
-        world.audio.whoosh();
+        this.startSlam(world);
       } else if (this.state === 'attack') {
         this.comboQueued = true;
       } else if (this.state === 'idle' && this.onGround) {
@@ -178,90 +184,114 @@ export class Toaku extends Fighter {
     this.comboGap = Math.max(0, this.comboGap - dt);
 
     // ---- state behaviour ----
-    const p = pose();
-    let blend = 1 - Math.exp(-14 * dt);
     switch (this.state) {
       case 'idle': {
         const speed = cfg.moveSpeed * mag * (this.onGround ? 1 : 0.85);
         if (mag > 0.15) this.turnTowards(wishYaw, cfg.turnRate, dt);
-        const tvx = Math.sin(this.facing) * speed * (mag > 0.15 ? 1 : 0);
-        const tvz = Math.cos(this.facing) * speed * (mag > 0.15 ? 1 : 0);
-        const acc = this.onGround ? 14 : 4;
+        const on = mag > 0.15 ? 1 : 0;
+        const tvx = Math.sin(this.facing) * speed * on;
+        const tvz = Math.cos(this.facing) * speed * on;
+        const acc = this.onGround ? 12 : 4;
         this.vel.x += (tvx - this.vel.x) * Math.min(1, acc * dt);
         this.vel.z += (tvz - this.vel.z) * Math.min(1, acc * dt);
-        if (this.onGround) {
-          const hs = Math.hypot(this.vel.x, this.vel.z);
-          this.walkPhase += dt * (2.2 + hs * 1.15);
-          if (hs > 0.5) {
-            walkPose(p, this.walkPhase, Math.min(1, hs / cfg.moveSpeed), 0.55, 0.6);
-            p.spine[0] = 0.12;
-            const step = Math.floor(this.walkPhase / Math.PI);
-            if (step !== this._lastStep) { this._lastStep = step; world.fx.dust(this.pos, 2, 1, 0.6); }
-          } else {
-            // idle: heavy breathing, fists ready
-            const br = Math.sin(this.stateT * 2.2 + this.walkPhase);
-            p.shL = [-0.25, 0, -0.18]; p.shR = [-0.25, 0, 0.18];
-            p.elL = [-0.55, 0, 0]; p.elR = [-0.55, 0, 0];
-            p.spine[0] = 0.05 + br * 0.03; p.head[0] = -br * 0.03;
-            p.hipL = [-0.12, 0, -0.08]; p.hipR = [0.05, 0, 0.08]; p.knL = [0.18, 0, 0]; p.knR = [0.12, 0, 0];
-            p.bob = -0.05 + br * 0.02;
-          }
-        } else {
-          this.airPose(p);
+        break;
+      }
+      case 'jumpSquat':
+        // heavy take-off: plant, load the legs, then launch
+        this.vel.x *= 0.82; this.vel.z *= 0.82;
+        if (mag > 0.15) this.turnTowards(wishYaw, cfg.turnRate, dt);
+        if (this.stateT >= cfg.jumpSquat) {
+          this.vel.y = cfg.jumpVelocity;
+          if (mag > 0.15) { this.vel.x = Math.sin(this.facing) * cfg.moveSpeed * mag; this.vel.z = Math.cos(this.facing) * cfg.moveSpeed * mag; }
+          this.jumps = 1;
+          this.onGround = false;
+          this.pos.y += 0.01;
+          this.setState('idle');
+          world.audio.jump();
+          world.fx.dust(this.pos, 12, 3.5);
         }
         break;
-      }
-      case 'attack': this.updateAttack(dt, p, world); blend = 1 - Math.exp(-30 * dt); break;
-      case 'slam': this.updateSlam(dt, p, world); blend = 1 - Math.exp(-20 * dt); break;
-      case 'special': this.updateSpecial(dt, p, world); blend = 1; break;
+      case 'attack': this.updateAttack(dt, world); break;
+      case 'slam': this.updateSlam(dt, world); break;
+      case 'special': this.updateSpecial(dt, world); break;
       case 'hurt':
-        p.spine[0] = -0.35; p.head[0] = -0.3; p.shL = [0.3, 0, -0.5]; p.shR = [0.3, 0, 0.5]; p.knL[0] = 0.4; p.knR[0] = 0.3; p.bob = -0.15;
-        if (this.stateT > 0.28) this.setState('idle');
+        if (this.stateT > cfg.hurtTime) this.setState('idle');
         break;
-      case 'dead': {
-        const f = Math.min(1, this.stateT * 1.6);
-        this.root.rotation.x = -f * 1.45;
-        p.shL = [-2.5, 0, -0.4]; p.shR = [-2.5, 0, 0.4]; p.knL[0] = 0.3; p.spine[0] = -0.2;
+      case 'dead':
         this.vel.x *= 0.9; this.vel.z *= 0.9;
         break;
-      }
     }
 
-    // thrusters
+    // ---- thrusters ----
     this.thrust = Math.max(0, this.thrust - dt);
-    const flameOn = this.thrust > 0 || (this.state === 'slam' && this.stateT < 0.25);
+    const flameOn = this.thrust > 0;
     for (const fl of this.rig.flames) {
       fl.visible = flameOn;
-      if (flameOn) fl.scale.set(1, 0.7 + Math.random() * 0.6 + this.thrust, 1);
+      if (flameOn) fl.scale.set(1, 0.75 + Math.random() * 0.5 + this.thrust * 1.6, 1);
     }
-    if (this.thrust > 0) {
-      this.rig.j.chest.updateMatrixWorld();
+    if (this.rig.setThrust) this.rig.setThrust(flameOn ? Math.min(1, 0.45 + this.thrust * 1.5) : 0);
+    if (flameOn) {
+      this.root.updateMatrixWorld();
       for (const fl of this.rig.flames) world.fx.exhaust(fl.getWorldPosition(tmpV));
     }
 
-    applyPose(this.rig, p, blend, this.baseHipY);
-
+    // ---- physics + landing ----
+    const vyBefore = this.vel.y;
     const landed = this.physics(dt, world, this.state === 'special' ? 4 : 10);
     if (landed) {
       this.jumps = 0;
       if (this.state === 'slam') this.slamImpact(world);
-      else { world.fx.dust(this.pos, 10, 3); world.audio.land(); world.shake(0.08); }
+      else {
+        const k = Math.min(1, -vyBefore / 22);
+        this.anim.land(k);
+        world.fx.dust(this.pos, 8 + Math.round(k * 12), 3 + k * 2.5, 1 + k * 0.4);
+        world.audio.land();
+        world.shake(0.06 + k * 0.22);
+      }
     }
-    // core glow pulses with meter
-    const ready = this.meter >= cfg.special.meterMax;
-    const pulse = ready ? 2.5 + Math.sin(performance.now() * 0.012) * 1.5 : 1 + (this.meter / cfg.special.meterMax) * 1.2;
-    this.rig.core.material.emissiveIntensity = pulse;
-    this.root.rotation.z = 0;
+
+    // ---- animation ----
+    this.anim.update(dt, this);
+    const charge = this.meter / cfg.special.meterMax;
+    const glow = this.state === 'special' && this.stateT < 0.32 ? 2.4
+      : charge >= 1 ? 1.4 + Math.sin(performance.now() * 0.012) * 0.5 : charge;
+    if (this.rig.setCoreGlow) this.rig.setCoreGlow(glow);
+    else if (this.rig.core) this.rig.core.material.emissiveIntensity = 1 + glow * 1.5;
     this.sync();
   }
 
-  airPose(p) {
-    const rising = this.vel.y > 0;
-    p.hipL = [-0.9, 0, -0.1]; p.knL = [1.3, 0, 0];
-    p.hipR = [rising ? -0.2 : -0.5, 0, 0.1]; p.knR = [rising ? 0.5 : 0.9, 0, 0];
-    p.shL = [-0.3, 0, -0.7]; p.shR = [-0.3, 0, 0.7];
-    p.elL = [-0.6, 0, 0]; p.elR = [-0.6, 0, 0];
-    p.spine[0] = this.jumps === 2 ? 0.35 : 0.1;
+  /** Footstep event from the gait (dust + thud; heavier when running). */
+  footstep(side, k) {
+    const w = this.world;
+    if (!w) return;
+    const ft = this.rig.j['ft' + side];
+    if (ft) ft.getWorldPosition(tmpV); else tmpV.copy(this.pos);
+    tmpV.y = 0.05;
+    w.fx.dust(tmpV, 2 + Math.round(k * 4), 0.8 + k * 1.6, 0.55 + k * 0.45);
+    w.audio.step(k);
+    if (k > 0.75) w.shake(0.05);
+  }
+
+  /** Second jump: back thrusters fire. */
+  thrusterJump(world, mag, wishYaw) {
+    const cfg = this.cfg;
+    this.vel.y = cfg.thrusterVelocity;
+    this.jumps = 2;
+    this.thrust = cfg.thrusterBurn;
+    if (mag > 0.15) {
+      this.facing = wishYaw;
+      this.vel.x = Math.sin(wishYaw) * cfg.moveSpeed * 1.3;
+      this.vel.z = Math.cos(wishYaw) * cfg.moveSpeed * 1.3;
+    }
+    if (this.state === 'attack') this.setState('idle');
+    world.audio.thruster();
+    world.shake(0.12);
+    world.fx.shockwave(tmpV.set(this.pos.x, this.pos.y + 0.4, this.pos.z), 2.8, 0x9fdcff);
+    this.root.updateMatrixWorld();
+    for (const fl of this.rig.flames) {
+      fl.getWorldPosition(tmpV);
+      for (let i = 0; i < 8; i++) world.fx.exhaust(tmpV, 1.6);
+    }
   }
 
   curStep() { return this.cfg.combo[Math.max(0, this.comboStep)]; }
@@ -291,38 +321,16 @@ export class Toaku extends Fighter {
     world.audio.whoosh();
   }
 
-  updateAttack(dt, p, world) {
+  updateAttack(dt, world) {
     const st = this.curStep();
     const t = this.stateT;
     const [a0, a1] = st.active;
-    const striking = t >= a0;
     const fwdX = Math.sin(this.facing), fwdZ = Math.cos(this.facing);
-    // lunge during strike
+    // lunge during the strike
     if (t >= a0 * 0.6 && t < a1) {
       const lunge = st.name === 'hammer' ? 7 : 5;
       this.vel.x = fwdX * lunge; this.vel.z = fwdZ * lunge;
     } else if (this.onGround) { this.vel.x *= 0.6; this.vel.z *= 0.6; }
-
-    p.hipL = [-0.35, 0, -0.1]; p.knL = [0.35, 0, 0]; p.hipR = [0.25, 0, 0.1]; p.knR = [0.25, 0, 0]; p.bob = -0.15;
-    if (st.name === 'jab' || st.name === 'cross') {
-      const R = st.name === 'jab';
-      const atk = R ? 'R' : 'L', grd = R ? 'L' : 'R';
-      const sgn = R ? 1 : -1;
-      if (!striking) {
-        p['sh' + atk] = [-0.5, 0, sgn * 0.2]; p['el' + atk] = [-1.9, 0, 0]; p.spine[1] = sgn * 0.35;
-      } else {
-        p['sh' + atk] = [-1.62, sgn * 0.12, sgn * -0.1]; p['el' + atk] = [-0.05, 0, 0]; p.spine[1] = sgn * -0.45; p.spine[0] = 0.18;
-      }
-      p['sh' + grd] = [-0.7, 0, -sgn * 0.25]; p['el' + grd] = [-1.9, 0, 0];
-    } else {
-      // double-fist hammer
-      if (!striking) {
-        p.shL = [-2.9, 0, 0.25]; p.shR = [-2.9, 0, -0.25]; p.elL = [-0.7, 0, 0]; p.elR = [-0.7, 0, 0]; p.spine[0] = -0.3; p.bob = 0.05;
-      } else {
-        p.shL = [-1.1, 0, 0.3]; p.shR = [-1.1, 0, -0.3]; p.elL = [-0.15, 0, 0]; p.elR = [-0.15, 0, 0]; p.spine[0] = 0.55; p.head[0] = -0.3; p.bob = -0.35;
-        p.knL[0] = 0.8; p.hipL[0] = -0.8;
-      }
-    }
 
     if (!this.hitDone && t >= a0) {
       this.hitDone = true;
@@ -336,8 +344,9 @@ export class Toaku extends Fighter {
         }
       }
       if (heavy) {
-        const at = this.pos.clone().add(new THREE.Vector3(fwdX * 2.2, 0, fwdZ * 2.2));
-        world.fx.dust(at, 14, 4); world.fx.shockwave(at, 3.5); world.shake(hits ? 0.35 : 0.2);
+        const at = this.pos.clone().add(new THREE.Vector3(fwdX * 2.4, 0, fwdZ * 2.4));
+        world.fx.dust(at, 16, 4.5); world.fx.shockwave(at, 3.5); world.fx.crack(at, 1.6, this.facing);
+        world.shake(hits ? 0.38 : 0.22);
         world.audio.slam();
       }
       if (hits) this.registerHits(hits, world);
@@ -361,34 +370,44 @@ export class Toaku extends Fighter {
     world.onCombo(this.combo);
   }
 
-  updateSlam(dt, p, world) {
+  /** Mid-air punch: hang on the thrusters with fists raised, then dive. */
+  startSlam(world) {
+    this.setState('slam');
+    this.slamPhase = 'rise';
+    this.vel.y = 4;
+    this.vel.x *= 0.3; this.vel.z *= 0.3;
+    world.audio.whoosh();
+  }
+
+  updateSlam(dt, world) {
     const cfg = this.cfg.slam;
-    if (this.stateT < 0.18) {
-      this.vel.y = Math.max(this.vel.y, 1);
-      p.shL = [-3.0, 0, 0.3]; p.shR = [-3.0, 0, -0.3]; p.elL = [-0.5, 0, 0]; p.elR = [-0.5, 0, 0]; p.spine[0] = -0.4;
-      p.hipL = [-1.2, 0, 0]; p.knL = [1.6, 0, 0]; p.hipR = [-1.2, 0, 0]; p.knR = [1.6, 0, 0];
-    } else if (!this.onGround) {
+    if (this.slamPhase === 'rise') {
+      this.vel.y = Math.max(this.vel.y, 1.2);
+      this.thrust = Math.max(this.thrust, 0.06);
+      if (this.stateT >= cfg.hang) { this.slamPhase = 'dive'; world.audio.whoosh(); }
+    } else if (this.slamPhase === 'dive') {
       this.vel.y = cfg.diveSpeed;
-      p.shL = [-0.4, 0, 0.2]; p.shR = [-0.4, 0, -0.2]; p.elL = [0, 0, 0]; p.elR = [0, 0, 0]; p.spine[0] = 0.5;
-      p.hipL = [-0.7, 0, 0]; p.knL = [1.2, 0, 0]; p.hipR = [-0.7, 0, 0]; p.knR = [1.2, 0, 0];
-    } else {
-      // recovery crouch after impact
-      p.shL = [-0.6, 0, 0.4]; p.shR = [-0.6, 0, -0.4]; p.spine[0] = 0.7; p.head[0] = -0.4; p.bob = -0.6;
-      p.hipL = [-1.1, 0, -0.2]; p.knL = [1.6, 0, 0]; p.hipR = [-0.2, 0, 0.2]; p.knR = [1.4, 0, 0];
-      if (this.stateT - this.slamLandT > 0.4) this.setState('idle');
+      this.vel.x *= 0.9; this.vel.z *= 0.9;
+    } else if (this.stateT - this.slamLandT > cfg.recover) {
+      this.setState('idle');
     }
   }
 
   slamImpact(world) {
     const cfg = this.cfg.slam;
+    this.slamPhase = 'impact';
     this.slamLandT = this.stateT;
     this.vel.set(0, 0, 0);
-    world.fx.shockwave(this.pos, cfg.radius * 1.6, 0xfff2c0);
-    world.fx.shockwave(this.pos, cfg.radius, 0x9fffb0);
-    world.fx.dust(this.pos, 26, 7, 1.4);
-    world.fx.sparks(this.center(), 10, 0xa8ffb8, 8);
+    const fwdX = Math.sin(this.facing), fwdZ = Math.cos(this.facing);
+    const at = tmpV.set(this.pos.x + fwdX * 1.3, 0, this.pos.z + fwdZ * 1.3);
+    world.fx.crack(at, 2.6, this.facing);
+    world.fx.shockwave(at, cfg.radius * 1.6, 0xfff2c0);
+    world.fx.shockwave(at, cfg.radius, 0x9fffb0);
+    world.fx.dust(at, 30, 7.5, 1.5);
+    world.fx.sparks(tmpV.set(at.x, 0.6, at.z), 14, 0xa8ffb8, 9);
     world.audio.slam();
-    world.shake(0.6);
+    world.shake(0.65);
+    world.hitStop(0.06);
     let hits = 0;
     for (const e of world.enemies) {
       if (!e.alive || !e.targetable) continue;
@@ -413,38 +432,26 @@ export class Toaku extends Fighter {
     world.onSpecial();
   }
 
-  updateSpecial(dt, p, world) {
+  updateSpecial(dt, world) {
     const S = this.cfg.special;
     const t = this.stateT;
     const fwdX = Math.sin(this.facing), fwdZ = Math.cos(this.facing);
     const windup = 0.3;
-    p.hipL = [-0.6, 0, -0.15]; p.knL = [0.6, 0, 0]; p.hipR = [0.45, 0, 0.15]; p.knR = [0.35, 0, 0]; p.bob = -0.3;
     if (t < windup) {
       // gather power: arms pulled back, core flares
-      p.shL = [0.5, 0, -0.4]; p.shR = [0.5, 0, 0.4]; p.elL = [-1.8, 0, 0]; p.elR = [-1.8, 0, 0]; p.spine[0] = -0.2;
-      this.rig.core.material.emissiveIntensity = 6;
       if (this.onGround) this.vel.set(0, 0, 0);
       world.fx.sparks(this.center(), 2, 0x6aff8a, 5);
     } else if (t < windup + S.duration) {
       // the flurry: arms piston at absurd speed
       this.vel.x = fwdX * S.advanceSpeed; this.vel.z = fwdZ * S.advanceSpeed;
-      const cyc = (t * 38) % 2;
-      const leftOut = cyc < 1;
-      const jit = () => (Math.random() - 0.5) * 0.5;
-      p.shL = leftOut ? [-1.55 + jit(), jit() * 0.6, 0.15] : [-0.6, 0, -0.2];
-      p.elL = leftOut ? [-0.05, 0, 0] : [-1.9, 0, 0];
-      p.shR = !leftOut ? [-1.55 + jit(), jit() * 0.6, -0.15] : [-0.6, 0, 0.2];
-      p.elR = !leftOut ? [-0.05, 0, 0] : [-1.9, 0, 0];
-      p.spine = [0.2, (leftOut ? -1 : 1) * 0.25, 0];
-      p.head = [-0.1, 0, 0];
       this.specialHitT -= dt;
       while (this.specialHitT <= 0) {
         this.specialHitT += S.hitInterval;
         // after-images
         for (let k = 0; k < 2; k++) {
           const side = (Math.random() - 0.5) * 1.6;
-          const up = 1.6 + Math.random() * 1.6;
-          const reach = 1.9 + Math.random() * 1.4;
+          const up = 2.0 + Math.random() * 1.4;
+          const reach = 2.0 + Math.random() * 1.4;
           tmpV.set(this.pos.x + fwdX * reach + fwdZ * side, this.pos.y + up, this.pos.z + fwdZ * reach - fwdX * side);
           world.fx.fistGhost(tmpV, this.facing, 1.2 + Math.random());
         }
@@ -461,7 +468,7 @@ export class Toaku extends Fighter {
       }
       if (Math.random() < 0.3) world.shake(0.08);
     } else {
-      // finisher: huge right straight
+      // finisher: huge lead-hand straight
       if (!this.specialFinished) {
         this.specialFinished = true;
         let hits = 0;
@@ -472,15 +479,13 @@ export class Toaku extends Fighter {
             hits++;
           }
         }
-        const at = tmpV.set(this.pos.x + fwdX * 2.6, this.pos.y + 2.4, this.pos.z + fwdZ * 2.6);
+        const at = tmpV.set(this.pos.x + fwdX * 2.6, this.pos.y + 2.8, this.pos.z + fwdZ * 2.6);
         world.fx.shockwave(this.pos, 6, 0xa8ffb8);
         world.fx.sparks(at, 40, 0xc8ffd0, 16);
         world.shake(0.9); world.hitStop(0.16); world.audio.slam();
         if (hits) { this.combo += hits; this.comboTimer = 2.2; world.onCombo(this.combo); }
       }
       this.vel.x *= 0.8; this.vel.z *= 0.8;
-      p.shR = [-1.62, 0, -0.1]; p.elR = [0, 0, 0]; p.shL = [0.4, 0, -0.3]; p.elL = [-1.6, 0, 0];
-      p.spine = [0.3, -0.6, 0];
       if (t > windup + S.duration + 0.45) { this.setState('idle'); this.invuln = 0.3; }
     }
   }

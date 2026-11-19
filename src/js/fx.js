@@ -87,8 +87,8 @@ export function createFx(scene, camera, overlay) {
     emit(parts, false, { x: at.x + (Math.random() - 0.5) * 0.2, y: at.y, z: at.z + (Math.random() - 0.5) * 0.2,
       vx: (Math.random() - 0.5) * 1.5, vy: -8 * down - Math.random() * 3, vz: (Math.random() - 0.5) * 1.5,
       g: 0, s: 0.6 + Math.random() * 0.4, max: 0.22, r: 0.55, gC: 0.85, b: 1, drag: 3 });
-    emit(smoke, true, { x: at.x, y: at.y - 0.4, z: at.z, vx: (Math.random() - 0.5) * 2, vy: -2, vz: (Math.random() - 0.5) * 2,
-      g: -1, s: 0.9 + Math.random() * 0.6, max: 0.7, r: 0.75, gC: 0.72, b: 0.68, drag: 2 });
+    if (Math.random() < 0.6) emit(smoke, true, { x: at.x, y: at.y - 0.4, z: at.z, vx: (Math.random() - 0.5) * 2, vy: -2, vz: (Math.random() - 0.5) * 2,
+      g: -1, s: 0.45 + Math.random() * 0.35, max: 0.45, r: 0.93, gC: 0.87, b: 0.78, drag: 2.5 });
   }
   /** Robot explosion. */
   function explode(at) {
@@ -113,9 +113,11 @@ export function createFx(scene, camera, overlay) {
   }
 
   // ---- punch after-images for MACHINEGUN IMPACT ----
-  const ghostGeo = new THREE.BoxGeometry(0.55, 0.5, 0.6);
+  const ghostGeo = new THREE.SphereGeometry(0.3, 10, 8);
+  ghostGeo.scale(1.05, 0.95, 1.3);
   const ghosts = [];
-  const ghostMat = new THREE.MeshBasicMaterial({ color: 0xb8ffc8, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
+  // normal blending: additive washes out to white over the bright sand
+  const ghostMat = new THREE.MeshBasicMaterial({ color: 0x2fe068, transparent: true, opacity: 0.55, depthWrite: false });
   for (let i = 0; i < 40; i++) {
     const m = new THREE.Mesh(ghostGeo, ghostMat.clone());
     m.visible = false;
@@ -127,7 +129,7 @@ export function createFx(scene, camera, overlay) {
   trailGeo.rotateX(Math.PI / 2);
   const trails = [];
   for (let i = 0; i < 40; i++) {
-    const m = new THREE.Mesh(trailGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+    const m = new THREE.Mesh(trailGeo, new THREE.MeshBasicMaterial({ color: 0x7dffa8, transparent: true, opacity: 0.35, depthWrite: false }));
     m.visible = false; scene.add(m); trails.push({ m, t: 0, max: 0.1 });
   }
   let ti = 0;
@@ -144,6 +146,58 @@ export function createFx(scene, camera, overlay) {
     tr.m.scale.set(1, 1, len);
   }
 
+  // ---- ground crack decals (slam / hammer impacts) ----
+  const crackTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const g = c.getContext('2d');
+    const grd = g.createRadialGradient(128, 128, 4, 128, 128, 120);
+    grd.addColorStop(0, 'rgba(40,26,10,0.75)');
+    grd.addColorStop(0.35, 'rgba(70,46,20,0.35)');
+    grd.addColorStop(1, 'rgba(70,46,20,0)');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 256, 256);
+    g.strokeStyle = 'rgba(30,18,6,0.95)';
+    g.lineCap = 'round';
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const branch = (x, y, a, len, w, depth) => {
+      g.lineWidth = w;
+      g.beginPath(); g.moveTo(x, y);
+      for (let i = 0; i < 6; i++) {
+        a += (rnd() - 0.5) * 0.7;
+        x += Math.cos(a) * len / 6; y += Math.sin(a) * len / 6;
+        g.lineTo(x, y);
+        if (depth > 0 && rnd() < 0.25) { g.stroke(); branch(x, y, a + (rnd() - 0.5) * 1.6, len * 0.45, w * 0.6, depth - 1); g.lineWidth = w; g.beginPath(); g.moveTo(x, y); }
+      }
+      g.stroke();
+    };
+    for (let i = 0; i < 9; i++) branch(128, 128, (i / 9) * Math.PI * 2 + rnd() * 0.4, 70 + rnd() * 45, 5, 2);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  const crackGeo = new THREE.PlaneGeometry(1, 1);
+  crackGeo.rotateX(-Math.PI / 2);
+  const cracks = [];
+  for (let i = 0; i < 6; i++) {
+    const m = new THREE.Mesh(crackGeo, new THREE.MeshBasicMaterial({ map: crackTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    m.visible = false; m.renderOrder = 1;
+    scene.add(m);
+    cracks.push({ m, t: 0 });
+  }
+  let ci = 0;
+  /** Cracked-ground decal that fades out over a few seconds. */
+  function crack(at, size = 2, yaw = 0) {
+    const c = cracks[ci = (ci + 1) % cracks.length];
+    c.t = 0;
+    c.m.visible = true;
+    c.m.position.set(at.x, 0.06, at.z);
+    c.m.rotation.y = yaw + Math.random() * 6.28;
+    c.m.scale.set(size * 2, 1, size * 2);
+    c.m.material.opacity = 1;
+  }
+
   // ---- floating damage numbers ----
   const nums = [];
   const v3 = new THREE.Vector3();
@@ -157,6 +211,12 @@ export function createFx(scene, camera, overlay) {
   }
 
   function update(dt) {
+    for (const c of cracks) {
+      if (!c.m.visible) continue;
+      c.t += dt;
+      c.m.material.opacity = Math.min(1, Math.max(0, (3.2 - c.t) / 1.2));
+      if (c.t > 3.2) c.m.visible = false;
+    }
     for (const [pool, P, Cc, S, A] of [[parts, pos, col, size, alpha], [smoke, dpos, dcol, dsize, dalpha]]) {
       for (let i = 0; i < MAX; i++) {
         const p = pool[i];
@@ -189,14 +249,14 @@ export function createFx(scene, camera, overlay) {
       if (!g.m.visible) continue;
       g.t += dt;
       const f = g.t / g.max;
-      g.m.material.opacity = 0.95 * (1 - f);
+      g.m.material.opacity = 0.55 * (1 - f);
       g.m.scale.setScalar(1 + f * 0.6);
       if (f >= 1) g.m.visible = false;
     }
     for (const g of trails) {
       if (!g.m.visible) continue;
       g.t += dt;
-      g.m.material.opacity = 0.7 * (1 - g.t / g.max);
+      g.m.material.opacity = 0.35 * (1 - g.t / g.max);
       if (g.t >= g.max) g.m.visible = false;
     }
     const w = overlay.clientWidth, h = overlay.clientHeight;
@@ -211,11 +271,12 @@ export function createFx(scene, camera, overlay) {
   }
 
   function clear() {
+    for (const c of cracks) c.m.visible = false;
     for (const n of nums) n.el.remove();
     nums.length = 0;
     for (const p of parts) p.life = 0;
     for (const p of smoke) p.life = 0;
   }
 
-  return { sparks, dust, exhaust, explode, shockwave, fistGhost, damageNumber, update, clear };
+  return { sparks, dust, exhaust, explode, shockwave, fistGhost, crack, damageNumber, update, clear };
 }

@@ -7,6 +7,7 @@ await build({
   entryPoints: ['src/js/main.js'],
   bundle: true, minify: true, format: 'iife', target: ['chrome80'],
   outfile: 'dist/game.js', legalComments: 'none',
+  loader: { '.glb': 'binary' }, // the Toaku model is embedded so the game also runs from file:// and in the APK WebView
 });
 cpSync('src/index.html', 'dist/index.html');
 cpSync('src/style.css', 'dist/style.css');

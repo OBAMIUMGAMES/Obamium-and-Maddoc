@@ -12,7 +12,9 @@ export const CONFIG = {
     moveSpeed: 6.2,
     turnRate: 12,
     jumpVelocity: 10.5,
+    jumpSquat: 0.08, // take-off crouch before leaving the ground (s)
     thrusterVelocity: 12.5, // second (double) jump
+    thrusterBurn: 0.55, // how long the back thrusters fire on the double jump (s)
     combo: [
       // each step: damage, reach, arc (radians), duration, active window [start,end], knockback, lift
       { name: 'jab', damage: 12, reach: 2.9, arc: 1.3, duration: 0.32, active: [0.08, 0.18], knockback: 3, lift: 0 },
@@ -20,7 +22,7 @@ export const CONFIG = {
       { name: 'hammer', damage: 26, reach: 3.3, arc: 1.7, duration: 0.55, active: [0.2, 0.32], knockback: 11, lift: 6 },
     ],
     comboWindow: 0.35, // time after a step ends in which the next press chains
-    slam: { damage: 30, radius: 4.2, knockback: 12, lift: 7, diveSpeed: -28 },
+    slam: { damage: 30, radius: 4.2, knockback: 12, lift: 7, diveSpeed: -28, hang: 0.2, recover: 0.7 },
     special: {
       name: 'MACHINEGUN IMPACT',
       meterMax: 100,
@@ -38,6 +40,7 @@ export const CONFIG = {
       finisherLift: 9,
     },
     hurtInvuln: 0.5,
+    hurtTime: 0.32,
   },
 
   tonua: {
