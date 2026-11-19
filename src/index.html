@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1408">
+  <title>Toaku: Desert Brawl</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="touchzone"></div>
+  <div id="numbers"></div>
+  <div id="flash"></div>
+  <div id="hurt"></div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div id="player-panel">
+      <div class="name">TOAKU</div>
+      <div class="bar hp"><div id="hp-lag"></div><div id="hp-fill"></div></div>
+      <div class="bar meter-wrap"><div id="meter"></div><span>MACHINEGUN IMPACT</span></div>
+    </div>
+    <div id="wave-panel"><div id="wave">WAVE 1</div><div id="left">0 ENEMIES</div></div>
+    <div id="score-panel"><div id="score">0</div><button id="btn-pause" aria-label="Pause">II</button></div>
+    <div id="bossbar"><div class="name">TONUA</div><div class="bar"><div id="boss-fill"></div></div></div>
+    <div id="combo"></div>
+    <div id="banner"></div>
+    <div id="stick"><div id="knob"></div></div>
+    <div id="buttons">
+      <button id="btn-special" class="act"><span>MACHINE<br>GUN<br>IMPACT</span></button>
+      <button id="btn-jump" class="act"><span>JUMP</span><small>x2 thrusters</small></button>
+      <button id="btn-punch" class="act"><span>PUNCH</span></button>
+    </div>
+  </div>
+
+  <!-- Screens -->
+  <div id="title" class="screen show">
+    <div class="logo"><span class="l1">TOAKU</span><span class="l2">DESERT BRAWL</span></div>
+    <p class="tag">Scrap the robot horde. Humble Tonua. Unleash <b>MACHINEGUN IMPACT</b>.</p>
+    <button id="btn-start" class="big">FIGHT</button>
+    <div class="howto">
+      <div><b>Left thumb</b> move</div>
+      <div><b>Right drag</b> camera</div>
+      <div><b>PUNCH</b> x3 combo · in air = thruster slam</div>
+      <div><b>JUMP</b> twice for thruster double jump</div>
+      <div><b>MACHINEGUN IMPACT</b> when the core glows</div>
+    </div>
+  </div>
+  <div id="pause" class="screen">
+    <h2>PAUSED</h2>
+    <button id="btn-resume" class="big">RESUME</button>
+    <button id="btn-mute">SOUND: ON</button>
+    <button id="btn-quit">QUIT TO TITLE</button>
+  </div>
+  <div id="over" class="screen">
+    <h2>DEFEATED</h2>
+    <p id="over-stats"></p>
+    <p id="over-best"></p>
+    <button id="btn-retry" class="big">FIGHT AGAIN</button>
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>
