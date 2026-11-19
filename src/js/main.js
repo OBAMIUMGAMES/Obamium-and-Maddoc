@@ -1,16 +1,23 @@
 /**
- * TOAKU: DESERT BRAWL — entry point. Scene setup, game loop, waves, HUD and menus.
+ * TOAKU: DESERT BRAWL — entry point. Scene, character select, maps, game loop, waves, HUD.
+ * Fighters: TOAKU (desert ruins) and SUPER TAHU (sunset terraces); more slots are ready in the roster.
  */
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { buildArena } from './arena.js';
+import { buildTerraces } from './terraces.js';
 import { createFx } from './fx.js';
+import { createFireFx } from './fireFx.js';
 import { createAudio } from './audio.js';
 import { createInput } from './input.js';
 import { Toaku, Drone, Tonua } from './fighters.js';
+import { SuperTahu } from './tahu.js';
 import { waveComposition, killScore } from './combat.js';
 import { loadToakuTemplate, buildToakuSkinned } from './toakuModel.js';
+import { loadTahuTemplate, buildTahuInstance } from './tahuModel.js';
+import { ROSTER, nextSelectable } from './characters.js';
 import toakuGlb from '../../assets/models/toaku.glb'; // bundled as bytes (esbuild binary loader)
+import tahuGlb from '../../assets/models/tahu.glb';
 
 const $ = (s) => document.querySelector(s);
 const cfg = CONFIG;
@@ -24,7 +31,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 900);
+const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 1400);
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
   renderer.setSize(w, h, false);
@@ -35,24 +42,28 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-const arena = buildArena(scene, cfg.arena);
+// ---------- maps ----------
+const maps = { desert: buildArena(cfg.arena), terraces: buildTerraces() };
+for (const m of Object.values(maps)) scene.add(m.group);
 const fx = createFx(scene, camera, $('#numbers'));
+const fire = createFireFx(scene, fx);
 const audio = createAudio();
 const input = createInput(document.body);
 
-/** Warm desert reflection environment so Toaku's metal reads as metal. */
-function makeDesertEnv() {
+/** Reflection environment from a map palette so the fighters' metal picks up its light. */
+function makeEnv(p) {
   const envScene = new THREE.Scene();
+  const v3 = (a) => `vec3(${a.map((x) => x.toFixed(3)).join(',')})`;
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: `varying vec3 vP;
       void main() {
         float h = vP.y;
-        vec3 sky = mix(vec3(1.0, 0.92, 0.72), vec3(0.72, 0.6, 0.4), smoothstep(0.0, 0.9, h));
-        vec3 ground = mix(vec3(0.86, 0.67, 0.42), vec3(0.34, 0.25, 0.15), smoothstep(0.0, -0.7, h));
+        vec3 sky = mix(${v3(p.top)}, ${v3(p.horizon)}, smoothstep(0.0, 0.9, h));
+        vec3 ground = mix(${v3(p.ground)}, ${v3(p.deep)}, smoothstep(0.0, -0.7, h));
         vec3 c = h > 0.0 ? sky : ground;
-        c += vec3(1.6, 1.3, 0.9) * pow(max(dot(vP, normalize(vec3(0.48, 0.8, 0.32))), 0.0), 64.0);
+        c += vec3(1.6, 1.3, 0.9) * pow(max(dot(vP, normalize(${v3(p.sun)})), 0.0), 64.0);
         gl_FragColor = vec4(c, 1.0);
       }`,
   });
@@ -63,44 +74,37 @@ function makeDesertEnv() {
   return tex;
 }
 
-// ---------- Toaku model (Meshy scan, auto-rigged at load) ----------
-let toakuTpl = null;
-let assetsReady = false;
-const startBtn = $('#btn-start');
-startBtn.disabled = true;
-startBtn.textContent = 'LOADING';
-const loadStart = performance.now();
-loadToakuTemplate(toakuGlb, { height: cfg.toaku.height, envMap: makeDesertEnv(), maxAnisotropy: renderer.capabilities.getMaxAnisotropy() })
-  .then((t) => { toakuTpl = t; G.modelLoadMs = Math.round(performance.now() - loadStart); })
-  .catch((e) => { console.warn('Toaku model failed to load, using the procedural fallback:', e); })
-  .finally(() => {
-    setupShowcase();
-    assetsReady = true;
-    startBtn.disabled = false;
-    startBtn.textContent = 'FIGHT';
-  });
-/** A fresh animatable Toaku rig (skinned model, or undefined -> procedural fallback). */
-const makeToakuRig = () => (toakuTpl && !G.forceProcedural ? buildToakuSkinned(toakuTpl) : undefined);
-
 // ---------- game state ----------
 const G = {
-  mode: 'title', // title | playing | paused | over
+  mode: 'title', // title | select | playing | paused | over
+  charId: 'toaku',
+  sel: 0,
+  map: null,
   wave: 0, score: 0, kills: 0, bestCombo: 0,
   toSpawn: [], spawnT: 0, breakT: 0, waveActive: false,
-  hitStop: 0, shake: 0, camYaw: 0, camYawTarget: 0, specialCam: 0,
+  hitStop: 0, shake: 0, camYaw: 0, camYawTarget: 0, specialCam: 0, camLift: 0,
   enemies: [],
   player: null,
   tonuaRef: null,
 };
+
+function setMap(id) {
+  if (G.map && G.map.id === id) return;
+  for (const m of Object.values(maps)) m.deactivate();
+  G.map = maps[id];
+  G.map.activate(scene);
+  fx.setGround((x, z) => G.map.groundHeight(x, z));
+}
+setMap('desert');
 
 /** The world facade fighters talk to (dependency-injected, no globals inside fighters). */
 const world = {
   cfg,
   fx,
   audio,
+  get map() { return G.map; },
   get player() { return G.player; },
   get enemies() { return G.enemies; },
-  colliders: arena.colliders,
   shake(a) { G.shake = Math.min(1.2, Math.max(G.shake, a)); },
   hitStop(t) { G.hitStop = Math.max(G.hitStop, t); },
   attackersActive() { let n = 0; for (const e of G.enemies) if (e.alive && e.attacking) n++; return n; },
@@ -108,7 +112,7 @@ const world = {
     const c = e.center(new THREE.Vector3());
     const killed = e.receiveHit(dmg, dx, dz, knock, lift, stun, world, rapid);
     fx.sparks(c, rapid ? 4 : heavy ? 22 : 12, rapid ? 0xc8ffd0 : 0xffd27a, heavy ? 12 : 8);
-    fx.damageNumber(c.setY(c.y + 0.6), dmg, heavy ? 'big' : rapid ? 'small' : '');
+    fx.damageNumber(c.setY(c.y + 0.6), dmg >= 999 ? 'BURN' : dmg, heavy ? 'big' : rapid ? 'small' : '');
     if (!rapid) {
       audio.hit(heavy);
       world.hitStop(heavy ? cfg.feel.hitStopHeavy : cfg.feel.hitStop);
@@ -125,19 +129,53 @@ const world = {
       el.style.opacity = 1;
     }
   },
-  onSpecial() {
-    banner('MACHINEGUN IMPACT!!', 'special');
-    audio.special();
-    G.specialCam = 2.3;
+  onSpecial(name = 'MACHINEGUN IMPACT', kind = 'special') {
+    banner(`${name}!!`, kind);
+    if (kind === 'fire') audio.inferno(); else audio.special();
+    G.specialCam = kind === 'fire' ? 3.2 : 2.3;
     world.hitStop(0.12);
-    $('#flash').classList.remove('go'); void $('#flash').offsetWidth; $('#flash').classList.add('go');
+    const f = $('#flash');
+    f.className = kind === 'fire' ? 'fire' : '';
+    void f.offsetWidth;
+    f.classList.add('go');
+  },
+  /** INFERNO SLAM: the eruption front races outward; every enemy gets a fire column under its feet. */
+  onSpecialImpact(p) {
+    const S = p.cfg.special, map = G.map;
+    const o = p.pos;
+    world.shake(1.0);
+    world.hitStop(0.08);
+    audio.slam();
+    fx.shockwave(o, 9, 0xff8a2a);
+    fx.crack(o, 3, p.facing);
+    // a crown of fire around Tahu — open on the camera side so the player still sees him
+    for (let i = 0; i < 5; i++) {
+      const a = p.facing + (i - 2) * 0.62;
+      const x = o.x + Math.sin(a) * 4.4, z = o.z + Math.cos(a) * 4.4;
+      fire.erupt({ x, y: map.groundHeight(x, z), z, delay: 0.03 * Math.abs(i - 2), radius: 0.7, height: 7 });
+    }
+    for (const e of G.enemies) {
+      if (!e.alive) continue;
+      const d = Math.hypot(e.pos.x - o.x, e.pos.z - o.z);
+      const delay = 0.12 + d / S.waveSpeed;
+      e.stun = delay + 0.3; // rooted to the spot by the heat until their column hits
+      if (e.targetable && e.state !== 'spawn') e.setState('hurt');
+      fire.erupt({
+        x: e.pos.x, y: map.groundHeight(e.pos.x, e.pos.z), z: e.pos.z, delay, radius: 1.35, height: 12.5,
+        onErupt: () => { if (e.alive) { e.targetable = true; world.hitEnemy(e, S.columnDamage, 0, 0, 0, 15, 1, true); } audio.fireColumn(); },
+      });
+    }
+    for (const s of map.fireSpots()) {
+      const d = Math.hypot(s.x - o.x, s.z - o.z);
+      fire.erupt({ x: s.x, y: s.y, z: s.z, delay: 0.18 + d / S.waveSpeed, radius: 1 + Math.random() * 0.45, height: 9 + Math.random() * 5 });
+    }
   },
   onPlayerHurt() {
     $('#hurt').classList.remove('go'); void $('#hurt').offsetWidth; $('#hurt').classList.add('go');
     if (navigator.vibrate) navigator.vibrate(30);
   },
   onPlayerDead() {
-    banner('TOAKU IS DOWN', 'bad');
+    banner(`${rosterOf(G.charId).name} IS DOWN`, 'bad');
     setTimeout(showGameOver, 2200);
   },
 };
@@ -155,29 +193,48 @@ function onKill(e) {
   }
 }
 
-// ---------- spawning ----------
-function spawnPoint(minD = 14, maxD = 26) {
-  const p = G.player.pos;
-  for (let tries = 0; tries < 20; tries++) {
-    const a = Math.random() * Math.PI * 2, d = minD + Math.random() * (maxD - minD);
-    const x = p.x + Math.sin(a) * d, z = p.z + Math.cos(a) * d;
-    if (Math.hypot(x, z) > cfg.arena.radius - 2) continue;
-    if (arena.colliders.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + 1.2)) continue;
-    return { x, z };
-  }
-  return { x: 0, z: -20 };
+// ---------- models (both embedded; skinned/rigged at load) ----------
+let toakuTpl = null, tahuTpl = null;
+let assetsReady = false;
+const startBtn = $('#btn-start');
+startBtn.disabled = true;
+startBtn.textContent = 'LOADING';
+const loadStart = performance.now();
+const aniso = renderer.capabilities.getMaxAnisotropy();
+Promise.allSettled([
+  loadToakuTemplate(toakuGlb, { height: cfg.toaku.height, envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso }).then((t) => { toakuTpl = t; }),
+  loadTahuTemplate(tahuGlb, { height: cfg.tahu.height, sourceHeight: cfg.tahu.sourceHeight, envMap: makeEnv(maps.terraces.env), maxAnisotropy: aniso, idle: cfg.tahu.idle }).then((t) => { tahuTpl = t; }),
+]).then((results) => {
+  results.forEach((r, i) => { if (r.status === 'rejected') console.warn(['Toaku', 'Super Tahu'][i], 'model failed to load:', r.reason); });
+  G.modelLoadMs = Math.round(performance.now() - loadStart);
+  setupShowcases();
+  renderPortraits();
+  buildSelect();
+  assetsReady = true;
+  startBtn.disabled = false;
+  startBtn.textContent = 'FIGHT';
+});
+/** A fresh animatable Toaku rig (skinned model, or undefined -> procedural fallback). */
+const makeToakuRig = () => (toakuTpl && !G.forceProcedural ? buildToakuSkinned(toakuTpl) : undefined);
+const rosterOf = (id) => ROSTER.find((c) => c.id === id);
+const available = (c) => !c.locked && (c.id !== 'tahu' || tahuTpl);
+function createFighter(id) {
+  if (id === 'tahu' && tahuTpl) return new SuperTahu(cfg.tahu, buildTahuInstance(tahuTpl));
+  return new Toaku(cfg.toaku, makeToakuRig());
 }
+
+// ---------- spawning ----------
 function spawnDrone() {
   const d = new Drone(cfg.drone, Math.floor(Math.random() * 3));
-  const s = spawnPoint();
-  d.pos.set(s.x, -1.5, s.z);
+  const s = G.map.spawnPoint(G.player.pos);
+  d.pos.set(s.x, G.map.groundHeight(s.x, s.z) - 1.5, s.z);
   scene.add(d.root);
   G.enemies.push(d);
 }
 function spawnTonua() {
   const t = new Tonua(cfg.tonua);
-  const s = spawnPoint(8, 12);
-  t.pos.set(s.x, 14, s.z);
+  const s = G.map.spawnPoint(G.player.pos, 8, 12);
+  t.pos.set(s.x, G.map.groundHeight(s.x, s.z) + 14, s.z);
   t.onGround = false;
   scene.add(t.root);
   G.enemies.push(t);
@@ -207,7 +264,7 @@ function banner(text, kind) {
   clearTimeout(bannerTimer);
   bannerTimer = setTimeout(() => { el.className = kind; }, 1600);
 }
-const hud = { hp: $('#hp-fill'), hpLag: $('#hp-lag'), meter: $('#meter'), meterBox: $('#meter'), sp: $('#btn-special'), wave: $('#wave'), score: $('#score'), left: $('#left'), boss: $('#boss-fill') };
+const hud = { hp: $('#hp-fill'), hpLag: $('#hp-lag'), meter: $('#meter'), sp: $('#btn-special'), wave: $('#wave'), score: $('#score'), left: $('#left'), boss: $('#boss-fill') };
 let hpLag = 1;
 function updateHud(dt) {
   const p = G.player;
@@ -216,10 +273,10 @@ function updateHud(dt) {
   hud.hp.style.width = hpf * 100 + '%';
   hud.hpLag.style.width = hpLag * 100 + '%';
   hud.hp.classList.toggle('low', hpf < 0.3);
-  const mf = p.meter / cfg.toaku.special.meterMax;
+  const mf = p.meter / p.cfg.special.meterMax;
   hud.meter.style.width = mf * 100 + '%';
   const ready = mf >= 1;
-  hud.meterBox.classList.toggle('ready', ready);
+  hud.meter.classList.toggle('ready', ready);
   hud.sp.classList.toggle('ready', ready);
   hud.sp.style.setProperty('--fill', mf * 360 + 'deg');
   hud.wave.textContent = `WAVE ${G.wave}`;
@@ -229,26 +286,50 @@ function updateHud(dt) {
   if (G.tonuaRef) hud.boss.style.width = (G.tonuaRef.hp / G.tonuaRef.maxHp) * 100 + '%';
   if (p.comboTimer <= 0) $('#combo').style.opacity = 0;
 }
+/** Per-fighter HUD: name, special meter label, button set. */
+function configureHud(c) {
+  $('#pname').textContent = c.name;
+  $('#meter-label').textContent = c.special;
+  document.body.dataset.fighter = c.id;
+  document.body.classList.toggle('has-kick', !!c.buttons.kick);
+  $('#btn-jump').innerHTML = `<span>${c.buttons.jump}</span><small>${c.buttons.jumpSub}</small>`;
+  $('#btn-special').innerHTML = `<span>${c.buttons.special}</span>`;
+}
 
 // ---------- flow ----------
 function clearWorld() {
   for (const e of G.enemies) scene.remove(e.root);
   G.enemies = [];
   if (G.player) scene.remove(G.player.root);
+  G.player = null;
   fx.clear();
+  fire.clear();
 }
-function newGame() {
+function newGame(id = G.charId) {
   if (!assetsReady) return;
+  const c = rosterOf(id);
+  if (!c || !available(c)) return;
   clearWorld();
-  G.player = new Toaku(cfg.toaku, makeToakuRig());
-  G.player.pos.set(0, 0, 16);
-  G.player.facing = Math.PI;
-  scene.add(G.player.root);
+  G.charId = id;
+  setMap(c.map);
+  hideShowcases();
+  const p = createFighter(id);
+  const s = G.map.start;
+  p.pos.set(s.x, G.map.groundHeight(s.x, s.z), s.z);
+  p.groundY = p.pos.y;
+  p.facing = s.facing;
+  G.player = p;
+  scene.add(p.root);
+  p.sync();
   G.wave = 0; G.score = 0; G.kills = 0; G.bestCombo = 0;
-  G.camYaw = G.camYawTarget = 0;
+  G.noWaves = false; G.view = null; G.camLock = false; // test-harness switches never leak into a new game
+  G.camYaw = G.camYawTarget = s.facing + Math.PI;
+  G.camLift = 0;
+  camera.position.set(p.pos.x + Math.sin(G.camYaw) * cfg.camera.distance, p.pos.y + cfg.camera.height, p.pos.z + Math.cos(G.camYaw) * cfg.camera.distance);
   G.tonuaRef = null;
   G.breakT = 1.2; G.waveActive = false;
   hpLag = 1;
+  configureHud(c);
   $('#bossbar').classList.remove('show');
   G.mode = 'playing';
   setScreen(null);
@@ -261,7 +342,8 @@ function showGameOver() {
   G.mode = 'over';
   $('#over-stats').innerHTML = `Wave reached <b>${G.wave}</b><br>Robots scrapped <b>${G.kills}</b><br>Best combo <b>${G.bestCombo}</b><br>Score <b>${G.score.toLocaleString()}</b>`;
   let best = 0;
-  try { best = Math.max(Number(localStorage.getItem('toaku.best') || 0), G.score); localStorage.setItem('toaku.best', best); } catch (_) { /* storage unavailable */ }
+  const key = `toaku.best.${G.charId}`;
+  try { best = Math.max(Number(localStorage.getItem(key) || 0), G.score); localStorage.setItem(key, best); } catch (_) { /* storage unavailable */ }
   $('#over-best').textContent = `BEST ${best.toLocaleString()}`;
   setScreen('over');
 }
@@ -270,82 +352,223 @@ function pause(on) {
   G.mode = on ? 'paused' : 'playing';
   setScreen(on ? 'pause' : null);
 }
+function toTitle() {
+  clearWorld();
+  G.mode = 'title';
+  setScreen('title');
+  showShowcase(G.charId);
+}
 window.__pauseGame = () => pause(true);
-window.__backPressed = () => { pause(G.mode === 'playing'); return true; };
+window.__backPressed = () => {
+  if (G.mode === 'select') { toTitle(); return true; }
+  pause(G.mode === 'playing');
+  return true;
+};
+
+// ---------- character select ----------
+const portraits = {};
+function buildSelect() {
+  const row = $('#sel-cards');
+  row.innerHTML = '';
+  ROSTER.forEach((c, i) => {
+    const card = document.createElement('button');
+    card.className = 'card' + (c.locked ? ' locked' : '') + (!c.locked && !available(c) ? ' locked broken' : '');
+    card.dataset.i = i;
+    card.innerHTML = c.locked
+      ? '<div class="pic"><span>?</span></div><div class="cname">COMING SOON</div>'
+      : `<div class="pic" style="--c:${c.color}">${portraits[c.id] ? `<img alt="" src="${portraits[c.id]}">` : ''}</div><div class="cname">${c.name}</div>`;
+    card.addEventListener('click', (e) => {
+      e.preventDefault();
+      audio.unlock();
+      if (c.locked || !available(c)) { card.classList.remove('nope'); void card.offsetWidth; card.classList.add('nope'); return; }
+      if (G.sel === i) { newGame(c.id); return; } // tapping the selected card again starts the fight
+      select(i);
+    });
+    row.appendChild(card);
+  });
+  select(Math.max(0, ROSTER.findIndex((c) => c.id === G.charId)));
+}
+function select(i) {
+  const c = ROSTER[i];
+  if (!c || c.locked) return;
+  G.sel = i;
+  G.charId = c.id;
+  document.querySelectorAll('#sel-cards .card').forEach((el, k) => el.classList.toggle('on', k === i));
+  $('#sel-name').textContent = c.name;
+  $('#sel-name').style.color = c.color;
+  $('#sel-title').textContent = c.title;
+  $('#sel-stats').innerHTML = Object.entries(c.stats).map(([k, v]) => `<div class="stat"><span>${k.toUpperCase()}</span><i>${'<b></b>'.repeat(v)}${'<b class="off"></b>'.repeat(5 - v)}</i></div>`).join('');
+  $('#sel-moves').innerHTML = c.moves.map((m) => `<li>${m}</li>`).join('');
+  $('#sel-special').innerHTML = `SPECIAL <b>${c.special}</b>`;
+  $('#sel-arena').innerHTML = `ARENA <b>${maps[c.map].name}</b>`;
+  showShowcase(c.id);
+  titleT = 0;
+}
+function showSelect() {
+  if (!assetsReady) return;
+  if (G.player) clearWorld(); // coming from game over: clear the arena for the showcase
+  G.mode = 'select';
+  setScreen('select');
+  select(G.sel);
+}
+
+/** Render a head-and-shoulders portrait of each fighter for the cards. */
+function renderPortraits() {
+  const size = 256;
+  const pScene = new THREE.Scene();
+  pScene.add(new THREE.HemisphereLight(0xffffff, 0x554433, 2.0));
+  const key = new THREE.DirectionalLight(0xffffff, 2.4);
+  key.position.set(2, 4, 5);
+  pScene.add(key);
+  const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
+  const shots = [
+    ['toaku', () => new Toaku(cfg.toaku, makeToakuRig()), 3.0, 0x1b3a24],
+    ['tahu', () => (tahuTpl ? new SuperTahu(cfg.tahu, buildTahuInstance(tahuTpl)) : null), 2.45, 0x4a2410],
+  ];
+  const prevFog = scene.fog;
+  const out = document.createElement('canvas');
+  out.width = out.height = size;
+  const ctx = out.getContext('2d');
+  for (const [id, make, headY, bg] of shots) {
+    const f = make();
+    if (!f) continue;
+    f.facing = 0.35;
+    // pose on flat ground at the origin (the terrace map's centre is the 15 m top terrace)
+    const flat = { ...maps.desert, groundHeight: () => 0, resolve: (px, pz, nx, nz) => [nx, nz], sameLevel: () => true, snapDown: 0.3 };
+    for (let k = 0; k < 3; k++) f.update(1 / 60, { moveX: 0, moveY: 0, camDX: 0 }, 0, { ...world, map: flat, enemies: [] });
+    f.sync();
+    f.root.updateMatrixWorld(true);
+    pScene.add(f.root);
+    pScene.background = new THREE.Color(bg);
+    cam.position.set(0.9, headY + 0.1, 3.4);
+    cam.lookAt(0, headY - 0.35, 0);
+    const w = renderer.domElement.width, h = renderer.domElement.height;
+    const s = Math.min(w, h);
+    renderer.setViewport(0, 0, s / renderer.getPixelRatio(), s / renderer.getPixelRatio());
+    renderer.render(pScene, cam);
+    ctx.clearRect(0, 0, size, size);
+    ctx.drawImage(renderer.domElement, 0, h - s, s, s, 0, 0, size, size);
+    portraits[id] = out.toDataURL('image/png');
+    G.portraitDebug = G.portraitDebug || {}; G.portraitDebug[id] = portraits[id];
+    pScene.remove(f.root);
+  }
+  renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+  scene.fog = prevFog;
+}
+
+// ---------- title / select showcase ----------
+const silentAudio = new Proxy({}, { get: () => () => {} });
+const showcases = {};
+let showTonua = null;
+function setupShowcases() {
+  for (const c of ROSTER) {
+    if (!available(c)) continue;
+    const f = createFighter(c.id);
+    const sc = maps[c.map].showcase;
+    f.pos.set(sc.x, maps[c.map].groundHeight(sc.x, sc.z), sc.z);
+    f.facing = sc.facing;
+    f.root.visible = false;
+    scene.add(f.root);
+    showcases[c.id] = f;
+  }
+  showTonua = new Tonua(cfg.tonua);
+  showTonua.state = 'taunt';
+  scene.add(showTonua.root);
+  showShowcase(G.charId);
+}
+function showShowcase(id) {
+  const c = rosterOf(id);
+  if (!c) return;
+  setMap(c.map);
+  for (const [k, f] of Object.entries(showcases)) f.root.visible = k === id;
+  if (showTonua) {
+    const t = maps[c.map].showcase.tonua;
+    showTonua.pos.set(t.x, maps[c.map].groundHeight(t.x, t.z), t.z);
+    showTonua.facing = t.facing;
+    showTonua.root.visible = true;
+  }
+}
+function hideShowcases() {
+  for (const f of Object.values(showcases)) f.root.visible = false;
+  if (showTonua) showTonua.root.visible = false;
+}
 
 const tap = (sel, fn) => {
   const el = $(sel);
   el.addEventListener('click', (e) => { e.preventDefault(); audio.unlock(); fn(); });
 };
-tap('#btn-start', newGame);
-tap('#btn-retry', newGame);
+tap('#btn-start', showSelect);
+tap('#btn-go', () => newGame(ROSTER[G.sel].id));
+tap('#btn-back', toTitle);
+tap('#sel-prev', () => select(nextSelectable(ROSTER.map((c) => ({ locked: !available(c) })), G.sel, -1)));
+tap('#sel-next', () => select(nextSelectable(ROSTER.map((c) => ({ locked: !available(c) })), G.sel, 1)));
+tap('#btn-retry', () => newGame(G.charId));
+tap('#btn-change', showSelect);
 tap('#btn-pause', () => pause(true));
 tap('#btn-resume', () => pause(false));
-tap('#btn-quit', () => { clearWorld(); G.mode = 'title'; setScreen('title'); });
+tap('#btn-quit', toTitle);
 tap('#btn-mute', () => { $('#btn-mute').textContent = audio.toggleMute() ? 'SOUND: OFF' : 'SOUND: ON'; });
 document.addEventListener('touchstart', () => audio.unlock(), { passive: true });
 window.addEventListener('keydown', (e) => {
   audio.unlock();
-  if (e.code === 'Escape' || e.code === 'KeyP') pause(G.mode === 'playing');
-  if (e.code === 'Enter' && (G.mode === 'title' || G.mode === 'over')) newGame();
+  if (e.code === 'Escape' || e.code === 'KeyP') { if (G.mode === 'select') toTitle(); else pause(G.mode === 'playing'); }
+  if (e.code === 'Enter') {
+    if (G.mode === 'title') showSelect();
+    else if (G.mode === 'select') newGame(ROSTER[G.sel].id);
+    else if (G.mode === 'over') newGame(G.charId);
+  }
+  if (G.mode === 'select' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) {
+    select(nextSelectable(ROSTER.map((c) => ({ locked: !available(c) })), G.sel, e.code === 'ArrowLeft' ? -1 : 1));
+  }
 });
-
-// ---------- title scene: Toaku showcase ----------
-const silentAudio = new Proxy({}, { get: () => () => {} });
-const titleWorld = { ...world, enemies: [], audio: silentAudio, shake() {}, hitStop() {}, onCombo() {} };
-let showcase = null;
-function setupShowcase() {
-  showcase = new Toaku(cfg.toaku, makeToakuRig());
-  showcase.pos.set(0, 0, 16);
-  showcase.facing = 0.4;
-  scene.add(showcase.root);
-}
-const showTonua = new Tonua(cfg.tonua);
-showTonua.pos.set(2.6, 0, 17.5);
-showTonua.facing = -0.9;
-showTonua.state = 'taunt';
-scene.add(showTonua.root);
 
 // ---------- loop ----------
 const clock = new THREE.Clock();
 const camPos = new THREE.Vector3(), look = new THREE.Vector3();
-const idleInput = { moveX: 0, moveY: 0, camDX: 0, punch: false, jump: false, special: false };
+const idleInput = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, jump: false, special: false };
 let titleT = 0;
 
-/** Title screen: Toaku idles in his stance and throws the combo every few seconds. */
+/** Title / select: the chosen fighter idles in their arena and shows off a few moves. */
 function stepTitle(dt) {
   titleT += dt;
-  showTonua.root.visible = true;
-  if (showcase) {
-    showcase.root.visible = true;
-    const c = titleT % 6.5;
-    const press = (at) => c >= at && c - dt < at;
-    const inp = { ...idleInput, punch: press(3.0) || press(3.28) || press(3.6) };
-    showcase.update(dt, inp, 0, titleWorld);
-    showcase.pos.set(0, 0, 16);
-    showcase.facing = 0.4;
-    showcase.sync();
+  const c = rosterOf(G.charId);
+  const map = maps[c.map];
+  const sc = map.showcase;
+  const f = showcases[G.charId];
+  const tw = { ...world, map, enemies: [], audio: silentAudio, shake() {}, hitStop() {}, onCombo() {}, onSpecial() {}, onSpecialImpact() {} };
+  if (f) {
+    const cyc = titleT % 7;
+    const press = (at) => cyc >= at && cyc - dt < at;
+    const inp = { ...idleInput, punch: press(2.6) || press(2.9) || press(3.2) || press(3.5), kick: f.kind === 'tahu' && press(5.0) };
+    f.update(dt, inp, 0, tw);
+    f.pos.set(sc.x, map.groundHeight(sc.x, sc.z), sc.z);
+    f.facing = sc.facing;
+    f.sync();
   }
-  showTonua.stateT = (showTonua.stateT + dt) % 1;
-  showTonua.state = 'taunt';
-  showTonua.update(dt, { ...world, player: showcase || { pos: new THREE.Vector3(0, 0, 16), alive: true } });
-  showTonua.state = 'taunt';
-  showTonua.pos.set(2.6, 0, 17.5); showTonua.vel.set(0, 0, 0);
-  const a = titleT * 0.15;
-  camera.position.set(Math.sin(a) * 9, 3.2, 16 + Math.cos(a) * 9);
-  camera.lookAt(0.8, 2.0, 16.5);
-  arena.update(dt, showcase ? showcase.pos : camPos.set(0, 0, 16));
+  if (showTonua) {
+    showTonua.stateT = (showTonua.stateT + dt) % 1;
+    showTonua.state = 'taunt';
+    showTonua.update(dt, { ...tw, player: f || { pos: new THREE.Vector3(sc.x, 0, sc.z), alive: true, altitude: () => 0 } });
+    showTonua.state = 'taunt';
+    const t = sc.tonua;
+    showTonua.pos.set(t.x, map.groundHeight(t.x, t.z), t.z); showTonua.vel.set(0, 0, 0);
+  }
+  const cm = sc.cam;
+  const a = cm.base + (cm.sweep ? Math.sin(titleT * 0.25) * cm.sweep : titleT * 0.15);
+  camera.position.set(cm.cx + Math.sin(a) * cm.r, map.groundHeight(cm.cx, cm.cz) + cm.h, cm.cz + Math.cos(a) * cm.r);
+  camera.lookAt(cm.look.x, map.groundHeight(cm.look.x, cm.look.z) + cm.look.y, cm.look.z);
+  map.update(dt, f ? f.pos : camPos.set(cm.cx, 0, cm.cz));
   fx.update(dt);
+  fire.update(dt);
 }
 
 /** One gameplay tick. */
 function stepGame(dt, inp) {
-  if (showcase) showcase.root.visible = false;
-  showTonua.root.visible = false;
   if (G.mode !== 'playing') return;
   if (G.hitStop > 0) { G.hitStop -= dt; dt *= 0.05; }
   const p = G.player;
-  // camera yaw from drag + gentle auto-follow behind Toaku while moving
+  if (p.kind === 'toaku' && inp.kick) inp = { ...inp, punch: true }; // Toaku has no kick: K / kick punches
+  // camera yaw from drag + gentle auto-follow behind the fighter while moving
   G.camYawTarget -= inp.camDX * cfg.camera.dragSensitivity;
   const moving = Math.hypot(inp.moveX, inp.moveY) > 0.3 && Math.abs(inp.moveY) > 0.5 && inp.moveY > 0;
   if (moving && Math.abs(inp.camDX) < 1 && !G.camLock) {
@@ -358,7 +581,7 @@ function stepGame(dt, inp) {
 
   p.update(dt, inp, G.camYaw, world);
   for (const e of G.enemies) e.update(dt, world);
-  // body separation
+  // body separation (same level only)
   const all = [p, ...G.enemies.filter((e) => !e.removed && e.state !== 'spawn')];
   for (let i = 0; i < all.length; i++) {
     for (let j = i + 1; j < all.length; j++) {
@@ -368,8 +591,9 @@ function stepGame(dt, inp) {
       if (d < min && d > 0.0001 && Math.abs(a.pos.y - b.pos.y) < 2) {
         const push = (min - d) / d;
         const wa = a === p ? 0.15 : 0.5, wb = b === p ? 0.15 : 0.5;
-        a.pos.x -= dx * push * wa; a.pos.z -= dz * push * wa;
-        b.pos.x += dx * push * wb; b.pos.z += dz * push * wb;
+        const [ax, az] = G.map.resolve(a.pos.x, a.pos.z, a.pos.x - dx * push * wa, a.pos.z - dz * push * wa, a.radius, a.pos.y, a.groundY);
+        const [bx, bz] = G.map.resolve(b.pos.x, b.pos.z, b.pos.x + dx * push * wb, b.pos.z + dz * push * wb, b.radius, b.pos.y, b.groundY);
+        a.pos.x = ax; a.pos.z = az; b.pos.x = bx; b.pos.z = bz;
       }
     }
   }
@@ -406,22 +630,25 @@ function stepGame(dt, inp) {
     }
   }
 
-  // camera
+  // camera: chase cam that rises over terrace walls instead of clipping into them
   G.specialCam = Math.max(0, G.specialCam - dt);
-  const zoom = G.specialCam > 0 ? 0.7 : 1;
+  const zoom = G.specialCam > 0 ? 0.72 : 1;
   const dist = cfg.camera.distance * zoom;
   const tx = p.pos.x + Math.sin(G.camYaw) * dist;
   const tz = p.pos.z + Math.cos(G.camYaw) * dist;
-  const ty = Math.max(0, p.pos.y * 0.6) + cfg.camera.height * (G.specialCam > 0 ? 0.75 : 1);
+  let ty = p.pos.y + Math.max(0, p.altitude()) * -0.4 + cfg.camera.height * (G.specialCam > 0 ? 0.8 : 1);
+  const floor = Math.max(G.map.cameraFloor(tx, tz), G.map.cameraFloor((tx + p.pos.x) / 2, (tz + p.pos.z) / 2));
+  G.camLift += (Math.max(0, floor - ty) - G.camLift) * Math.min(1, dt * 5);
+  ty += G.camLift;
   camPos.set(tx, ty, tz);
   camera.position.lerp(camPos, Math.min(1, dt * cfg.camera.followLerp + (dt === 0 ? 0 : 0.02)));
-  look.set(p.pos.x, p.pos.y * 0.7 + cfg.camera.lookHeight, p.pos.z);
+  look.set(p.pos.x, p.pos.y + Math.max(0, p.altitude()) * 0.3 + cfg.camera.lookHeight, p.pos.z);
   camera.lookAt(look);
   if (G.view) {
-    // test/replay camera: fixed angle relative to Toaku's facing (set by the capture harness)
+    // test/replay camera: fixed angle relative to the fighter's facing (set by the capture harness)
     const v = G.view, a = p.facing + v.rel;
-    camera.position.set(p.pos.x + Math.sin(a) * v.dist, p.pos.y * v.follow + v.height, p.pos.z + Math.cos(a) * v.dist);
-    camera.lookAt(p.pos.x, p.pos.y * v.follow + v.look, p.pos.z);
+    camera.position.set(p.pos.x + Math.sin(a) * v.dist, p.pos.y * v.follow + v.height + (v.ground ? p.groundY : 0), p.pos.z + Math.cos(a) * v.dist);
+    camera.lookAt(p.pos.x, p.pos.y * v.follow + v.look + (v.ground ? p.groundY : 0), p.pos.z);
   }
   G.shake = Math.max(0, G.shake - dt * 2.5);
   if (G.shake > 0) {
@@ -430,8 +657,9 @@ function stepGame(dt, inp) {
     camera.position.y += (Math.random() - 0.5) * s;
     camera.rotation.z += (Math.random() - 0.5) * s * 0.05;
   }
-  arena.update(dt, p.pos);
+  G.map.update(dt, p.pos);
   fx.update(dt);
+  fire.update(dt);
   updateHud(dt);
 }
 
@@ -440,7 +668,7 @@ function frame() {
   if (window.__game && window.__game.manual) return; // a test harness is stepping the game
   const dt = Math.min(clock.getDelta(), 1 / 20);
   const inp = input.poll();
-  if (G.mode === 'title') stepTitle(dt);
+  if (G.mode === 'title' || G.mode === 'select') stepTitle(dt);
   else stepGame(dt, inp);
   renderer.render(scene, camera);
   input.consume();
@@ -450,27 +678,28 @@ frame();
 
 // ---------- automated smoke tests / animation capture ----------
 window.__game = {
-  G, world, CONFIG, spawnDrone, spawnTonua, newGame,
+  G, world, CONFIG, ROSTER, spawnDrone, spawnTonua, newGame, showSelect, select, fire,
   manual: false,
   get ready() { return assetsReady; },
   get skinned() { return !!toakuTpl; },
+  get tahuLoaded() { return !!tahuTpl; },
   get toakuMaterial() { return toakuTpl && toakuTpl.material; },
   /** Step `frames` fixed ticks with the given input (edge-triggered actions fire on the first tick), then render. */
   step(frames = 1, inp = {}, fps = 60) {
     for (let i = 0; i < frames; i++) {
       const tickInput = { ...idleInput, ...inp };
-      if (i > 0) { tickInput.punch = false; tickInput.jump = false; tickInput.special = false; }
-      if (G.mode === 'title') stepTitle(1 / fps);
+      if (i > 0) { tickInput.punch = false; tickInput.kick = false; tickInput.jump = false; tickInput.special = false; }
+      if (G.mode === 'title' || G.mode === 'select') stepTitle(1 / fps);
       else stepGame(1 / fps, tickInput);
     }
     renderer.render(scene, camera);
   },
-  /** Place the chase camera at an angle relative to Toaku's facing (0 = behind, PI/2 = his left side). */
+  /** Place the chase camera at an angle relative to the fighter's facing (0 = behind, PI/2 = side). */
   orbit(rel, dist = cfg.camera.distance, height = cfg.camera.height) {
     const p = G.player;
     G.camYaw = G.camYawTarget = p.facing + Math.PI + rel;
-    camera.position.set(p.pos.x + Math.sin(G.camYaw) * dist, p.pos.y * 0.6 + height, p.pos.z + Math.cos(G.camYaw) * dist);
-    camera.lookAt(p.pos.x, p.pos.y * 0.7 + cfg.camera.lookHeight, p.pos.z);
+    camera.position.set(p.pos.x + Math.sin(G.camYaw) * dist, p.pos.y + height, p.pos.z + Math.cos(G.camYaw) * dist);
+    camera.lookAt(p.pos.x, p.pos.y + cfg.camera.lookHeight, p.pos.z);
     renderer.render(scene, camera);
   },
 };

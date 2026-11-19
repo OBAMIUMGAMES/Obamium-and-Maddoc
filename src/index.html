@@ -7,7 +7,7 @@
   <title>Toaku: Desert Brawl</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-fighter="toaku">
   <canvas id="game"></canvas>
   <div id="touchzone"></div>
   <div id="numbers"></div>
@@ -17,9 +17,9 @@
   <!-- HUD -->
   <div id="hud">
     <div id="player-panel">
-      <div class="name">TOAKU</div>
+      <div class="name" id="pname">TOAKU</div>
       <div class="bar hp"><div id="hp-lag"></div><div id="hp-fill"></div></div>
-      <div class="bar meter-wrap"><div id="meter"></div><span>MACHINEGUN IMPACT</span></div>
+      <div class="bar meter-wrap"><div id="meter"></div><span id="meter-label">MACHINEGUN IMPACT</span></div>
     </div>
     <div id="wave-panel"><div id="wave">WAVE 1</div><div id="left">0 ENEMIES</div></div>
     <div id="score-panel"><div id="score">0</div><button id="btn-pause" aria-label="Pause">II</button></div>
@@ -30,6 +30,7 @@
     <div id="buttons">
       <button id="btn-special" class="act"><span>MACHINE<br>GUN<br>IMPACT</span></button>
       <button id="btn-jump" class="act"><span>JUMP</span><small>x2 thrusters</small></button>
+      <button id="btn-kick" class="act"><span>KICK</span></button>
       <button id="btn-punch" class="act"><span>PUNCH</span></button>
     </div>
   </div>
@@ -37,16 +38,34 @@
   <!-- Screens -->
   <div id="title" class="screen show">
     <div class="logo"><span class="l1">TOAKU</span><span class="l2">DESERT BRAWL</span></div>
-    <p class="tag">Scrap the robot horde. Humble Tonua. Unleash <b>MACHINEGUN IMPACT</b>.</p>
+    <p class="tag">Scrap the robot horde. Humble Tonua. Choose your fighter.</p>
     <button id="btn-start" class="big">FIGHT</button>
     <div class="howto">
-      <div><b>Left thumb</b> move</div>
-      <div><b>Right drag</b> camera</div>
-      <div><b>PUNCH</b> x3 combo · in air = thruster slam</div>
-      <div><b>JUMP</b> twice for thruster double jump</div>
-      <div><b>MACHINEGUN IMPACT</b> when the core glows</div>
+      <div><b>Left thumb</b> move · <b>Right drag</b> camera</div>
+      <div><b>PUNCH</b> combo · <b>KICK</b> / <b>JUMP</b> / <b>DODGE</b> per fighter</div>
+      <div><b>SPECIAL</b> when the meter is full</div>
     </div>
   </div>
+
+  <div id="select" class="screen">
+    <button id="btn-back" class="corner">&#8592; BACK</button>
+    <h2 class="sel-head">CHOOSE YOUR FIGHTER</h2>
+    <div id="sel-info">
+      <div id="sel-name">TOAKU</div>
+      <div id="sel-title">The Iron Colossus</div>
+      <div id="sel-stats"></div>
+      <ul id="sel-moves"></ul>
+      <div id="sel-special"></div>
+      <div id="sel-arena"></div>
+    </div>
+    <div id="sel-row">
+      <button id="sel-prev" class="arrow" aria-label="Previous fighter">&#9664;</button>
+      <div id="sel-cards"></div>
+      <button id="sel-next" class="arrow" aria-label="Next fighter">&#9654;</button>
+    </div>
+    <button id="btn-go" class="big">FIGHT!</button>
+  </div>
+
   <div id="pause" class="screen">
     <h2>PAUSED</h2>
     <button id="btn-resume" class="big">RESUME</button>
@@ -58,6 +77,7 @@
     <p id="over-stats"></p>
     <p id="over-best"></p>
     <button id="btn-retry" class="big">FIGHT AGAIN</button>
+    <button id="btn-change">CHANGE FIGHTER</button>
   </div>
   <script src="game.js"></script>
 </body>

@@ -64,5 +64,9 @@ export function createAudio() {
     squeak() { tone('square', 900, 1500, 0.08, 0.12); tone('square', 1500, 700, 0.1, 0.08); },
     special() { tone('sawtooth', 110, 440, 0.5, 0.3); noise(0.5, 1200, 0.5, 0.4); },
     charge() { tone('triangle', 440, 880, 0.25, 0.2); },
+    /** INFERNO SLAM wind-up: rising roar. */
+    inferno() { tone('sawtooth', 60, 220, 1.4, 0.35); noise(1.6, 420, 0.4, 0.55, 'lowpass'); tone('triangle', 110, 330, 1.2, 0.2); },
+    /** A fire column bursting out of the ground. */
+    fireColumn() { noise(0.9, 300 + Math.random() * 200, 0.5, 0.5, 'lowpass'); tone('sine', 70, 35, 0.5, 0.45); },
   };
 }

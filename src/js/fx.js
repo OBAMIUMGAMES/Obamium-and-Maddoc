@@ -46,6 +46,7 @@ export function createFx(scene, camera, overlay) {
   dustPts.frustumCulled = false;
   scene.add(dustPts);
 
+  let groundAt = () => 0;
   const parts = [];
   const smoke = [];
   for (let i = 0; i < MAX; i++) {
@@ -192,7 +193,7 @@ export function createFx(scene, camera, overlay) {
     const c = cracks[ci = (ci + 1) % cracks.length];
     c.t = 0;
     c.m.visible = true;
-    c.m.position.set(at.x, 0.06, at.z);
+    c.m.position.set(at.x, (at.y || 0) + 0.06, at.z);
     c.m.rotation.y = yaw + Math.random() * 6.28;
     c.m.scale.set(size * 2, 1, size * 2);
     c.m.material.opacity = 1;
@@ -225,7 +226,8 @@ export function createFx(scene, camera, overlay) {
         const k = Math.max(0, 1 - p.drag * dt);
         p.vx *= k; p.vz *= k; p.vy = p.vy * k - p.g * dt;
         p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-        if (p.y < 0.05) { p.y = 0.05; p.vy *= -0.3; }
+        const fl = groundAt(p.x, p.z) + 0.05;
+        if (p.y < fl) { p.y = fl; p.vy *= -0.3; }
         const f = Math.max(0, p.life / p.max);
         P[i * 3] = p.x; P[i * 3 + 1] = p.y; P[i * 3 + 2] = p.z;
         Cc[i * 3] = p.r; Cc[i * 3 + 1] = p.gC; Cc[i * 3 + 2] = p.b;
@@ -278,5 +280,8 @@ export function createFx(scene, camera, overlay) {
     for (const p of smoke) p.life = 0;
   }
 
-  return { sparks, dust, exhaust, explode, shockwave, fistGhost, crack, damageNumber, update, clear };
+  /** Floor height lookup for particle bounces (the active map's ground). */
+  function setGround(fn) { groundAt = fn; }
+
+  return { sparks, dust, exhaust, explode, shockwave, fistGhost, crack, damageNumber, update, clear, setGround, emit: (o, isSmoke = false) => emit(isSmoke ? smoke : parts, isSmoke, o) };
 }

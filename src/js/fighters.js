@@ -49,8 +49,8 @@ function walkPose(p, phase, amt, armSwing = 0.5, legSwing = 0.65) {
   p.bob = -Math.abs(c) * 0.08 * amt;
 }
 
-/** Base class with shared physics. */
-class Fighter {
+/** Base class with shared physics; the active map (world.map) supplies ground and walls. */
+export class Fighter {
   constructor(rig, opts) {
     this.rig = rig;
     this.root = rig.root;
@@ -63,25 +63,38 @@ class Fighter {
     this.maxHp = opts.maxHp;
     this.hp = opts.maxHp;
     this.onGround = true;
+    this.groundY = 0;
     this.state = 'idle';
     this.stateT = 0;
     this.walkPhase = 0;
     this.alive = true;
     this.removed = false;
-    this.baseHipY = rig.j.hips.position.y;
+    this.baseHipY = rig.j && rig.j.hips ? rig.j.hips.position.y : 0;
     this.flash = 0;
   }
   setState(s) { this.state = s; this.stateT = 0; }
   /** Center of mass, world space. */
   center(out = tmpV) { return out.set(this.pos.x, this.pos.y + this.height * 0.55, this.pos.z); }
+  /** Height above the ground directly below. */
+  altitude() { return this.pos.y - this.groundY; }
 
+  /** Gravity + map-resolved movement (walls, stairs, arena edge). Returns true on landing. */
   physics(dt, world, friction = 10) {
+    const map = world.map;
     const g = world.cfg.arena.gravity;
+    const px = this.pos.x, pz = this.pos.z;
+    const ground0 = map.groundHeight(px, pz);
     this.vel.y -= g * dt;
-    this.pos.addScaledVector(this.vel, dt);
+    const [nx, nz] = map.resolve(px, pz, px + this.vel.x * dt, pz + this.vel.z * dt, this.radius, this.pos.y, ground0);
+    this.pos.x = nx; this.pos.z = nz;
+    this.pos.y += this.vel.y * dt;
+    const gy = map.groundHeight(nx, nz);
+    this.groundY = gy;
     const wasAir = !this.onGround;
-    if (this.pos.y <= 0) {
-      this.pos.y = 0;
+    // walking down stairs: stay glued to the steps instead of hopping off each one
+    if (!wasAir && this.vel.y <= 0 && this.pos.y > gy && this.pos.y - gy < map.snapDown) this.pos.y = gy;
+    if (this.pos.y <= gy) {
+      this.pos.y = gy;
       if (this.vel.y < 0) this.vel.y = 0;
       this.onGround = true;
     } else this.onGround = false;
@@ -89,18 +102,6 @@ class Fighter {
       const k = Math.max(0, 1 - friction * dt);
       this.vel.x *= k; this.vel.z *= k;
     }
-    // static colliders
-    for (const c of world.colliders) {
-      const dx = this.pos.x - c.x, dz = this.pos.z - c.z;
-      const d = Math.hypot(dx, dz), min = c.r + this.radius;
-      if (d < min && d > 0.0001 && this.pos.y < 4) {
-        this.pos.x = c.x + (dx / d) * min; this.pos.z = c.z + (dz / d) * min;
-      }
-    }
-    // arena boundary
-    const R = world.cfg.arena.radius;
-    const dr = Math.hypot(this.pos.x, this.pos.z);
-    if (dr > R) { this.pos.x *= R / dr; this.pos.z *= R / dr; }
     return wasAir && this.onGround;
   }
   sync() {
@@ -173,7 +174,7 @@ export class Toaku extends Fighter {
       if (this.onGround) this.setState('jumpSquat');
       else if (this.jumps < 2) this.thrusterJump(world, mag, wishYaw);
     } else if (input.punch && this.alive) {
-      if (!this.onGround && this.pos.y > 1.2 && this.state === 'idle') {
+      if (!this.onGround && this.altitude() > 1.2 && this.state === 'idle') {
         this.startSlam(world);
       } else if (this.state === 'attack') {
         this.comboQueued = true;
@@ -237,7 +238,9 @@ export class Toaku extends Fighter {
 
     // ---- physics + landing ----
     const vyBefore = this.vel.y;
-    const landed = this.physics(dt, world, this.state === 'special' ? 4 : 10);
+    // idle steers its own velocity (accelerates to the stick, decelerates to 0) — no extra friction,
+    // which used to cap walking at half speed
+    const landed = this.physics(dt, world, this.state === 'idle' ? 0 : this.state === 'special' ? 4 : 10);
     if (landed) {
       this.jumps = 0;
       if (this.state === 'slam') this.slamImpact(world);
@@ -399,12 +402,12 @@ export class Toaku extends Fighter {
     this.slamLandT = this.stateT;
     this.vel.set(0, 0, 0);
     const fwdX = Math.sin(this.facing), fwdZ = Math.cos(this.facing);
-    const at = tmpV.set(this.pos.x + fwdX * 1.3, 0, this.pos.z + fwdZ * 1.3);
+    const at = tmpV.set(this.pos.x + fwdX * 1.3, this.pos.y, this.pos.z + fwdZ * 1.3);
     world.fx.crack(at, 2.6, this.facing);
     world.fx.shockwave(at, cfg.radius * 1.6, 0xfff2c0);
     world.fx.shockwave(at, cfg.radius, 0x9fffb0);
     world.fx.dust(at, 30, 7.5, 1.5);
-    world.fx.sparks(tmpV.set(at.x, 0.6, at.z), 14, 0xa8ffb8, 9);
+    world.fx.sparks(tmpV.set(at.x, at.y + 0.6, at.z), 14, 0xa8ffb8, 9);
     world.audio.slam();
     world.shake(0.65);
     world.hitStop(0.06);
@@ -413,7 +416,7 @@ export class Toaku extends Fighter {
       if (!e.alive || !e.targetable) continue;
       const dx = e.pos.x - this.pos.x, dz = e.pos.z - this.pos.z;
       const d = Math.hypot(dx, dz);
-      if (d < cfg.radius + e.radius && e.pos.y < 2.5) {
+      if (d < cfg.radius + e.radius && e.altitude() < 2.5 && world.map.sameLevel(this.pos, e.pos)) {
         world.hitEnemy(e, cfg.damage, dx / (d || 1), dz / (d || 1), cfg.knockback, cfg.lift, 0.8, true);
         hits++;
       }
@@ -595,17 +598,23 @@ export class Drone extends Enemy {
     this.stateT += dt;
     this.cool -= dt;
     const pl = world.player;
-    const dx = pl.pos.x - this.pos.x, dz = pl.pos.z - this.pos.z;
-    const dist = Math.hypot(dx, dz);
+    const map = world.map;
+    // route via the map (on the terraces: around the ring / up the stairs) until we share a level
+    const same = map.sameLevel(this.pos, pl.pos);
+    const wp = map.waypoint(this.pos, pl.pos);
+    const routing = !same || Math.hypot(wp.x - pl.pos.x, wp.z - pl.pos.z) > 0.01;
+    const dx = wp.x - this.pos.x, dz = wp.z - this.pos.z;
+    const dist = Math.hypot(dx, dz) || 1;
     const toYaw = Math.atan2(dx, dz);
     const p = pose();
     let blend = 1 - Math.exp(-14 * dt);
     if (!this.updateHitStates(dt, p, world)) {
       switch (this.state) {
         case 'spawn': {
-          // burrow up out of the sand
+          // burrow up out of the ground
+          if (this.spawnY === undefined) { this.spawnY = map.groundHeight(this.pos.x, this.pos.z); this.groundY = this.spawnY; }
           const f = Math.min(1, this.stateT / 0.8);
-          this.pos.y = -1.5 * (1 - f);
+          this.pos.y = this.spawnY - 1.5 * (1 - f);
           this.vel.set(0, 0, 0);
           if (Math.random() < 0.4) world.fx.dust(this.pos, 1, 1.5, 0.8);
           p.shL = [-2.6, 0, 0]; p.shR = [-2.6, 0, 0];
@@ -619,8 +628,8 @@ export class Drone extends Enemy {
           if (!pl.alive) { this.vel.x *= 0.8; this.vel.z *= 0.8; p.shL[0] = -0.3; p.shR[0] = -0.3; p.head[1] = Math.sin(this.stateT * 2); break; }
           this.turnTowards(toYaw, 6, dt);
           let mvx = 0, mvz = 0;
-          const canAttack = world.attackersActive() < cfg.maxSimultaneousAttackers;
-          if (dist > cfg.attackRange * (canAttack ? 0.9 : 1.9)) {
+          const canAttack = !routing && world.attackersActive() < cfg.maxSimultaneousAttackers;
+          if (routing || dist > cfg.attackRange * (canAttack ? 0.9 : 1.9)) {
             mvx = dx / dist; mvz = dz / dist;
           } else if (!canAttack || this.cool > 0) {
             // circle the player menacingly
@@ -628,7 +637,7 @@ export class Drone extends Enemy {
             if (dist < cfg.attackRange * 1.4) { mvx -= dx / dist * 0.6; mvz -= dz / dist * 0.6; }
             if (Math.random() < dt * 0.3) this.strafeDir *= -1;
           }
-          if (canAttack && this.cool <= 0 && dist <= cfg.attackRange && pl.pos.y < 2) { this.setState('windup'); world.audio.beep(); break; }
+          if (canAttack && this.cool <= 0 && dist <= cfg.attackRange && pl.altitude() < 2) { this.setState('windup'); world.audio.beep(); break; }
           const sp = cfg.moveSpeed * this.speedMul;
           this.vel.x += (mvx * sp - this.vel.x) * Math.min(1, 8 * dt);
           this.vel.z += (mvz * sp - this.vel.z) * Math.min(1, 8 * dt);
@@ -656,7 +665,7 @@ export class Drone extends Enemy {
           blend = 1 - Math.exp(-40 * dt);
           if (!this.hitDone && this.stateT > 0.06) {
             this.hitDone = true;
-            if (inArc(this.pos, this.facing, pl.pos, cfg.attackRange + 0.3, 1.6, pl.radius) && pl.pos.y < 1.5) {
+            if (inArc(this.pos, this.facing, pl.pos, cfg.attackRange + 0.3, 1.6, pl.radius) && pl.altitude() < 1.5 && map.sameLevel(this.pos, pl.pos)) {
               pl.takeHit(cfg.damage, this.pos.x, this.pos.z, world);
             }
           }
@@ -672,7 +681,7 @@ export class Drone extends Enemy {
     if (this.state !== 'windup' && this.state !== 'strike' && this.rig.visorMat) this.rig.visorMat.emissiveIntensity = this.flash > 0 ? 4 : 1.2;
     if (this.flash > 0) this.flash -= dt;
     applyPose(this.rig, p, blend, this.baseHipY);
-    this.physics(dt, world, this.state === 'launched' || this.state === 'dying' ? 2 : 6);
+    this.physics(dt, world, this.state === 'launched' || this.state === 'dying' ? 2 : this.state === 'idle' ? 0 : 6);
     if (this.state !== 'launched' && this.state !== 'dying' && this.state !== 'down') this.root.rotation.x = 0;
     this.sync();
   }
@@ -696,7 +705,11 @@ export class Tonua extends Enemy {
     this.stateT += dt;
     this.cool -= dt;
     const pl = world.player;
-    const dx = pl.pos.x - this.pos.x, dz = pl.pos.z - this.pos.z;
+    const map = world.map;
+    const same = map.sameLevel(this.pos, pl.pos);
+    const wp = map.waypoint(this.pos, pl.pos);
+    const routing = !same || Math.hypot(wp.x - pl.pos.x, wp.z - pl.pos.z) > 0.01;
+    const dx = wp.x - this.pos.x, dz = wp.z - this.pos.z;
     const dist = Math.hypot(dx, dz) || 1;
     const toYaw = Math.atan2(dx, dz);
     const p = pose();
@@ -724,9 +737,9 @@ export class Tonua extends Enemy {
           if (!pl.alive) { this.setState('taunt'); break; }
           this.turnTowards(toYaw, 10, dt);
           // keep a cheeky distance, orbit, hop
-          const want = this.cool > 0 ? cfg.fleeDistance : 0.9;
+          const want = routing ? 0 : this.cool > 0 ? cfg.fleeDistance : 0.9;
           let mvx = (dx / dist) * (dist - want) * 0.6, mvz = (dz / dist) * (dist - want) * 0.6;
-          mvx += (-dz / dist) * this.orbit; mvz += (dx / dist) * this.orbit;
+          if (!routing) { mvx += (-dz / dist) * this.orbit; mvz += (dx / dist) * this.orbit; }
           const l = Math.hypot(mvx, mvz) || 1;
           const sp = cfg.moveSpeed * Math.min(1, l);
           if (this.onGround) {
@@ -736,7 +749,7 @@ export class Tonua extends Enemy {
           this.hopT -= dt;
           if (this.hopT <= 0 && this.onGround) { this.vel.y = cfg.hopVelocity * (0.6 + Math.random() * 0.5); this.hopT = 0.5 + Math.random() * 1.2; if (Math.random() < 0.3) this.orbit *= -1; }
           if (Math.random() < dt * 0.25) { this.setState('taunt'); world.audio.squeak(); break; }
-          if (this.cool <= 0 && dist < cfg.attackRange && this.onGround && pl.pos.y < 1.5) { this.setState('poke'); break; }
+          if (!routing && this.cool <= 0 && dist < cfg.attackRange && this.onGround && pl.altitude() < 1.5) { this.setState('poke'); break; }
           const hs = Math.hypot(this.vel.x, this.vel.z);
           this.walkPhase += dt * (6 + hs * 2);
           walkPose(p, this.walkPhase, Math.min(1, hs / 4), 0.8, 0.8);
@@ -751,7 +764,7 @@ export class Tonua extends Enemy {
           else { p.shR = [-1.6, 0, 0]; p.elR[0] = 0; p.spine[1] = -0.4; blend = 1 - Math.exp(-40 * dt); }
           if (t >= 0.2 && !this.hitDone) {
             this.hitDone = true;
-            if (inArc(this.pos, this.facing, pl.pos, cfg.attackRange + 0.4, 1.8, pl.radius)) {
+            if (inArc(this.pos, this.facing, pl.pos, cfg.attackRange + 0.4, 1.8, pl.radius) && map.sameLevel(this.pos, pl.pos)) {
               // barely tickles
               if (pl.takeHit(cfg.damage, this.pos.x, this.pos.z, world)) world.fx.damageNumber(pl.center(), 'tink', 'tiny');
             }
@@ -762,7 +775,7 @@ export class Tonua extends Enemy {
       }
     }
     applyPose(this.rig, p, blend, this.baseHipY);
-    this.physics(dt, world, this.state === 'launched' || this.state === 'dying' ? 2 : 8);
+    this.physics(dt, world, this.state === 'launched' || this.state === 'dying' ? 2 : this.state === 'idle' ? 0 : 8);
     if (this.state !== 'launched' && this.state !== 'dying' && this.state !== 'down') this.root.rotation.x = 0;
     this.sync();
   }

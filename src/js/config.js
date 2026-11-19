@@ -43,6 +43,53 @@ export const CONFIG = {
     hurtTime: 0.32,
   },
 
+  /**
+   * SUPER TAHU — Meshy model + Mixamo clips. Clip times are in the clips' own seconds and were
+   * measured from the bone trajectories (hand/foot reach peaks, hips root motion).
+   */
+  tahu: {
+    height: 3.0,
+    sourceHeight: 1.7, // the rigged export stands 1.70 m tall
+    radius: 0.75,
+    maxHp: 340,
+    moveSpeed: 7.4,
+    turnRate: 13,
+    runClipSpeed: 7.8, // ground speed the Running cycle was authored for (game m/s at 3.0 m)
+    idle: { clip: 'Punch_Combo_1', from: 0, to: 0.4, speed: 0.45 }, // fighting stance, ping-pong loop
+    blendRate: 14,
+    inputBuffer: 0.35, // s a special/dodge/kick press is remembered while another move finishes
+    punch: {
+      clip: 'Punch_Combo_1',
+      start: 0.4,
+      speed: 1.3,
+      window: 0.35, // s after a punch ends in which another press continues the combo
+      hits: [
+        { end: 0.75, impact: 0.62, damage: 11, reach: 3.0, arc: 1.3, knockback: 3, lift: 0 }, // lead jab
+        { end: 0.97, impact: 0.86, damage: 11, reach: 3.0, arc: 1.3, knockback: 3, lift: 0 }, // cross
+        { end: 1.2, impact: 1.09, damage: 12, reach: 3.0, arc: 1.3, knockback: 4, lift: 0 }, // jab
+        { end: 1.85, impact: 1.32, damage: 18, reach: 3.2, arc: 1.5, knockback: 9, lift: 3 }, // power cross
+      ],
+    },
+    kick: { clip: 'Spartan_Kick', start: 0.12, end: 1.4, speed: 1.25, impact: 0.62, damage: 28, reach: 3.7, arc: 1.4, knockback: 17, lift: 4 },
+    dodge: { clip: 'Run_and_Jump', start: 0.42, end: 2.333, speed: 1.65, invuln: [0.45, 1.75], cancelAfter: 1.95, cooldown: 0.25 },
+    special: {
+      name: 'INFERNO SLAM',
+      clip: 'Charged_Ground_Slam',
+      speed: 1.0,
+      chargeFrom: 0.4, // fist raised, fire gathering
+      impact: 1.78, // fist hits the ground: eruption
+      end: 3.0,
+      meterMax: 100,
+      meterPerHit: 5,
+      meterPerHurt: 4,
+      meterPassive: 1.6,
+      columnDamage: 999, // every enemy on the map is consumed
+      waveSpeed: 40, // m/s the eruption front travels outward
+    },
+    hurtInvuln: 0.5,
+    hurtTime: 0.3,
+  },
+
   tonua: {
     height: 1.75,
     radius: 0.45,

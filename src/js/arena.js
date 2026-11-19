@@ -34,20 +34,20 @@ function noiseTexture(size, base, variance, ripples, seed) {
 }
 
 /**
- * Builds the arena into a scene.
- * @param {THREE.Scene} scene
+ * Builds the desert arena (not added to a scene — the caller adds map.group and calls activate()).
  * @param {{radius:number}} cfg
- * @returns {{colliders:{x:number,z:number,r:number}[], update:(dt:number, camPos:THREE.Vector3)=>void, sun:THREE.DirectionalLight}}
+ * @returns {object} map interface: groundHeight, resolve, waypoint, spawnPoint, activate, update...
  */
-export function buildArena(scene, cfg) {
+export function buildArena(cfg) {
   const R = cfg.radius;
+  const group = new THREE.Group();
+  group.name = 'desert';
   const rand = rng(1337);
   const colliders = [];
 
   // --- sky + fog + light -------------------------------------------------
   const fogColor = new THREE.Color(0xe6cd92);
-  scene.fog = new THREE.Fog(fogColor, 45, 260);
-  scene.background = fogColor;
+  const fog = new THREE.Fog(fogColor, 45, 260);
   const skyGeo = new THREE.SphereGeometry(480, 24, 12);
   const skyMat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
@@ -65,9 +65,9 @@ export function buildArena(scene, cfg) {
         gl_FragColor = vec4(col,1.0);
       }`,
   });
-  scene.add(new THREE.Mesh(skyGeo, skyMat));
+  group.add(new THREE.Mesh(skyGeo, skyMat));
 
-  scene.add(new THREE.HemisphereLight(0xfff0c8, 0x9c7440, 1.35));
+  group.add(new THREE.HemisphereLight(0xfff0c8, 0x9c7440, 1.35));
   const sun = new THREE.DirectionalLight(0xffe2a8, 2.4);
   sun.position.set(18, 30, 12);
   sun.castShadow = true;
@@ -75,8 +75,8 @@ export function buildArena(scene, cfg) {
   const sc = sun.shadow.camera;
   sc.left = -16; sc.right = 16; sc.top = 16; sc.bottom = -16; sc.near = 1; sc.far = 80;
   sun.shadow.bias = -0.0008;
-  scene.add(sun);
-  scene.add(sun.target);
+  group.add(sun);
+  group.add(sun.target);
 
   // --- ground ------------------------------------------------------------
   const sandTex = noiseTexture(256, [214, 168, 98], 26, 9, 7);
@@ -102,7 +102,7 @@ export function buildArena(scene, cfg) {
   groundGeo.computeVertexNormals();
   const ground = new THREE.Mesh(groundGeo, new THREE.MeshStandardMaterial({ map: sandTex, vertexColors: true, roughness: 0.95, metalness: 0 }));
   ground.receiveShadow = true;
-  scene.add(ground);
+  group.add(ground);
 
   // --- materials ---------------------------------------------------------
   const stoneTex = noiseTexture(128, [196, 160, 104], 40, 0, 99);
@@ -115,7 +115,7 @@ export function buildArena(scene, cfg) {
     const mesh = new THREE.Mesh(geo, m);
     mesh.position.set(x, y, z); mesh.rotation.set(rx, ry, rz);
     mesh.castShadow = shadow; mesh.receiveShadow = true;
-    scene.add(mesh);
+    group.add(mesh);
     return mesh;
   };
 
@@ -137,7 +137,7 @@ export function buildArena(scene, cfg) {
     }
   }
   tiles.count = n;
-  scene.add(tiles);
+  group.add(tiles);
 
   // --- arena obstacles (broken pillars & blocks) -------------------------
   const pillar = (x, z, h, w = 1.6) => {
@@ -167,7 +167,7 @@ export function buildArena(scene, cfg) {
   // --- landmark: giant stone sphere on a curved arm ----------------------
   const sphereGrp = new THREE.Group();
   sphereGrp.position.set(-62, 0, -55);
-  scene.add(sphereGrp);
+  group.add(sphereGrp);
   const sm = (geo, m, x, y, z, rx = 0, ry = 0, rz = 0) => {
     const mm = new THREE.Mesh(geo, m); mm.position.set(x, y, z); mm.rotation.set(rx, ry, rz); mm.castShadow = false; sphereGrp.add(mm); return mm;
   };
@@ -193,7 +193,7 @@ export function buildArena(scene, cfg) {
   // --- temple with twin spires & glowing gate ----------------------------
   const T = new THREE.Group();
   T.position.set(0, 0, -200);
-  scene.add(T);
+  group.add(T);
   const tm = (geo, m, x, y, z, rx = 0, ry = 0, rz = 0) => {
     const mm = new THREE.Mesh(geo, m); mm.position.set(x, y, z); mm.rotation.set(rx, ry, rz); T.add(mm); return mm;
   };
@@ -237,7 +237,7 @@ export function buildArena(scene, cfg) {
   }
   dustGeo.setAttribute('position', new THREE.BufferAttribute(dpos, 3));
   const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ size: 0.22, color: 0xf5deaa, map: glowTexture(), transparent: true, opacity: 0.55, depthWrite: false }));
-  scene.add(dust);
+  group.add(dust);
 
   let t = 0;
   function update(dt, focus) {
@@ -260,7 +260,56 @@ export function buildArena(scene, cfg) {
     sun.target.position.set(focus.x, 0, focus.z);
   }
 
-  return { colliders, update, sun };
+  /** Desert map interface (see terraces.js for the multi-level one). */
+  const map = {
+    id: 'desert',
+    name: 'DESERT RUINS',
+    group, sun, colliders,
+    snapDown: 0.3,
+    env: { top: [1.0, 0.92, 0.72], horizon: [0.72, 0.6, 0.4], ground: [0.86, 0.67, 0.42], deep: [0.34, 0.25, 0.15], sun: [0.48, 0.8, 0.32] },
+    start: { x: 0, z: 16, facing: Math.PI },
+    showcase: { x: 0, z: 16, facing: 0.4, tonua: { x: 2.6, z: 17.5, facing: -0.9 }, cam: { cx: 0, cz: 16, r: 9, h: 3.2, sweep: 0, base: 0, look: { x: 0.8, y: 2.0, z: 16.5 } } },
+    activate(scene) { scene.fog = fog; scene.background = fogColor; group.visible = true; },
+    deactivate() { group.visible = false; },
+    groundHeight: () => 0,
+    /** push out of ruins and keep inside the arena ring */
+    resolve(px, pz, nx, nz, radius, y) {
+      let x = nx, z = nz;
+      for (const c of colliders) {
+        const dx = x - c.x, dz = z - c.z;
+        const d = Math.hypot(dx, dz), min = c.r + radius;
+        if (d < min && d > 0.0001 && y < 4) { x = c.x + (dx / d) * min; z = c.z + (dz / d) * min; }
+      }
+      const dr = Math.hypot(x, z);
+      if (dr > R) { x *= R / dr; z *= R / dr; }
+      return [x, z];
+    },
+    waypoint: (from, to) => to,
+    sameLevel: () => true,
+    cameraFloor: () => 0.5,
+    spawnPoint(near, minD = 14, maxD = 26) {
+      for (let tries = 0; tries < 20; tries++) {
+        const a = Math.random() * Math.PI * 2, d = minD + Math.random() * (maxD - minD);
+        const x = near.x + Math.sin(a) * d, z = near.z + Math.cos(a) * d;
+        if (Math.hypot(x, z) > R - 2) continue;
+        if (colliders.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + 1.2)) continue;
+        return { x, z };
+      }
+      return { x: 0, z: -20 };
+    },
+    /** scenery fire columns for specials (rings around the arena centre) */
+    fireSpots() {
+      const spots = [];
+      for (const [r, n] of [[10, 8], [20, 12], [30, 16]]) for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + r * 0.1;
+        spots.push({ x: Math.sin(a) * r, z: Math.cos(a) * r, y: 0 });
+      }
+      return spots;
+    },
+    update,
+  };
+  group.visible = false;
+  return map;
 }
 
 let _glow;
