@@ -257,6 +257,9 @@ function warmShaders() {
       renderer.compile(scene, camera);
     }
     for (const m of twoPass) { m.side = THREE.DoubleSide; m.needsUpdate = true; }
+    // one real frame too: the shadow-map pass has its own depth shaders that compile() skips
+    // (the loading screen covers the canvas, so nothing is seen)
+    renderer.render(scene, camera);
     for (const o of dimmed) o.visible = true;
     for (const o of hidden) o.visible = false;
   }
