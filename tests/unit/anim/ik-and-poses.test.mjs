@@ -1,54 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { TOAKU_RIG, computeSkinWeights, smooth } from '../../../src/js/toakuRig.js';
 import { legRest, solveLegIK, legFK, gaitFoot } from '../../../src/js/ik.js';
-import { CH, toPose, compileClip, sampleClip } from '../../../src/js/pose.js';
+import { CH, toPose, compileClip, sampleClip, smooth } from '../../../src/js/pose.js';
 import { CLIPS, READY, POSES, GAIT } from '../../../src/js/toakuMoves.js';
 import { CONFIG } from '../../../src/js/config.js';
 
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
-const J = Object.fromEntries(TOAKU_RIG.bones.map((b) => [b[0], b.slice(2)]));
-
-// ---- skinning --------------------------------------------------------------
-
-test('skin weights: always 1..4 influences that sum to 1', () => {
-  // deterministic grid over the model's bounding box
-  for (let x = -0.47; x <= 0.47; x += 0.047) {
-    for (let y = 0; y <= 1.9; y += 0.05) {
-      for (let z = -0.22; z <= 0.22; z += 0.11) {
-        const w = computeSkinWeights(x, y, z);
-        assert.ok(w.bones.length >= 1 && w.bones.length <= 4, `${w.bones.length} influences at ${x},${y},${z}`);
-        const sum = w.weights.reduce((s, v) => s + v, 0);
-        assert.ok(near(sum, 1, 1e-6), `sum ${sum}`);
-        for (const b of w.bones) assert.ok(b in J, `unknown bone ${b}`);
-      }
-    }
-  }
-});
-
-const dominant = (x, y, z) => {
-  const w = computeSkinWeights(x, y, z);
-  return w.bones[w.weights.indexOf(Math.max(...w.weights))];
-};
-
-test('skin weights: landmarks map to the right bones', () => {
-  assert.equal(dominant(-0.39, 0.95, 0.08), 'fistL'); // left hand centroid
-  assert.equal(dominant(0.39, 0.95, 0.08), 'fistR');
-  assert.equal(dominant(-0.37, 1.21, -0.01), 'elL'); // forearm centroid
-  assert.equal(dominant(-0.33, 1.45, -0.05), 'shL'); // upper arm / pad
-  assert.equal(dominant(0, 1.81, 0.04), 'head');
-  assert.equal(dominant(0, 1.5, 0.15), 'chest'); // chest core
-  assert.equal(dominant(-0.19, 0.6, 0.0), 'knL'); // shin
-  assert.equal(dominant(0.3, 0.04, 0.0), 'ftR'); // foot
-  assert.equal(dominant(-0.16, 0.86, 0.01), 'hipL'); // thigh
-  assert.equal(dominant(0, 0.99, 0.0), 'hips'); // pelvis
-});
-
-test('skin weights: torso next to the hands stays on the torso', () => {
-  // y≈0.97: torso reaches |x|≈0.26, hands start at |x|≈0.34 (measured gap)
-  assert.ok(!dominant(-0.25, 0.97, 0).startsWith('fist'));
-  assert.ok(!dominant(0.25, 0.97, 0).startsWith('fist'));
-});
+// Leg-chain fixture (hip, knee, ankle rest pivots): a short thigh over a long shin, the case that
+// once broke the reachability assumptions. The procedural fallback Toaku uses this IK.
+const J = { hipL: [-0.12, 0.93, 0.01], knL: [-0.19, 0.72, 0.03], ftL: [-0.28, 0.14, -0.05] };
 
 test('smooth() handles descending edges', () => {
   assert.equal(smooth(1, 0, 1), 0);

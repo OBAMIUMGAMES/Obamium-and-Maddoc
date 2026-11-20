@@ -4,13 +4,12 @@
  *   - keyframed clips for the punch combo, jump squat and slam landing,
  *   - procedural air / thruster-boost / slam / MACHINEGUN IMPACT poses,
  *   - landing compression, breathing, head stabilisation.
- * Works with the skinned Meshy rig and the procedural fallback rig (same joint names).
+ * Drives the procedural fallback Toaku (models.js) if the rigged model cannot be loaded.
  */
 import * as THREE from 'three';
-import { CH, ROT_CHANNELS, FOOT_CHANNELS, toPose, compileClip, sampleClip, lerpPose } from './pose.js';
+import { CH, ROT_CHANNELS, FOOT_CHANNELS, toPose, compileClip, sampleClip, lerpPose, smooth } from './pose.js';
 import { legRest, solveLegIK, gaitFoot } from './ik.js';
 import { READY, NEUTRAL, GAIT, CLIPS, POSES } from './toakuMoves.js';
-import { smooth } from './toakuRig.js';
 
 const READY_P = toPose(READY);
 const NEUTRAL_P = toPose(NEUTRAL);

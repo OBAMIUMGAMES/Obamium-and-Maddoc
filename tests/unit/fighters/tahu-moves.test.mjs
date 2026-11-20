@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { SuperTahu } from '../../../src/js/tahu.js';
-import { extractRootMotion, sampleRoot } from '../../../src/js/tahuModel.js';
+import { extractRootMotion, sampleRoot } from '../../../src/js/clipUtils.js';
 import { CONFIG } from '../../../src/js/config.js';
 
 const C = CONFIG.tahu;
@@ -12,12 +12,12 @@ const idle = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, jump: fa
 /** Stand-in for buildTahuInstance(): the fighter only needs actions/mixer/bones/root motion. */
 function fakeInstance() {
   const action = () => ({ enabled: true, time: 0, timeScale: 1, weight: 0, setLoop() {}, setEffectiveWeight(w) { this.weight = w; } });
-  const actions = Object.fromEntries(['Idle', 'Running', 'Punch_Combo_1', 'Spartan_Kick', 'Run_and_Jump', 'Charged_Ground_Slam'].map((n) => [n, action()]));
+  const actions = Object.fromEntries(['Idle', 'Run', 'Punch', 'Kick', 'Dodge', 'Special'].map((n) => [n, action()]));
   const root = new THREE.Group(), holder = new THREE.Group();
   root.add(holder);
   // root motion: 4 m forward over the clip, like Run_and_Jump
   const rootMotion = { times: Float32Array.from([0, 0.4, 1.5, 2.333]), z: Float32Array.from([0, 1.3, 4.4, 5.3]) };
-  return { kind: 'tahu', root, holder, actions, mixer: { update() {} }, bones: { RightHand: new THREE.Object3D() }, rootMotion, scale: 1.76, handGlow: new THREE.Sprite(), j: {} };
+  return { kind: 'tahu', root, holder, actions, mixer: { update() {} }, bones: { RightHand: new THREE.Object3D() }, rootMotion: { Dodge: rootMotion }, scale: 1.76, j: {} };
 }
 
 /** Flat world with one dummy enemy standing in front of Tahu; records hits and specials. */
@@ -91,7 +91,8 @@ test('the dodge roll is invulnerable mid-roll and travels the root-motion distan
   assert.equal(t.state, 'dodge');
   assert.equal(t.takeHit(10, 0, -3, world), false, 'hit ignored during the roll');
   run(t, world, 120);
-  const expected = (sampleRoot(t.inst.rootMotion, C.dodge.end) - sampleRoot(t.inst.rootMotion, C.dodge.start)) * t.inst.scale;
+  const rm = t.inst.rootMotion.Dodge;
+  const expected = (sampleRoot(rm, C.dodge.end) - sampleRoot(rm, C.dodge.start)) * t.inst.scale;
   assert.ok(Math.abs(t.pos.z - expected) < 0.35, `travelled ${t.pos.z.toFixed(2)} m, expected ${expected.toFixed(2)}`);
 });
 

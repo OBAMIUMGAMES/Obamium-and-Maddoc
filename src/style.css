@@ -116,6 +116,11 @@ button { font-family: inherit; cursor: pointer; }
 #btn-kick { display: none; }
 body.has-kick #btn-kick { display: flex; right: 116px; bottom: 0; width: 86px; height: 86px; background: radial-gradient(circle at 35% 30%, #ffd2a6, #c0581a); font-size: 16px; }
 body.has-kick #btn-jump { right: 120px; bottom: 98px; width: 76px; height: 76px; font-size: 13px; background: radial-gradient(circle at 35% 30%, #b8e8ff, #3a7fb8); }
+/* Toaku: five buttons — GRAB takes the slot above KICK, JUMP moves to the left of KICK */
+#btn-grab { display: none; }
+body.has-grab #buttons { width: 290px; }
+body.has-grab #btn-grab { display: flex; right: 112px; bottom: 96px; width: 78px; height: 78px; background: radial-gradient(circle at 35% 30%, #e2d0ff, #6b44b8); font-size: 14px; }
+body.has-grab #btn-jump { right: 210px; bottom: 14px; }
 body[data-fighter="tahu"] #btn-special { background: conic-gradient(rgba(255,138,42,.95) var(--fill), rgba(45,24,12,.78) var(--fill)); color: #ffe7cf; }
 body[data-fighter="tahu"] #btn-special.ready span { background: radial-gradient(circle, #ff8a2a, #8a2a06); }
 body[data-fighter="tahu"] #btn-special.ready { animation: readyfire .5s infinite alternate; }

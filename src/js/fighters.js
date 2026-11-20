@@ -10,6 +10,8 @@ import { inArc, angleDiff, applyDamage, addMeter } from './combat.js';
 import { ToakuAnimator } from './toakuAnimator.js';
 
 const JOINTS = ['hips', 'spine', 'head', 'shL', 'shR', 'elL', 'elR', 'hipL', 'hipR', 'knL', 'knR'];
+/** Enemy states whose body pitch (root.rotation.x) is driven by the state itself. */
+const TILTED = new Set(['launched', 'dying', 'down', 'grabbed', 'thrown']);
 const tmpV = new THREE.Vector3();
 
 /** Blank target pose. */
@@ -120,11 +122,10 @@ export class Fighter {
 /* ======================================================================= */
 
 /**
- * The player-controlled heavyweight. Gameplay/state logic lives here; every pose comes from
- * the ToakuAnimator (IK legs, keyframed moves), so the same logic drives the skinned Meshy
- * model and the procedural fallback.
+ * Classic Toaku: the procedural primitive model driven by ToakuAnimator (IK legs, keyframed
+ * poses). Only used as a fallback if the rigged model (toaku.js) cannot be loaded.
  */
-export class Toaku extends Fighter {
+export class ToakuClassic extends Fighter {
   /**
    * @param {object} cfg CONFIG.toaku
    * @param {object} [rig] skinned rig from buildToakuSkinned(); the procedural model is used if omitted
@@ -578,6 +579,76 @@ class Enemy extends Fighter {
     world.audio.explode();
     world.shake(0.15);
   }
+  /** Caught by Toaku: he holds it by the feet and places it every frame (giant swing). */
+  grabbedBy(holder) {
+    this.setState('grabbed');
+    this.holder = holder;
+    this.targetable = false;
+    this.vel.set(0, 0, 0);
+    this.onGround = false;
+  }
+  /** Released at speed: a projectile that smashes into others until it crashes down. */
+  thrownBy(thrower, vx, vy, vz, cfg) {
+    this.setState('thrown');
+    this.holder = null;
+    this.thrower = thrower;
+    this.throwCfg = cfg;
+    this.thrownHits = new Set();
+    this.tumble = 0;
+    this.vel.set(vx, vy, vz);
+    this.onGround = false;
+    this.targetable = false;
+  }
+  /** Let go without a throw (the holder was knocked out). */
+  release() {
+    this.holder = null;
+    this.targetable = true;
+    this.root.rotation.x = 0;
+    this.vel.set(0, 2, 0);
+    this.setState('launched');
+  }
+  /** Grabbed / thrown handling; returns true if it consumed the frame. */
+  updateCarried(dt, p, world) {
+    if (this.state === 'grabbed') {
+      // flailing while swung around; the holder owns the root transform
+      const w = Math.sin(this.stateT * 22);
+      p.shL = [-2.9 + w * 0.3, 0, -0.4]; p.shR = [-2.9 - w * 0.3, 0, 0.4];
+      p.elL[0] = -0.2; p.elR[0] = -0.2; p.spine[0] = 0.1;
+      p.hipL[0] = -0.1 + w * 0.25; p.hipR[0] = -0.1 - w * 0.25; p.knL[0] = 0.2; p.knR[0] = 0.2;
+      if (!this.holder || this.holder.held !== this || !this.holder.alive) this.release();
+      return true;
+    }
+    if (this.state !== 'thrown') return false;
+    const C = this.throwCfg;
+    this.launchedPose(p);
+    this.tumble += dt * 11;
+    this.root.rotation.x = -(this.tumble % (Math.PI * 2));
+    // smash into anyone in the flight path
+    for (const o of world.enemies) {
+      if (o === this || !o.alive || !o.targetable || this.thrownHits.has(o)) continue;
+      const d = Math.hypot(o.pos.x - this.pos.x, o.pos.z - this.pos.z);
+      if (d < o.radius + this.radius + 0.6 && this.pos.y - o.pos.y < o.height + 1.5 && o.pos.y - this.pos.y < 2) {
+        this.thrownHits.add(o);
+        const l = Math.hypot(this.vel.x, this.vel.z) || 1;
+        world.hitEnemy(o, C.impactDamage, this.vel.x / l, this.vel.z / l, C.impactKnock, C.impactLift, 0.8, true);
+        if (this.thrower) this.thrower.registerHits(1, world);
+      }
+    }
+    if (this.onGround && this.stateT > 0.05) {
+      // crash landing
+      this.targetable = true;
+      this.root.rotation.x = 0;
+      world.fx.dust(this.pos, 14, 4, 1.2);
+      world.fx.shockwave(this.pos, 2.6, 0xfff0c0);
+      world.shake(0.3);
+      const thrower = this.thrower;
+      this.thrower = null;
+      const l = Math.hypot(this.vel.x, this.vel.z) || 1;
+      world.hitEnemy(this, C.landDamage, this.vel.x / l, this.vel.z / l, 3, 3, 0.8, true);
+      if (thrower) thrower.registerHits(1, world);
+    }
+    return true;
+  }
 }
 
 /** Basic robotic horde grunt. */
@@ -608,7 +679,7 @@ export class Drone extends Enemy {
     const toYaw = Math.atan2(dx, dz);
     const p = pose();
     let blend = 1 - Math.exp(-14 * dt);
-    if (!this.updateHitStates(dt, p, world)) {
+    if (!this.updateCarried(dt, p, world) && !this.updateHitStates(dt, p, world)) {
       switch (this.state) {
         case 'spawn': {
           // burrow up out of the ground
@@ -681,8 +752,8 @@ export class Drone extends Enemy {
     if (this.state !== 'windup' && this.state !== 'strike' && this.rig.visorMat) this.rig.visorMat.emissiveIntensity = this.flash > 0 ? 4 : 1.2;
     if (this.flash > 0) this.flash -= dt;
     applyPose(this.rig, p, blend, this.baseHipY);
-    this.physics(dt, world, this.state === 'launched' || this.state === 'dying' ? 2 : this.state === 'idle' ? 0 : 6);
-    if (this.state !== 'launched' && this.state !== 'dying' && this.state !== 'down') this.root.rotation.x = 0;
+    if (this.state !== 'grabbed') this.physics(dt, world, this.state === 'launched' || this.state === 'dying' ? 2 : this.state === 'idle' || this.state === 'thrown' ? 0 : 6);
+    if (!TILTED.has(this.state)) this.root.rotation.x = 0;
     this.sync();
   }
   get attacking() { return this.state === 'windup' || this.state === 'strike'; }
@@ -714,7 +785,7 @@ export class Tonua extends Enemy {
     const toYaw = Math.atan2(dx, dz);
     const p = pose();
     let blend = 1 - Math.exp(-16 * dt);
-    if (!this.updateHitStates(dt, p, world)) {
+    if (!this.updateCarried(dt, p, world) && !this.updateHitStates(dt, p, world)) {
       switch (this.state) {
         case 'drop':
           this.facing = toYaw;
@@ -775,8 +846,8 @@ export class Tonua extends Enemy {
       }
     }
     applyPose(this.rig, p, blend, this.baseHipY);
-    this.physics(dt, world, this.state === 'launched' || this.state === 'dying' ? 2 : this.state === 'idle' ? 0 : 8);
-    if (this.state !== 'launched' && this.state !== 'dying' && this.state !== 'down') this.root.rotation.x = 0;
+    if (this.state !== 'grabbed') this.physics(dt, world, this.state === 'launched' || this.state === 'dying' ? 2 : this.state === 'idle' || this.state === 'thrown' ? 0 : 8);
+    if (!TILTED.has(this.state)) this.root.rotation.x = 0;
     this.sync();
   }
   get attacking() { return false; }

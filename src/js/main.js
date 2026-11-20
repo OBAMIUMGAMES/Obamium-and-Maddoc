@@ -10,11 +10,11 @@ import { createFx } from './fx.js';
 import { createFireFx } from './fireFx.js';
 import { createAudio } from './audio.js';
 import { createInput } from './input.js';
-import { Toaku, Drone, Tonua } from './fighters.js';
+import { ToakuClassic, Drone, Tonua } from './fighters.js';
+import { Toaku } from './toaku.js';
 import { SuperTahu } from './tahu.js';
 import { waveComposition, killScore } from './combat.js';
-import { loadToakuTemplate, buildToakuSkinned } from './toakuModel.js';
-import { loadTahuTemplate, buildTahuInstance } from './tahuModel.js';
+import { loadCharacterTemplate, buildCharacterInstance } from './characterModel.js';
 import { ROSTER, nextSelectable } from './characters.js';
 import toakuGlb from '../../assets/models/toaku.glb'; // bundled as bytes (esbuild binary loader)
 import tahuGlb from '../../assets/models/tahu.glb';
@@ -193,7 +193,7 @@ function onKill(e) {
   }
 }
 
-// ---------- models (both embedded; skinned/rigged at load) ----------
+// ---------- models (both embedded, rigged Meshy/Mixamo exports) ----------
 let toakuTpl = null, tahuTpl = null;
 let assetsReady = false;
 const startBtn = $('#btn-start');
@@ -202,8 +202,8 @@ startBtn.textContent = 'LOADING';
 const loadStart = performance.now();
 const aniso = renderer.capabilities.getMaxAnisotropy();
 Promise.allSettled([
-  loadToakuTemplate(toakuGlb, { height: cfg.toaku.height, envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso }).then((t) => { toakuTpl = t; }),
-  loadTahuTemplate(tahuGlb, { height: cfg.tahu.height, sourceHeight: cfg.tahu.sourceHeight, envMap: makeEnv(maps.terraces.env), maxAnisotropy: aniso, idle: cfg.tahu.idle }).then((t) => { tahuTpl = t; }),
+  loadCharacterTemplate(toakuGlb, cfg.toaku, { envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso }).then((t) => { toakuTpl = t; }),
+  loadCharacterTemplate(tahuGlb, cfg.tahu, { envMap: makeEnv(maps.terraces.env), maxAnisotropy: aniso }).then((t) => { tahuTpl = t; }),
 ]).then((results) => {
   results.forEach((r, i) => { if (r.status === 'rejected') console.warn(['Toaku', 'Super Tahu'][i], 'model failed to load:', r.reason); });
   G.modelLoadMs = Math.round(performance.now() - loadStart);
@@ -214,13 +214,13 @@ Promise.allSettled([
   startBtn.disabled = false;
   startBtn.textContent = 'FIGHT';
 });
-/** A fresh animatable Toaku rig (skinned model, or undefined -> procedural fallback). */
-const makeToakuRig = () => (toakuTpl && !G.forceProcedural ? buildToakuSkinned(toakuTpl) : undefined);
 const rosterOf = (id) => ROSTER.find((c) => c.id === id);
 const available = (c) => !c.locked && (c.id !== 'tahu' || tahuTpl);
+/** A fresh fighter. Toaku falls back to the procedural classic model if his rig failed to load. */
 function createFighter(id) {
-  if (id === 'tahu' && tahuTpl) return new SuperTahu(cfg.tahu, buildTahuInstance(tahuTpl));
-  return new Toaku(cfg.toaku, makeToakuRig());
+  if (id === 'tahu' && tahuTpl) return new SuperTahu(cfg.tahu, buildCharacterInstance(tahuTpl, 'tahu'));
+  if (toakuTpl && !G.forceProcedural) return new Toaku(cfg.toaku, buildCharacterInstance(toakuTpl, 'toaku'));
+  return new ToakuClassic(cfg.toaku);
 }
 
 // ---------- spawning ----------
@@ -292,6 +292,7 @@ function configureHud(c) {
   $('#meter-label').textContent = c.special;
   document.body.dataset.fighter = c.id;
   document.body.classList.toggle('has-kick', !!c.buttons.kick);
+  document.body.classList.toggle('has-grab', !!c.buttons.grab);
   $('#btn-jump').innerHTML = `<span>${c.buttons.jump}</span><small>${c.buttons.jumpSub}</small>`;
   $('#btn-special').innerHTML = `<span>${c.buttons.special}</span>`;
 }
@@ -421,17 +422,14 @@ function renderPortraits() {
   key.position.set(2, 4, 5);
   pScene.add(key);
   const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
-  const shots = [
-    ['toaku', () => new Toaku(cfg.toaku, makeToakuRig()), 3.0, 0x1b3a24],
-    ['tahu', () => (tahuTpl ? new SuperTahu(cfg.tahu, buildTahuInstance(tahuTpl)) : null), 2.45, 0x4a2410],
-  ];
+  const shots = [['toaku', 3.15, 0x1b3a24], ['tahu', 2.45, 0x4a2410]]; // [id, head height, backdrop]
   const prevFog = scene.fog;
   const out = document.createElement('canvas');
   out.width = out.height = size;
   const ctx = out.getContext('2d');
-  for (const [id, make, headY, bg] of shots) {
-    const f = make();
-    if (!f) continue;
+  for (const [id, headY, bg] of shots) {
+    if (!available(rosterOf(id))) continue;
+    const f = createFighter(id);
     f.facing = 0.35;
     // pose on flat ground at the origin (the terrace map's centre is the 15 m top terrace)
     const flat = { ...maps.desert, groundHeight: () => 0, resolve: (px, pz, nx, nz) => [nx, nz], sameLevel: () => true, snapDown: 0.3 };
@@ -525,7 +523,7 @@ window.addEventListener('keydown', (e) => {
 // ---------- loop ----------
 const clock = new THREE.Clock();
 const camPos = new THREE.Vector3(), look = new THREE.Vector3();
-const idleInput = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, jump: false, special: false };
+const idleInput = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, special: false };
 let titleT = 0;
 
 /** Title / select: the chosen fighter idles in their arena and shows off a few moves. */
@@ -539,7 +537,7 @@ function stepTitle(dt) {
   if (f) {
     const cyc = titleT % 7;
     const press = (at) => cyc >= at && cyc - dt < at;
-    const inp = { ...idleInput, punch: press(2.6) || press(2.9) || press(3.2) || press(3.5), kick: f.kind === 'tahu' && press(5.0) };
+    const inp = { ...idleInput, punch: press(2.6) || press(2.9) || press(3.2) || press(3.5), kick: press(5.0) };
     f.update(dt, inp, 0, tw);
     f.pos.set(sc.x, map.groundHeight(sc.x, sc.z), sc.z);
     f.facing = sc.facing;
@@ -567,7 +565,6 @@ function stepGame(dt, inp) {
   if (G.mode !== 'playing') return;
   if (G.hitStop > 0) { G.hitStop -= dt; dt *= 0.05; }
   const p = G.player;
-  if (p.kind === 'toaku' && inp.kick) inp = { ...inp, punch: true }; // Toaku has no kick: K / kick punches
   // camera yaw from drag + gentle auto-follow behind the fighter while moving
   G.camYawTarget -= inp.camDX * cfg.camera.dragSensitivity;
   const moving = Math.hypot(inp.moveX, inp.moveY) > 0.3 && Math.abs(inp.moveY) > 0.5 && inp.moveY > 0;
@@ -581,8 +578,8 @@ function stepGame(dt, inp) {
 
   p.update(dt, inp, G.camYaw, world);
   for (const e of G.enemies) e.update(dt, world);
-  // body separation (same level only)
-  const all = [p, ...G.enemies.filter((e) => !e.removed && e.state !== 'spawn')];
+  // body separation (same level only; bodies being swung or thrown pass through)
+  const all = [p, ...G.enemies.filter((e) => !e.removed && e.state !== 'spawn' && e.state !== 'grabbed' && e.state !== 'thrown')];
   for (let i = 0; i < all.length; i++) {
     for (let j = i + 1; j < all.length; j++) {
       const a = all[i], b = all[j];
@@ -683,12 +680,13 @@ window.__game = {
   get ready() { return assetsReady; },
   get skinned() { return !!toakuTpl; },
   get tahuLoaded() { return !!tahuTpl; },
-  get toakuMaterial() { return toakuTpl && toakuTpl.material; },
+  /** The shared material of a fighter's model (for look-dev captures). */
+  charMaterial(id) { const t = id === 'tahu' ? tahuTpl : toakuTpl; let m = null; if (t) t.scene.traverse((o) => { if (o.isMesh && !m) m = o.material; }); return m; },
   /** Step `frames` fixed ticks with the given input (edge-triggered actions fire on the first tick), then render. */
   step(frames = 1, inp = {}, fps = 60) {
     for (let i = 0; i < frames; i++) {
       const tickInput = { ...idleInput, ...inp };
-      if (i > 0) { tickInput.punch = false; tickInput.kick = false; tickInput.jump = false; tickInput.special = false; }
+      if (i > 0) { tickInput.punch = false; tickInput.kick = false; tickInput.grab = false; tickInput.jump = false; tickInput.special = false; }
       if (G.mode === 'title' || G.mode === 'select') stepTitle(1 / fps);
       else stepGame(1 / fps, tickInput);
     }

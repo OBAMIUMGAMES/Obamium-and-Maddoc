@@ -1,19 +1,23 @@
-// Builds assets/models/tahu.glb from Meshy's Mixamo-rigged Super Tahu exports.
+// Builds a fighter asset (assets/models/<name>.glb) from Meshy's Mixamo-rigged exports of ONE model.
 //   - mesh + skin + material come from the first (base) file
 //   - every other file contributes its animation clip, re-targeted onto the base skeleton by
-//     bone name; the build FAILS if a file's skeleton differs (names or rest pose), so a clip
-//     can never be played on a rig it was not authored for
-//   - textures: 2048² JPEG -> 1024² WebP; tracks resampled; mesh quantized + meshopt-compressed
-// usage: node tools/build-tahu.mjs <out.glb> <base.glb> [clip.glb ...]
+//     bone name; the build FAILS if a file's skeleton differs (names or rest pose) or its mesh
+//     differs (vertex count), so a clip can never be played on a rig it was not authored for
+//   - textures -> WebP (resized to --size, default 1024); tracks resampled; meshopt-compressed
+// usage: node tools/build-character.mjs <out.glb> [--size 2048] <base.glb> [clip.glb ...]
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, EXTTextureWebP } from '@gltf-transform/extensions';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import { resample, prune, dedup, meshopt, textureCompress } from '@gltf-transform/functions';
 import sharp from 'sharp';
 
-const [, , out, base, ...clips] = process.argv;
-if (!out || !base) {
-  console.error('usage: node tools/build-tahu.mjs <out.glb> <base.glb> [clip.glb ...]');
+const args = process.argv.slice(2);
+let size = 1024;
+const si = args.indexOf('--size');
+if (si >= 0) { size = Number(args[si + 1]); args.splice(si, 2); }
+const [out, base, ...clips] = args;
+if (!out || !base || !(size > 0)) {
+  console.error('usage: node tools/build-character.mjs <out.glb> [--size 2048] <base.glb> [clip.glb ...]');
   process.exit(1);
 }
 await MeshoptDecoder.ready;
@@ -28,13 +32,16 @@ const buffer = root.listBuffers()[0];
 const skin = root.listSkins()[0];
 if (!skin) throw new Error(`${base}: no skin — the base file must be a rigged export`);
 const joints = new Map(skin.listJoints().map((j) => [j.getName(), j]));
-console.log(`base ${base.split('/').pop()}: ${joints.size} joints, clips: ${root.listAnimations().map((a) => a.getName()).join(', ')}`);
+const vertexCount = (d) => d.getRoot().listMeshes().reduce((n, m) => n + m.listPrimitives().reduce((k, p) => k + p.getAttribute('POSITION').getCount(), 0), 0);
+const baseVerts = vertexCount(doc);
+console.log(`base ${base.split('/').pop()}: ${joints.size} joints, ${baseVerts} vertices, clips: ${root.listAnimations().map((a) => a.getName()).join(', ')}`);
 
 const near = (a, b, eps) => a.every((v, i) => Math.abs(v - b[i]) <= eps);
 for (const file of clips) {
   const other = await io.read(file);
   const oskin = other.getRoot().listSkins()[0];
   if (!oskin) throw new Error(`${file}: no skin`);
+  if (vertexCount(other) !== baseVerts) throw new Error(`${file}: ${vertexCount(other)} vertices, base has ${baseVerts} — a different model`);
   // --- rig check: same bones, same rest pose ---
   const ojoints = oskin.listJoints();
   if (ojoints.length !== joints.size) throw new Error(`${file}: ${ojoints.length} joints, base has ${joints.size}`);
@@ -64,7 +71,7 @@ for (const file of clips) {
 
 doc.createExtension(EXTTextureWebP).setRequired(true);
 await doc.transform(
-  textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [1024, 1024], quality: 82 }),
+  textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [size, size], quality: 82 }),
   resample(),
   dedup(),
   prune(),

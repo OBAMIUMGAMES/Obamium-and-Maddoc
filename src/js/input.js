@@ -4,7 +4,7 @@
  * edge-triggered "pressed this frame" flags consumed by `consume()`.
  */
 export function createInput(root) {
-  const state = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, jump: false, special: false, punchHeld: false };
+  const state = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, special: false, punchHeld: false };
   const keys = new Set();
 
   // ---- joystick ----
@@ -69,6 +69,7 @@ export function createInput(root) {
   bind('#btn-punch', 'punch');
   bind('#btn-jump', 'jump');
   bind('#btn-kick', 'kick');
+  bind('#btn-grab', 'grab');
   bind('#btn-special', 'special');
 
   // ---- keyboard (desktop testing) ----
@@ -77,6 +78,7 @@ export function createInput(root) {
     keys.add(e.code);
     if (e.code === 'KeyJ') { state.punch = true; state.punchHeld = true; }
     if (e.code === 'KeyK') state.kick = true;
+    if (e.code === 'KeyG') state.grab = true;
     if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') state.jump = true;
     if (e.code === 'Space') state.jump = true;
     if (e.code === 'KeyL' || e.code === 'KeyE') state.special = true;
@@ -101,6 +103,6 @@ export function createInput(root) {
     if (keys.has('KeyR')) state.camDX += 6;
     return state;
   }
-  function consume() { state.punch = false; state.kick = false; state.jump = false; state.special = false; state.camDX = 0; }
+  function consume() { state.punch = false; state.kick = false; state.grab = false; state.jump = false; state.special = false; state.camDX = 0; }
   return { poll, consume, state };
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Toaku, Drone } from '../../../src/js/fighters.js';
+import { ToakuClassic as Toaku, Drone } from '../../../src/js/fighters.js'; // procedural fallback
 import { CONFIG } from '../../../src/js/config.js';
 
 /** Minimal world: flat open ground, no-op effects/audio. */

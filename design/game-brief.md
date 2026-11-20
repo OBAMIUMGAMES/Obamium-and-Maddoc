@@ -16,8 +16,8 @@ plus a fighter class/model per character). Game over offers FIGHT AGAIN or CHANG
 |---|---|---|---|
 | Height | 3.6 m | 1.75 m | 1.5 m |
 | HP | 400 | 60 | 34 |
-| Damage | 12 / 15 / 26 combo, 30 slam, 5×~42 + 40 special | 2 ("tink") | 9 |
-| Style | Heavy, aim-assisted combos, thrusters | Hops, taunts, darts in, flees | Telegraphed lunges (red visor flare) |
+| Damage | 12 / 13 / 14 / 26 punch combo, 32 flying kick, grab 6 + swing 16 + thrown body 30 (crash 45), 30 slam, 5×~42 + 40 special | 2 ("tink") | 9 |
+| Style | Heavy, aim-assisted combos, kick, grab-and-throw, thrusters | Hops, taunts, darts in, flees | Telegraphed lunges (red visor flare) |
 
 | | Super Tahu (player) |
 |---|---|
@@ -28,43 +28,49 @@ plus a fighter class/model per character). Game over offers FIGHT AGAIN or CHANG
 | Style | Fast; 4-punch combo, a launching push-kick, an invulnerable jump-and-roll dodge |
 
 ## Moves (Toaku)
-- **Punch combo** — jab → cross → double-fist hammer (launches, shockwave).
+- **Punch combo** (PUNCH ×4) — jab, cross, jab, power straight (launches).
+- **Rising flying kick** (KICK) — a leaping head-height kick that carries him ~4 m forward.
+- **Grab, swing & throw** (GRAB) — catches the closest enemy in front (lunging in if needed), holds
+  it by the feet and spins two full turns (a giant swing: the swung body knocks away anyone it
+  sweeps through), then hurls it along his facing — the stick aims the throw. The thrown body
+  smashes into enemies in its path and crashes down hard (a Scrapbot does not survive it).
+  Nothing in reach: the grab whiffs and he recovers quickly.
 - **Double jump** — second jump fires the back thrusters.
-- **Thruster slam** — punch in mid-air: dive into an AoE ground pound.
+- **Thruster slam** — punch in mid-air: hang on the thrusters, dive fist-first into an AoE impact.
 - **MACHINEGUN IMPACT** — when the core is fully charged: ~42 piston punches in 1.9 s
   with after-images, ending in a launching straight. Toaku is invulnerable during it.
 
 ## Toaku model & animation
-Toaku is the Meshy-generated scan of the character sheet (`assets/models/toaku.glb`), not a
-primitive model. The scan arrived unrigged (2.74 M triangles), so:
+`assets/models/toaku.glb` is built by `tools/build-character.mjs` from Meshy's rigged exports of the
+Toaku character sheet: run_fast_7_inplace, Punch Combo 1, Rising Flying Kick and Skill 02. All four
+were verified before use — same 66-bone Mixamo skeleton, identical rest pose, same 11,518-vertex
+mesh (the build refuses anything else) — and every clip was played back on the optimised file
+(`production/qa/evidence/toaku-rig-verify.jpg`). Texture 2048² PNG → 1024² WebP: 22 MB of exports →
+0.68 MB. The export's material is fully matte, so `config.js` gives it a gunmetal look
+(metalness 0.5, roughness 0.45). Clip times below were measured from the bone trajectories.
 
-- **Optimisation** — `tools/optimize-toaku.mjs` decimates it to 50 k triangles (UV seams kept so the
-  2048² texture stays intact), puts the feet on y = 0 and re-compresses it (1.16 MB with texture).
-- **Rig** — `src/js/toakuRig.js` defines a 16-bone skeleton whose pivots were measured from slices of
-  the mesh, and computes skin weights per vertex at load time (~45 ms): limbs are separated from the
-  torso by the measured gaps, joints blend over a few centimetres. Thruster nozzles, flames and the
-  core/eye/turbine glows are attached to the chest and head bones (`src/js/toakuModel.js`).
-- **Animation** — `src/js/toakuAnimator.js` plays keyframed clips and procedural poses from
-  `src/js/toakuMoves.js` (data only). Legs are driven by foot targets through two-bone IK, so feet
-  stay planted while the hips drop:
-
-| Move | How it is animated |
+| Move (button) | Animation |
 |---|---|
-| Idle | Boxer stance, lead (left) foot forward, high guard, breathing |
-| Walk / run | Procedural gait: planted stance feet slide back at body speed, swing feet arc forward; run adds a flight phase, forward lean, arm pump; dust + thud on every footstep |
-| Jab / cross | Wind-up → snap strike with hip/torso twist and a step-in → hold → back to guard |
-| Hammer | Fists overhead, arched back → smash to the ground in a deep lunge (crack decal, shockwave) |
-| Jump | 0.08 s take-off squat → knee drive with one arm thrown up → arms out to balance while falling → landing squash scaled by fall speed |
-| Double jump | Back thrusters fire (blue jets, turbine glow, shock ring): knees snap up, arms thrown back |
-| Ground slam | Hang on the thrusters with fists raised → pitched dive → three-point kneeling impact → stand |
-| MACHINEGUN IMPACT | Wind-up, strobing alternating straights with green after-images, twisting finisher |
-| Hurt / death | Recoil lean; falls flat on his back |
+| Idle | the opening fight stance of Punch Combo 1 (0–0.4 s), looped back and forth |
+| Run (stick) | run_fast_7_inplace, playback speed matched to ground speed so feet don't slide |
+| Punch combo (PUNCH ×4) | Punch Combo 1 cut into 4 punches; hits land when each fist is fully extended (0.63 / 0.87 / 1.10 / 1.33 s) |
+| Kick (KICK) | Rising Flying Kick: take-off 0.07 s, left foot at full extension 0.36–0.52 s, landing 0.74 s; its hip root motion is stripped and replayed as movement (walls stop it) |
+| Grab (GRAB) | Skill 02: the hands clasp in front at 0.13 s (the catch), two full turns with the hands together (the swing), the hands fly open at 1.25 s (the release) |
+| Jump / double jump | key poses baked from the kick's take-off: crouch, knee drive with a fist thrown up, a tight tuck for the thruster boost, arms out while falling, landing squash |
+| Thruster slam | fist-up hang on the thrusters → the extended power straight, pitched into a dive → crouch and rise |
+| MACHINEGUN IMPACT | the four punches of Punch Combo 1 looped at 3.2× speed, green after-images, the power straight as finisher |
+| Hurt / death | flinch tilt / falls on his back |
 
-If the model cannot be loaded the game falls back to the original procedural Toaku, driven by the
-same animator.
+The back thrusters (nozzles, flames, turbine glow) and the glowing core and eyes are attached to
+his bones at points measured on the mesh (raycasting the bind pose and sampling the texture for
+the green core and eyes). If the rigged model cannot be loaded, the game falls back to the classic
+procedural Toaku (`src/js/models.js`, `src/js/toakuAnimator.js`), which has no kick or grab.
+
+Both fighters share `src/js/clipFighter.js` (clip blending, the punch combo, aim assist, hits, input
+buffering); `src/js/toaku.js` and `src/js/tahu.js` add their own moves.
 
 ## Super Tahu model & animation
-`assets/models/tahu.glb` is built by `tools/build-tahu.mjs` from the Meshy model and its five Mixamo
+`assets/models/tahu.glb` is built by `tools/build-character.mjs` from the Meshy model and its five Mixamo
 exports (Running, Punch Combo 1, Spartan Kick, Run and Jump, Charged Ground Slam). The build copies
 every clip onto one skeleton and **refuses to build if any file's skeleton differs** (bone names
 or rest pose) — all five were verified (32 bones, identical rest pose) and played back on the
@@ -109,10 +115,5 @@ Three.js bundled by esbuild into `dist/`, wrapped in a minimal Android WebView a
 Both fighter GLBs are embedded in the bundle (esbuild binary loader), so the game also runs from
 `file://` and inside the APK without a web server. Tonua, the Scrapbots and both arenas are
 procedural. Maps share one interface (ground height, walls, navigation, spawns, camera floor), so
-fighters and enemies work on either. Gameplay tuning lives in `src/js/config.js`, Toaku's animation
-data in `src/js/toakuMoves.js`. Build: `npm install && npm run build:apk` →
-`builds/toaku-desert-brawl.apk`.
-
-Fixed in this version: ground friction was applied while fighters were walking, which capped every
-walker at about half its configured speed (Toaku 3.1 m/s instead of 6.2, Scrapbots 1.6 instead of
-3.0). Speeds now match `config.js` (regression test: `tests/unit/fighters/movement.test.mjs`).
+fighters and enemies work on either. All tuning — moves, clip timings, the fighters' look — lives
+in `src/js/config.js`. Build: `npm install && npm run build:apk` → `builds/toaku-desert-brawl.apk`.
