@@ -41,12 +41,12 @@ fighters (`src/js/characters.js` — one roster entry plus a fighter class/model
 character). Game over offers FIGHT AGAIN or CHANGE FIGHTER.
 
 ## Characters
-| | Toaku (player) | Tonua (rival) | Scrapbot (horde) |
-|---|---|---|---|
-| Height | 3.6 m | 1.75 m | 1.5 m |
-| HP | 400 | 60 | 34 |
-| Damage | 12 / 13 / 14 / 26 punch combo, 32 flying kick, grab 6 + swing 16 + thrown body 30 (crash 45), 30 slam, 5×~42 + 40 special | 2 ("tink") | 9 |
-| Style | Heavy, aim-assisted combos, kick, grab-and-throw, thrusters | Hops, taunts, darts in, flees | Telegraphed lunges (red visor flare) |
+| | Toaku (player) | Tonua (rival) | Scrapbot (horde) | Bohrok Lehvak (horde) |
+|---|---|---|---|---|
+| Height | 3.6 m | 1.75 m | 1.5 m | 1.74 m (Tonua's measured standing height) |
+| HP | 400 | 60 | 34 | 60 (1.75 × Scrapbot) |
+| Damage | 12 / 13 / 14 / 26 punch combo, 32 flying kick, grab 6 + swing 16 + thrown body 30 (crash 45), 30 slam, 5×~42 + 40 special | 2 ("tink") | 9 | 10 (head thrust) |
+| Style | Heavy, aim-assisted combos, kick, grab-and-throw, thrusters | Hops, taunts, darts in, flees | Telegraphed lunges (red visor flare) | Rolls in as a ball, unfolds, walks, head thrust |
 
 | | Super Tahu (player) |
 |---|---|
@@ -135,9 +135,38 @@ an avenue climbing the ridge to a far monument, peach-pink sunset haze.
   stairs, up or down, then to you. Attacks never reach between levels.
 - The chase camera rises over terrace walls instead of clipping into them.
 
+## Bohrok Lehvak (enemy)
+A standard horde enemy, sturdier than a Scrapbot. Model: Meshy export rebuilt by
+`tools/build-bohrok.mjs` (see `design/bohrok-import.md` — the same system will drive Tahnok, Gahlok,
+Kohrak, Nuhvok and Pahrak).
+
+| State | Behaviour (values in `config.js` → `bohrok`) |
+|---|---|
+| spawn | bursts out of the sand already curled into its ball, spinning |
+| CLOSE → ROLL | player farther than 11 m: folds up (storyboard order: crouch, head folds forward, legs tuck, shields close) and rolls after them at 8.5 m/s, steering wide, using the map's routing (stairs on the terraces); no attacks while closed |
+| OPEN → WALK | inside 6.5 m: brakes, rolls to its upright side, unfolds (the closing reversed) and walks at 1.9 m/s with short insect steps; the gap between 6.5 and 11 m stops it flip-flopping |
+| ATTACK → RECOVER | within 2.1 m and facing the player (max 3 attackers, shared with the Scrapbots): wind-up crouch (0.32 s, readable — step aside to dodge), the head shoots forward on its rail (~0.6 m), retracts, back to stance; 1.8 s cooldown |
+| HIT ('hurt') | open: a flinch; closed: the ball is knocked back spinning |
+| launched / down | knocked into the air it curls up and tumbles, lands as a ball, rolls to a stop |
+| DEATH ('dying') | collapses onto its back, then the shared enemy explosion |
+| grabbed / thrown | Toaku's giant swing and throw work on it as a ball |
+
+**Hits are real:** damage lands only on the attack's impact frame, and only if the head's tip (a
+point on the mesh) is within the player's body (radius + 0.35 m) at that moment.
+
+**Animation:** idle (breathing, head scans), walk (distance-driven: no foot sliding), close/open,
+roll, head thrust, hit and death are built from logical poses (body, head slide, arms, foot
+targets solved by leg IK) and baked into clips once per model. Every frame of every clip keeps the
+lowest point exactly on the ground; the rolling ball's height follows its real silhouette, so it never
+sinks into or floats above the floor. The closed ball is not a perfect sphere — the model's rigid
+pieces only fold so far (roundness 0.76, ~1.1 m across) — so it bobs slightly as it rolls.
+
+**Waves:** Bohrok replace Scrapbots one for one: 1 from wave 2, one more every 2 waves, at most 4
+per wave (`waves.bohrok*`). Score 175 (1.75 × a Scrapbot).
+
 ## Loop
-Waves of Scrapbots burrow out of the sand (5 + 3 per wave, max 12 alive, max 3 attacking at once).
-Tonua drops in every 3rd wave. +60 HP between waves. Score = kills + combo bonus.
+Waves of Scrapbots and Bohrok burrow out of the sand (5 + 3 per wave, max 12 alive, max 3 attacking at
+once). Tonua drops in every 3rd wave. +60 HP between waves. Score = kills + combo bonus.
 
 ## Tech
 Three.js bundled by esbuild into `dist/`, wrapped in a minimal Android WebView app (`android/`).
@@ -156,3 +185,11 @@ so no shader compiles during play. Also: primitive geometry shared between robot
 leak ~22 GPU buffers per robot), damage numbers reuse a fixed pool of elements, no per-frame
 hierarchy walk while Toaku holds an enemy, the HUD writes to the page only when a value changes and
 moves bars with transforms, and the main menu stops 3D rendering while it covers the screen.
+
+**Performance (v0.6, Bohrok).** Each Bohrok type's clips are baked once at load and shared by every
+instance (one mixer each); geometry, textures and materials are shared clones; the skinned meshes
+carry a fixed culling sphere (no per-frame skinned bounds); distant Bohrok (> 26 m) update their
+skeleton every 3rd frame and a rolling ball none at all (static closed pose + one rotation). Bohrok
+shaders are compiled at load with the rest. Found and fixed while testing: each cloned skeleton's
+bone-matrix texture was never freed — 2 GPU textures leaked per Lehvak (and one per new game from the
+player's model); removed enemies and players now release them.

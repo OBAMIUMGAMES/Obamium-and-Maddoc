@@ -178,9 +178,50 @@ export const CONFIG = {
     maxSimultaneousAttackers: 3,
   },
 
+  /**
+   * BOHROK - an enemy family (src/js/bohrok.js). 'common' is the behaviour every Bohrok shares;
+   * each type adds its own block and model (assets/models/bohrok/<kind>.glb, tools/build-bohrok.mjs).
+   */
+  bohrok: {
+    common: {
+      radius: 0.62,
+      knockMul: 0.85,           // a little heavier than a Scrapbot
+      walkSpeed: 1.9,           // m/s on its legs: slow and deliberate (~4 short steps a second)
+      rollSpeed: 8.5,           // m/s as a ball: four times its walk
+      rollAccel: 9,
+      rollBrake: 13,
+      turnRate: 5,
+      rollTurnRate: 2.4,        // a rolling ball steers wide
+      closeAt: 11,              // player farther than this (m): fold into the ball and roll
+      openAt: 6.5,              // nearer than this: brake, unfold, walk; the gap stops flip-flopping
+      closeTime: 0.75,
+      openTime: 0.7,
+      spawnTime: 0.8,           // bursting out of the ground
+      attackRange: 2.1,         // starts the head thrust; the head reaches ~1.4 m in front of the body
+      attackTime: 0.8,          // wind-up 0.32 s (readable), impact at 0.42 s, retract, back to stance
+      attackCooldown: 1.8,
+      recover: 0.35,
+      tipRadius: 0.35,          // how close the head tip must come to the player's body to hit
+      maxSimultaneousAttackers: 3, // shared with the Scrapbots
+      lodDistance: 26,          // farther than this: skeleton updated every 3rd frame
+    },
+    types: {
+      lehvak: {
+        height: 1.74,           // Tonua's standing height measured in game (1.72-1.75 m)
+        maxHp: 60,              // 1.75 x a Scrapbot's 34
+        damage: 10,             // Scrapbot: 9
+        material: { color: 0xffffff, metalness: 0.15, roughness: 0.5, envMapIntensity: 0.55 },
+      },
+    },
+  },
+
   waves: {
     baseDrones: 5,
     dronesPerWave: 3,
+    bohrokFrom: 2,              // first wave with a Bohrok
+    bohrokEvery: 2,             // one more Bohrok every 2 waves...
+    bohrokMax: 4,               // ...up to this many; each takes a Scrapbot's place in the wave
+    bohrokTypes: ['lehvak'],    // spawned in turn
     maxAlive: 12,
     spawnInterval: 0.9,
     tonuaEvery: 3, // Tonua shows up on wave 3, 6, 9...
@@ -188,7 +229,7 @@ export const CONFIG = {
     healBetweenWaves: 60,
   },
 
-  score: { drone: 100, tonua: 1000, comboBonus: 10 },
+  score: { drone: 100, lehvak: 175, tonua: 1000, comboBonus: 10 }, // lehvak: 1.75 x a Scrapbot, like its health
 
   feel: {
     hitStop: 0.05,

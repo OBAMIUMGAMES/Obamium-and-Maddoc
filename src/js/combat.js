@@ -36,15 +36,21 @@ export function angleDiff(a, b) {
 }
 
 /**
- * Wave composition for a given wave number (1-based).
+ * Wave composition for a given wave number (1-based). Bohrok replace Scrapbots one for one, so a
+ * wave keeps its size while getting tougher: from wave bohrokFrom, one more every bohrokEvery waves,
+ * up to bohrokMax, cycling through bohrokTypes.
  * @param {number} wave
- * @param {{baseDrones:number, dronesPerWave:number, tonuaEvery:number}} cfg
- * @returns {{drones:number, tonua:boolean}}
+ * @param {{baseDrones:number, dronesPerWave:number, tonuaEvery:number, bohrokFrom?:number, bohrokEvery?:number, bohrokMax?:number, bohrokTypes?:string[]}} cfg
+ * @returns {{drones:number, tonua:boolean, bohrok:string[]}}
  */
 export function waveComposition(wave, cfg) {
+  const total = cfg.baseDrones + (wave - 1) * cfg.dronesPerWave;
+  const types = cfg.bohrokTypes || [];
+  const n = types.length && wave >= cfg.bohrokFrom ? Math.min(cfg.bohrokMax, 1 + Math.floor((wave - cfg.bohrokFrom) / cfg.bohrokEvery), total) : 0;
   return {
-    drones: cfg.baseDrones + (wave - 1) * cfg.dronesPerWave,
+    drones: total - n,
     tonua: wave % cfg.tonuaEvery === 0,
+    bohrok: Array.from({ length: n }, (_, i) => types[i % types.length]),
   };
 }
 

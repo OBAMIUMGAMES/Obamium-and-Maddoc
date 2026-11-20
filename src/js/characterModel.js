@@ -55,6 +55,18 @@ export async function loadCharacterTemplate(bytes, cfg, opts = {}) {
  * A new animatable instance (bones are per instance; geometry, materials and clips are shared).
  * Every clip gets an action that is playing with weight 0; fighters blend them.
  */
+/**
+ * Release what one instance owns alone: each cloned skeleton keeps its bone matrices in its own GPU
+ * texture, and the mixer caches property bindings. Geometry, materials, textures and clips are shared
+ * with the template and stay.
+ * @param {{mixer?:THREE.AnimationMixer, model:THREE.Object3D}} inst
+ */
+export function disposeInstance(inst) {
+  if (inst.mixer) { inst.mixer.stopAllAction(); inst.mixer.uncacheRoot(inst.model); }
+  const done = new Set();
+  inst.model.traverse((o) => { if (o.isSkinnedMesh && !done.has(o.skeleton)) { done.add(o.skeleton); o.skeleton.dispose(); } });
+}
+
 export function buildCharacterInstance(tpl, kind) {
   const model = cloneSkinned(tpl.scene);
   model.scale.setScalar(tpl.scale);

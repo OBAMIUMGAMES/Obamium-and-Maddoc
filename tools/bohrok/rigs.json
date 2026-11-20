@@ -1,0 +1,90 @@
+{
+  "_doc": "Per-model rig maps for tools/build-bohrok.mjs. 'joints' maps the source auto-rig bone names to the shared Bohrok joint names (see design/bohrok-import.md). 'pivots' places a joint exactly (source model units) when snapping to a ball joint is not right. 'pieces' forces a mesh piece (found by its centre, source units) onto a part when the auto-rig weights put it on the wrong one.",
+  "lehvak": {
+    "source": "assets/source/bohrok/lehvak.meshy.glb - Meshy AI auto-rig 'SmartRigArmature', 23 bones (Bone_000..Bone_022)",
+    "joints": {
+      "Bone_000": "root",
+      "Bone_001": "pelvis",
+      "Bone_003": "spine",
+      "Bone_002": "chest",
+      "Bone_014": "neck",
+      "Bone_013": "head",
+      "Bone_012": "face",
+      "Bone_018": "arm_R",
+      "Bone_017": "armMid_R",
+      "Bone_016": "shield_R",
+      "Bone_015": "shieldTip_R",
+      "Bone_022": "arm_L",
+      "Bone_021": "armMid_L",
+      "Bone_020": "shield_L",
+      "Bone_019": "shieldTip_L",
+      "Bone_007": "thigh_R",
+      "Bone_006": "shin_R",
+      "Bone_005": "foot_R",
+      "Bone_004": "toe_R",
+      "Bone_011": "thigh_L",
+      "Bone_010": "shin_L",
+      "Bone_009": "foot_L",
+      "Bone_008": "toe_L"
+    },
+    "pivots": {
+      "shin_R": [
+        -0.3,
+        0.57,
+        0.2
+      ],
+      "shin_L": [
+        0.3,
+        0.57,
+        0.2
+      ]
+    },
+    "pieces": [
+      {
+        "at": [
+          0.0,
+          0.88,
+          -0.23
+        ],
+        "part": "pelvis",
+        "why": "hip bar spanning both legs; weights split 34/34 between the thighs"
+      },
+      {
+        "at": [
+          -0.3,
+          0.93,
+          -0.29
+        ],
+        "part": "chest",
+        "why": "body-side bracket below the shoulder socket"
+      },
+      {
+        "at": [
+          0.3,
+          0.93,
+          -0.29
+        ],
+        "part": "chest",
+        "why": "body-side bracket below the shoulder socket"
+      },
+      {
+        "at": [
+          0.11,
+          0.91,
+          -0.04
+        ],
+        "part": "pelvis",
+        "why": "small hip bracket; weights split between pelvis, chest and thigh"
+      },
+      {
+        "at": [
+          -0.11,
+          0.91,
+          -0.04
+        ],
+        "part": "pelvis",
+        "why": "small hip bracket; weights split between pelvis, chest and thigh"
+      }
+    ]
+  }
+}

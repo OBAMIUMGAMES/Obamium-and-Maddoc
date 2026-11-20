@@ -18,6 +18,8 @@ import { loadCharacterTemplate, buildCharacterInstance } from './characterModel.
 import { ROSTER, nextSelectable, fighterStats } from './characters.js';
 import toakuGlb from '../../assets/models/toaku.glb'; // bundled as bytes (esbuild binary loader)
 import tahuGlb from '../../assets/models/tahu.glb';
+import lehvakGlb from '../../assets/models/bohrok/lehvak.glb'; // built by tools/build-bohrok.mjs
+import { Bohrok, loadBohrokTemplate, bohrokConfig } from './bohrok.js';
 
 const $ = (s) => document.querySelector(s);
 const cfg = CONFIG;
@@ -190,12 +192,14 @@ function onKill(e) {
     world.hitStop(0.25);
     $('#bossbar').classList.remove('show');
   } else {
-    G.score += killScore(cfg.score.drone, p.combo, cfg.score.comboBonus);
+    G.score += killScore(cfg.score[e.kind] ?? cfg.score.drone, p.combo, cfg.score.comboBonus);
   }
 }
 
 // ---------- models (both embedded, rigged Meshy/Mixamo exports) ----------
 let toakuTpl = null, tahuTpl = null;
+const bohrokTpl = {}; // one template per Bohrok type (shared clips, geometry, textures)
+const BOHROK_MODELS = { lehvak: lehvakGlb };
 let assetsReady = false;
 const startBtn = $('#btn-start');
 startBtn.disabled = true;
@@ -206,8 +210,10 @@ const aniso = renderer.capabilities.getMaxAnisotropy();
 Promise.allSettled([
   loadCharacterTemplate(toakuGlb, cfg.toaku, { envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso }).then((t) => { toakuTpl = t; }),
   loadCharacterTemplate(tahuGlb, cfg.tahu, { envMap: makeEnv(maps.terraces.env), maxAnisotropy: aniso }).then((t) => { tahuTpl = t; }),
+  ...Object.entries(BOHROK_MODELS).map(([kind, glb]) => loadBohrokTemplate(glb, bohrokConfig(cfg.bohrok, kind), { envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso }).then((t) => { bohrokTpl[kind] = t; })),
 ]).then((results) => {
-  results.forEach((r, i) => { if (r.status === 'rejected') console.warn(['Toaku', 'Super Tahu'][i], 'model failed to load:', r.reason); });
+  const names = ['Toaku', 'Super Tahu', ...Object.keys(BOHROK_MODELS)];
+  results.forEach((r, i) => { if (r.status === 'rejected') console.warn(names[i], 'model failed to load:', r.reason); });
   G.modelLoadMs = Math.round(performance.now() - loadStart);
   setupShowcases();
   warmShaders();
@@ -235,7 +241,7 @@ function createFighter(id) {
 function warmShaders() {
   fire.prewarm();
   const start = G.map.id;
-  const temps = [0, 1, 2].map((v) => new Drone(cfg.drone, v));
+  const temps = [...[0, 1, 2].map((v) => new Drone(cfg.drone, v)), ...Object.entries(bohrokTpl).map(([kind, tpl]) => new Bohrok(bohrokConfig(cfg.bohrok, kind), tpl))];
   for (const d of temps) { d.root.position.set(0, -50, 0); scene.add(d.root); }
   for (const id of Object.keys(maps)) {
     setMap(id);
@@ -275,6 +281,17 @@ function spawnDrone() {
   scene.add(d.root);
   G.enemies.push(d);
 }
+/** A Bohrok of the given type bursts out of the ground (falls back to a Scrapbot if its model failed). */
+function spawnBohrok(kind) {
+  const tpl = bohrokTpl[kind];
+  if (!tpl) { spawnDrone(); return; }
+  const b = new Bohrok(bohrokConfig(cfg.bohrok, kind), tpl);
+  const s = G.map.spawnPoint(G.player.pos);
+  b.pos.set(s.x, G.map.groundHeight(s.x, s.z), s.z);
+  b.sync();
+  scene.add(b.root);
+  G.enemies.push(b);
+}
 function spawnTonua() {
   const t = new Tonua(cfg.tonua);
   const s = G.map.spawnPoint(G.player.pos, 8, 12);
@@ -293,6 +310,8 @@ function startWave() {
   G.toSpawn = [];
   if (comp.tonua) G.toSpawn.push('tonua');
   for (let i = 0; i < comp.drones; i++) G.toSpawn.push('drone');
+  // Bohrok spread through the wave rather than arriving in a clump
+  comp.bohrok.forEach((kind, i) => G.toSpawn.splice(Math.min(G.toSpawn.length, 2 + i * 3), 0, kind));
   G.spawnT = 0.4;
   G.waveActive = true;
   banner(`WAVE ${pad2(G.wave)}`, 'wave');
@@ -361,7 +380,7 @@ function configureHud(c) {
 function clearWorld() {
   for (const e of G.enemies) { scene.remove(e.root); e.dispose(); }
   G.enemies = [];
-  if (G.player) scene.remove(G.player.root);
+  if (G.player) { scene.remove(G.player.root); if (G.player.dispose) G.player.dispose(); }
   G.player = null;
   fx.clear();
   fire.clear();
@@ -515,6 +534,7 @@ function renderPortraits() {
     ctx.clearRect(0, 0, size, size);
     ctx.drawImage(renderer.domElement, 0, h - s, s, s, 0, 0, size, size);
     portraits[id] = out.toDataURL('image/png');
+    if (f.dispose) f.dispose(); // the portrait model is thrown away
     G.portraitDebug = G.portraitDebug || {}; G.portraitDebug[id] = portraits[id];
     pScene.remove(f.root);
   }
@@ -679,7 +699,7 @@ function stepGame(dt, inp) {
       const alive = G.enemies.filter((e) => e.alive).length;
       if (G.toSpawn.length && G.spawnT <= 0 && alive < cfg.waves.maxAlive) {
         const kind = G.toSpawn.shift();
-        kind === 'tonua' ? spawnTonua() : spawnDrone();
+        if (kind === 'tonua') spawnTonua(); else if (kind === 'drone') spawnDrone(); else spawnBohrok(kind);
         G.spawnT = cfg.waves.spawnInterval * (kind === 'tonua' ? 2 : 1);
       }
       if (!G.toSpawn.length && alive === 0) {
@@ -745,9 +765,12 @@ frame();
 
 // ---------- automated smoke tests / animation capture ----------
 window.__game = {
-  G, world, CONFIG, ROSTER, spawnDrone, spawnTonua, newGame, showSelect, select, fire,
+  G, world, CONFIG, ROSTER, spawnDrone, spawnTonua, spawnBohrok, newGame, showSelect, select, fire,
+  get bohrokTemplates() { return bohrokTpl; },
   manual: false,
   get ready() { return assetsReady; },
+  /** Test harness: block until the GPU has finished all queued work (real render cost per frame). */
+  finishGL() { renderer.getContext().finish(); },
   /** Renderer counters for performance checks (draw calls, programs, live GPU objects). */
   renderStats() { const i = renderer.info; return { calls: i.render.calls, triangles: i.render.triangles, programs: i.programs ? i.programs.length : 0, geometries: i.memory.geometries, textures: i.memory.textures, sceneChildren: scene.children.length }; },
   /** Live shader programs (name + usage) to spot mid-fight compiles. */
@@ -764,7 +787,9 @@ window.__game = {
       if (G.mode === 'title' || G.mode === 'select') stepTitle(1 / fps);
       else stepGame(1 / fps, tickInput);
     }
+    const t0 = performance.now();
     renderer.render(scene, camera);
+    G.lastRenderMs = performance.now() - t0; // test-harness timing only (the real frame loop is untouched)
   },
   /** Place the chase camera at an angle relative to the fighter's facing (0 = behind, PI/2 = side). */
   orbit(rel, dist = cfg.camera.distance, height = cfg.camera.height) {

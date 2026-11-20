@@ -7,6 +7,7 @@
  * Subclasses override the hooks: tick(dt), think(ctl, world), act(dt, ctl, world) -> friction,
  * animTargets(T, actions) -> blend rate, onLanded(vy, world), postAnimate(dt, world), armored().
  */
+import { disposeInstance } from './characterModel.js';
 import * as THREE from 'three';
 import { Fighter } from './fighters.js';
 import { inArc, angleDiff, applyDamage, addMeter } from './combat.js';
@@ -52,6 +53,9 @@ export class ClipFighter extends Fighter {
     }
     this.applyWeights();
   }
+
+  /** Free this fighter's own GPU/animation resources when it leaves the scene. */
+  dispose() { disposeInstance(this.inst); }
 
   /** Main per-frame update. */
   update(dt, input, camYaw, world) {

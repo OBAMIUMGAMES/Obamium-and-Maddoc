@@ -15,7 +15,7 @@ const TILTED = new Set(['launched', 'dying', 'down', 'grabbed', 'thrown']);
 const tmpV = new THREE.Vector3();
 
 /** Blank target pose. */
-function pose() {
+export function pose() {
   const p = {};
   for (const j of JOINTS) p[j] = [0, 0, 0];
   p.bob = 0;
@@ -518,7 +518,7 @@ export class ToakuClassic extends Fighter {
 /* ======================================================================= */
 
 /** Shared enemy logic: getting hit, launch, knockdown, death. */
-class Enemy extends Fighter {
+export class Enemy extends Fighter {
   /** Free the GPU resources this enemy owns alone (geometry and most materials are shared). */
   dispose() {
     if (this.rig && this.rig.visorMat) this.rig.visorMat.dispose();
