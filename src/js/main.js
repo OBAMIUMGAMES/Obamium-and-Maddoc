@@ -18,7 +18,13 @@ import { loadCharacterTemplate, buildCharacterInstance } from './characterModel.
 import { ROSTER, nextSelectable, fighterStats } from './characters.js';
 import toakuGlb from '../../assets/models/toaku.glb'; // bundled as bytes (esbuild binary loader)
 import tahuGlb from '../../assets/models/tahu.glb';
-import lehvakGlb from '../../assets/models/bohrok/lehvak.glb'; // built by tools/build-bohrok.mjs
+// Bohrok models, built by tools/build-bohrok.mjs (all six share one rig layout and animation set)
+import lehvakGlb from '../../assets/models/bohrok/lehvak.glb';
+import tahnokGlb from '../../assets/models/bohrok/tahnok.glb';
+import gahlokGlb from '../../assets/models/bohrok/gahlok.glb';
+import pahrakGlb from '../../assets/models/bohrok/pahrak.glb';
+import nuhvokGlb from '../../assets/models/bohrok/nuhvok.glb';
+import kohrakGlb from '../../assets/models/bohrok/kohrak.glb';
 import { Bohrok, loadBohrokTemplate, bohrokConfig } from './bohrok.js';
 
 const $ = (s) => document.querySelector(s);
@@ -192,14 +198,14 @@ function onKill(e) {
     world.hitStop(0.25);
     $('#bossbar').classList.remove('show');
   } else {
-    G.score += killScore(cfg.score[e.kind] ?? cfg.score.drone, p.combo, cfg.score.comboBonus);
+    G.score += killScore(cfg.score[e.kind] ?? (e.family === 'bohrok' ? cfg.score.bohrok : cfg.score.drone), p.combo, cfg.score.comboBonus);
   }
 }
 
 // ---------- models (both embedded, rigged Meshy/Mixamo exports) ----------
 let toakuTpl = null, tahuTpl = null;
 const bohrokTpl = {}; // one template per Bohrok type (shared clips, geometry, textures)
-const BOHROK_MODELS = { lehvak: lehvakGlb };
+const BOHROK_MODELS = { lehvak: lehvakGlb, tahnok: tahnokGlb, gahlok: gahlokGlb, pahrak: pahrakGlb, nuhvok: nuhvokGlb, kohrak: kohrakGlb };
 let assetsReady = false;
 const startBtn = $('#btn-start');
 startBtn.disabled = true;
@@ -269,6 +275,9 @@ function warmShaders() {
     for (const o of dimmed) o.visible = true;
     for (const o of hidden) o.visible = false;
   }
+  // upload every Bohrok type's textures now: the warm-up robots stand out of view, so their first
+  // on-screen appearance would otherwise upload them mid-fight
+  for (const tpl of Object.values(bohrokTpl)) tpl.scene.traverse((o) => { if (o.isMesh && o.material.map) renderer.initTexture(o.material.map); });
   for (const d of temps) { scene.remove(d.root); d.dispose(); }
   setMap(start);
 }

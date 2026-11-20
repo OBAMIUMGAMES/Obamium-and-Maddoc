@@ -205,14 +205,20 @@ export const CONFIG = {
       maxSimultaneousAttackers: 3, // shared with the Scrapbots
       lodDistance: 26,          // farther than this: skeleton updated every 3rd frame
     },
-    types: {
-      lehvak: {
-        height: 1.74,           // Tonua's standing height measured in game (1.72-1.75 m)
-        maxHp: 60,              // 1.75 x a Scrapbot's 34
-        damage: 10,             // Scrapbot: 9
-        material: { color: 0xffffff, metalness: 0.15, roughness: 0.5, envMapIntensity: 0.55 },
-      },
-    },
+    /**
+     * Every type shares the body, rig layout, animations and AI; a type is its model + these values.
+     * Same stats for now (the request: differences are the models and colours).
+     */
+    types: Object.fromEntries([
+      ['tahnok', 'fire'], ['gahlok', 'water'], ['lehvak', 'acid'],
+      ['pahrak', 'stone'], ['nuhvok', 'earth'], ['kohrak', 'ice'],
+    ].map(([kind, element]) => [kind, {
+      element,
+      height: 1.74,           // Tonua's standing height measured in game (1.72-1.75 m)
+      maxHp: 60,              // 1.75 x a Scrapbot's 34
+      damage: 10,             // Scrapbot: 9
+      material: { color: 0xffffff, metalness: 0.15, roughness: 0.5, envMapIntensity: 0.55 },
+    }])),
   },
 
   waves: {
@@ -220,8 +226,8 @@ export const CONFIG = {
     dronesPerWave: 3,
     bohrokFrom: 2,              // first wave with a Bohrok
     bohrokEvery: 2,             // one more Bohrok every 2 waves...
-    bohrokMax: 4,               // ...up to this many; each takes a Scrapbot's place in the wave
-    bohrokTypes: ['lehvak'],    // spawned in turn
+    bohrokMax: 6,               // ...up to this many; each takes a Scrapbot's place in the wave
+    bohrokTypes: ['lehvak', 'tahnok', 'gahlok', 'pahrak', 'nuhvok', 'kohrak'], // mixed, a new mix each wave
     maxAlive: 12,
     spawnInterval: 0.9,
     tonuaEvery: 3, // Tonua shows up on wave 3, 6, 9...
@@ -229,7 +235,7 @@ export const CONFIG = {
     healBetweenWaves: 60,
   },
 
-  score: { drone: 100, lehvak: 175, tonua: 1000, comboBonus: 10 }, // lehvak: 1.75 x a Scrapbot, like its health
+  score: { drone: 100, bohrok: 175, tonua: 1000, comboBonus: 10 }, // bohrok: 1.75 x a Scrapbot, like its health
 
   feel: {
     hitStop: 0.05,

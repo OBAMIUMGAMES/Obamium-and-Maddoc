@@ -20,7 +20,8 @@ import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import { prune, dedup, meshopt, textureCompress } from '@gltf-transform/functions';
 import sharp from 'sharp';
 import * as THREE from 'three';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { autoMap, partOfName } from './bohrok/automap.mjs';
 
 /** Rigid parts every Bohrok is cut into: the bones whose weights vote for the part, and the bone that carries it. */
 export const PARTS = {
@@ -35,7 +36,8 @@ for (const [S, sign] of [['R', -1], ['L', 1]]) { // a Bohrok faces +Z, so its ri
   PARTS['shin_' + S] = { bones: ['shin_' + S], driver: 'shin_' + S, side: sign };
   PARTS['foot_' + S] = { bones: ['foot_' + S, 'toe_' + S], driver: 'foot_' + S, side: sign, snap: true };
 }
-const REQUIRED = [...new Set(Object.values(PARTS).flatMap((p) => p.bones))];
+// every part's driver plus the trunk; tips (face, shieldTip, toe) and extra joints are optional
+const REQUIRED = [...new Set([...Object.values(PARTS).map((p) => p.driver), 'root', 'spine', 'neck'])];
 
 const [kind, src, out = `assets/models/bohrok/${kind}.glb`] = process.argv.slice(2);
 const rigs = JSON.parse(readFileSync(new URL('./bohrok/rigs.json', import.meta.url)));
@@ -51,9 +53,34 @@ if (skins.length !== 1) throw new Error(`${src}: expected one skin, found ${skin
 const skin = skins[0];
 const joints = skin.listJoints();
 
-// 1. rename bones ------------------------------------------------------------------------
+function worldPosOf(n) {
+  const loc = (x) => new THREE.Matrix4().compose(new THREE.Vector3(...x.getTranslation()), new THREE.Quaternion(...x.getRotation()), new THREE.Vector3(...x.getScale()));
+  const m = loc(n); for (let p = n.getParentNode(); p; p = p.getParentNode()) m.premultiply(loc(p));
+  return new THREE.Vector3().setFromMatrixPosition(m);
+}
+/** Centres of the small, round mesh pieces (the LEGO ball joints). */
+function ballCentres() {
+  const out = [];
+  for (const prim of root.listMeshes()[0].listPrimitives()) {
+    const P = prim.getAttribute('POSITION'), n = P.getCount(), idx = prim.getIndices().getArray();
+    const par = new Int32Array(n).map((_, i) => i);
+    const find = (x) => { while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; };
+    for (let t = 0; t < idx.length; t += 3) { const a = find(idx[t]), b = find(idx[t + 1]), c = find(idx[t + 2]); par[a] = c; par[b] = c; }
+    const seen = new Map(), v = [0, 0, 0];
+    for (let i = 0; i < n; i++) { P.getElement(i, v); const k = v.map((x) => x.toFixed(4)).join(); if (seen.has(k)) { par[find(i)] = find(seen.get(k)); } else seen.set(k, i); }
+    const box = new Map();
+    for (let i = 0; i < n; i++) { P.getElement(i, v); const r = find(i); const b = box.get(r) || [new THREE.Vector3(1e9, 1e9, 1e9), new THREE.Vector3(-1e9, -1e9, -1e9)]; b[0].min(new THREE.Vector3(...v)); b[1].max(new THREE.Vector3(...v)); box.set(r, b); }
+    let h = 0; for (const [a, b] of box.values()) h = Math.max(h, b.y);
+    for (const [a, b] of box.values()) { const s = b.clone().sub(a); const mx = Math.max(s.x, s.y, s.z); if (mx < h * 0.15 && Math.min(s.x, s.y, s.z) > mx * 0.8) out.push(a.clone().add(b).multiplyScalar(0.5)); }
+  }
+  return out;
+}
+
+// 1. rename bones (explicit map, or found from the skeleton's shape: 'auto') ----------------
 const byName = new Map(joints.map((j) => [j.getName(), j]));
-for (const [from, to] of Object.entries(rig.joints)) {
+const jointMap = rig.joints === 'auto' ? autoMap(joints, (n) => worldPosOf(n), ballCentres()) : rig.joints;
+if (rig.joints === 'auto') console.log('  auto map:', Object.entries(jointMap).map(([a, b]) => `${a}->${b}`).join(' '));
+for (const [from, to] of Object.entries(jointMap)) {
   const j = byName.get(from);
   if (!j) throw new Error(`rig map: bone '${from}' not in ${src}`);
   j.setName(to);
@@ -107,6 +134,9 @@ for (const part of Object.values(PARTS)) {
   if (best) targets.set(part.driver, best.center.clone());
   else console.warn(`  ! ${part.driver}: no ball joint within ${(height * 0.1).toFixed(2)} - pivot left where the auto-rig put it`);
 }
+// a model built on a verified reference layout (same body pieces) takes the reference's pivots
+const layout = rig.layout ? JSON.parse(readFileSync(new URL(`./bohrok/${rig.layout}.layout.json`, import.meta.url))) : null;
+if (layout) for (const [name, p] of Object.entries(layout.pivots)) targets.set(name, new THREE.Vector3(...p));
 for (const [name, p] of Object.entries(rig.pivots || {})) targets.set(name, new THREE.Vector3(...p));
 for (const [name, target] of targets) {
   const node = J.get(name);
@@ -129,7 +159,10 @@ for (const [name, target] of targets) {
 // 3. rigid binding: one part (one bone) per mesh piece ------------------------------------------
 const partOfBone = new Map();
 for (const [pn, part] of Object.entries(PARTS)) for (const b of part.bones) partOfBone.set(b, pn);
-const report = new Map(), ambiguous = [];
+for (const j of joints) if (!partOfBone.has(j.getName()) && PARTS[partOfName(j.getName())]) partOfBone.set(j.getName(), partOfName(j.getName())); // extra joints
+const report = new Map(), ambiguous = [], finalPieces = [];
+let matched = 0;
+const unmatched = [];
 for (const pc of pieces) {
   const forced = (rig.pieces || []).find((f) => pc.center.distanceTo(new THREE.Vector3(...f.at)) < 0.03);
   const straddles = pc.mn.x < -0.02 && pc.mx.x > 0.02;
@@ -152,12 +185,23 @@ for (const pc of pieces) {
       const d = worldPos(J.get(P.driver)).distanceTo(pc.center); if (d < bd) { bd = d; part = pn; }
     }
   }
+  // same piece in the reference layout (centre within 2 cm, similar size): use its verified part
+  const ref = layout && layout.pieces.find((r) => pc.center.distanceTo(new THREE.Vector3(...r.c)) < 0.02 && Math.abs(r.n - pc.verts.length) <= Math.max(4, r.n * 0.15));
+  if (ref) { part = ref.part; share = 1; matched++; } else if (layout) unmatched.push(`${pc.verts.length} verts at (${pc.center.toArray().map((x) => x.toFixed(2))}) size (${pc.size.toArray().map((x) => x.toFixed(2))}) -> ${part} (${(share * 100).toFixed(0)}%)`);
   if (forced) part = forced.part;
   else if (share < 0.7) ambiguous.push(`${pc.verts.length} verts at (${pc.center.toArray().map((x) => x.toFixed(2))}) -> ${part} (${(share * 100).toFixed(0)}% of its weight)`);
   const ji = jointIndex.get(PARTS[part].driver);
   const JT = pc.prim.getAttribute('JOINTS_0'), WT = pc.prim.getAttribute('WEIGHTS_0');
   for (const i of pc.verts) { JT.setElement(i, [ji, 0, 0, 0]); WT.setElement(i, [1, 0, 0, 0]); }
   report.set(part, (report.get(part) || 0) + pc.verts.length);
+  finalPieces.push({ c: pc.center.toArray().map((x) => +x.toFixed(4)), n: pc.verts.length, part });
+}
+
+if (layout) console.log(`  layout '${rig.layout}': ${matched}/${pieces.length} pieces matched the reference, the rest by weights:\n    ` + unmatched.join('\n    '));
+// a verified model can serve as the layout for later Bohrok built on the same body
+if (rig.writeLayout) {
+  const pivots = Object.fromEntries(Object.values(PARTS).map((p) => [p.driver, worldPos(J.get(p.driver)).toArray().map((x) => +x.toFixed(4))]));
+  writeFileSync(new URL(`./bohrok/${kind}.layout.json`, import.meta.url), JSON.stringify({ _doc: `rigid-part layout of ${kind} (verified); used by rigs with "layout": "${kind}"`, pivots, pieces: finalPieces }, null, 0).replace(/\},\{/g, '},\n{') + '\n');
 }
 
 // 4. inverse bind matrices from the (pivot-adjusted) rest pose ------------------------------------

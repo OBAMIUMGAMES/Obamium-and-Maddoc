@@ -30,7 +30,9 @@ test('waveComposition: Bohrok join from bohrokFrom, one more every bohrokEvery w
   const counts = [1, 2, 3, 4, 5, 6, 7, 8, 12].map((n) => waveComposition(n, w).bohrok.length);
   assert.deepEqual(counts, [0, 1, 1, 2, 2, 3, 3, 4, 4]);
   for (const n of [1, 2, 5, 9]) { const c = waveComposition(n, w); assert.equal(c.drones + c.bohrok.length, 5 + (n - 1) * 3, `wave ${n} keeps its size`); }
-  assert.deepEqual(waveComposition(4, { ...w, bohrokTypes: ['lehvak', 'tahnok'] }).bohrok, ['lehvak', 'tahnok']);
+  const six = { ...w, bohrokMax: 6, bohrokTypes: ['lehvak', 'tahnok', 'gahlok', 'pahrak', 'nuhvok', 'kohrak'] };
+  assert.deepEqual(new Set(waveComposition(12, six).bohrok).size, 6, 'a big wave brings all six types');
+  assert.notDeepEqual(waveComposition(4, six).bohrok, waveComposition(5, six).bohrok.slice(0, 2), 'the mix changes between waves');
   assert.deepEqual(waveComposition(9, { ...w, bohrokTypes: [] }).bohrok, [], 'no Bohrok types configured -> none spawn');
 });
 test('applyDamage clamps at zero and flags the kill once', () => {

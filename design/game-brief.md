@@ -135,7 +135,20 @@ an avenue climbing the ridge to a far monument, peach-pink sunset haze.
   stairs, up or down, then to you. Attacks never reach between levels.
 - The chase camera rises over terrace walls instead of clipping into them.
 
-## Bohrok Lehvak (enemy)
+## Bohrok (enemies): Tahnok, Gahlok, Lehvak, Pahrak, Nuhvok, Kohrak
+Six types — fire, water, acid, stone, earth, ice — that differ only in their model and colours for
+now: same body, rig layout, animations, AI and stats (60 HP, 10 damage, 1.74 m). They come in mixed
+groups: from wave 2 one Bohrok replaces a Scrapbot, one more every 2 waves up to 6 per wave, the
+type mix rotating each wave. The Lehvak notes below apply to all six.
+
+The five later models were auto-rigged with different bone numbering (2- or 3-bone heads, 4- or
+5-bone arms and legs, left and right swapped on two of them); `tools/bohrok/automap.mjs` finds the
+shared joints from the skeleton's shape (it reproduces Lehvak's hand-made map exactly), and since all
+six share Lehvak's body pieces, each reuses Lehvak's verified rigid-part layout and pivots — only its
+own shields are bound from its weights. That also fixed auto-rig errors the weights alone would have
+kept (Gahlok's torso bound to the head, Nuhvok's shin to the thigh).
+
+### Bohrok Lehvak
 A standard horde enemy, sturdier than a Scrapbot. Model: Meshy export rebuilt by
 `tools/build-bohrok.mjs` (see `design/bohrok-import.md` — the same system will drive Tahnok, Gahlok,
 Kohrak, Nuhvok and Pahrak).
@@ -161,8 +174,8 @@ lowest point exactly on the ground; the rolling ball's height follows its real s
 sinks into or floats above the floor. The closed ball is not a perfect sphere — the model's rigid
 pieces only fold so far (roundness 0.76, ~1.1 m across) — so it bobs slightly as it rolls.
 
-**Waves:** Bohrok replace Scrapbots one for one: 1 from wave 2, one more every 2 waves, at most 4
-per wave (`waves.bohrok*`). Score 175 (1.75 × a Scrapbot).
+**Waves:** Bohrok replace Scrapbots one for one: 1 from wave 2, one more every 2 waves, at most 6
+per wave, mixed types (`waves.bohrok*`). Score 175 (1.75 × a Scrapbot).
 
 ## Loop
 Waves of Scrapbots and Bohrok burrow out of the sand (5 + 3 per wave, max 12 alive, max 3 attacking at

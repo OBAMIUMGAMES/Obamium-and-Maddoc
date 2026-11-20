@@ -1,5 +1,5 @@
 {
-  "_doc": "Per-model rig maps for tools/build-bohrok.mjs. 'joints' maps the source auto-rig bone names to the shared Bohrok joint names (see design/bohrok-import.md). 'pivots' places a joint exactly (source model units) when snapping to a ball joint is not right. 'pieces' forces a mesh piece (found by its centre, source units) onto a part when the auto-rig weights put it on the wrong one.",
+  "_doc": "Per-model rig maps for tools/build-bohrok.mjs. 'joints' maps the source auto-rig bone names to the shared Bohrok joint names (see design/bohrok-import.md). 'pivots' places a joint exactly (source model units) when snapping to a ball joint is not right. 'pieces' forces a mesh piece (found by its centre, source units) onto a part when the auto-rig weights put it on the wrong one. 'joints': 'auto' finds the joints from the skeleton's shape (tools/bohrok/automap.mjs). 'layout' reuses a verified model's rigid-part layout and pivots for pieces at the same place (all six Meshy Bohrok share one body).",
   "lehvak": {
     "source": "assets/source/bohrok/lehvak.meshy.glb - Meshy AI auto-rig 'SmartRigArmature', 23 bones (Bone_000..Bone_022)",
     "joints": {
@@ -85,6 +85,42 @@
         "part": "pelvis",
         "why": "small hip bracket; weights split between pelvis, chest and thigh"
       }
-    ]
+    ],
+    "writeLayout": true
+  },
+  "tahnok": {
+    "source": "assets/source/bohrok/tahnok.meshy.glb - Meshy AI auto-rig 'SmartRigArmature' (bone numbering differs from Lehvak: mapped automatically)",
+    "joints": "auto",
+    "layout": "lehvak",
+    "pivots": {},
+    "pieces": []
+  },
+  "gahlok": {
+    "source": "assets/source/bohrok/gahlok.meshy.glb - Meshy AI auto-rig 'SmartRigArmature' (bone numbering differs from Lehvak: mapped automatically)",
+    "joints": "auto",
+    "layout": "lehvak",
+    "pivots": {},
+    "pieces": []
+  },
+  "pahrak": {
+    "source": "assets/source/bohrok/pahrak.meshy.glb - Meshy AI auto-rig 'SmartRigArmature' (bone numbering differs from Lehvak: mapped automatically)",
+    "joints": "auto",
+    "layout": "lehvak",
+    "pivots": {},
+    "pieces": []
+  },
+  "nuhvok": {
+    "source": "assets/source/bohrok/nuhvok.meshy.glb - Meshy AI auto-rig 'SmartRigArmature' (bone numbering differs from Lehvak: mapped automatically)",
+    "joints": "auto",
+    "layout": "lehvak",
+    "pivots": {},
+    "pieces": []
+  },
+  "kohrak": {
+    "source": "assets/source/bohrok/kohrak.meshy.glb - Meshy AI auto-rig 'SmartRigArmature' (bone numbering differs from Lehvak: mapped automatically)",
+    "joints": "auto",
+    "layout": "lehvak",
+    "pivots": {},
+    "pieces": []
   }
 }

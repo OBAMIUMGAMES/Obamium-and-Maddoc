@@ -1,4 +1,7 @@
-# Importing a Bohrok (Tahnok, Gahlok, Kohrak, Nuhvok, Pahrak)
+# Importing a Bohrok
+
+All six are in the game (Lehvak, Tahnok, Gahlok, Pahrak, Nuhvok, Kohrak). This is how they were
+built, and how to add or rebuild one.
 
 Lehvak is the first Bohrok. Every Bohrok shares one controller and one animation set
 (`src/js/bohrok.js`, `src/js/bohrokRig.js`, `src/js/bohrokAnims.js`); a new type needs a model
@@ -10,9 +13,23 @@ built by `tools/build-bohrok.mjs`, a config block, and nothing else in code.
 node tools/build-bohrok.mjs <kind> <meshy_export.glb>      # -> assets/models/bohrok/<kind>.glb
 ```
 
-The tool needs a rig map for `<kind>` in `tools/bohrok/rigs.json`. Do **not** copy Lehvak's map
-blindly: every Meshy auto-rig is generated independently, so bone numbering can differ. Inspect the
-export first (bone list, bone world positions, which pieces each bone carries).
+The tool needs an entry for `<kind>` in `tools/bohrok/rigs.json`. Every Meshy auto-rig is generated
+independently: the five later Bohrok had other bone numbers, 2- or 3-bone heads, 4- or 5-bone arms and
+legs, and two had left and right swapped. So a new Bohrok normally uses
+
+```json
+"tahnok": { "joints": "auto", "layout": "lehvak", "pivots": {}, "pieces": [] }
+```
+
+- `"joints": "auto"` (`tools/bohrok/automap.mjs`) finds the joints from the skeleton's shape: the
+  pelvis carries the legs, the chest is the first joint with head + two arms, the head chain ends
+  nearest the centre line, sides come from x, the shield and foot joints are the ones nearest the
+  elbow and ankle balls; extra joints join their part. It reproduces Lehvak's hand-made map exactly
+  (unit test `tests/unit/bohrok/assets.test.mjs`).
+- `"layout": "lehvak"`: Meshy built all six on one body, so every piece found at the same place as one
+  of Lehvak's (centre within 2 cm, similar size) takes Lehvak's verified part, and the joints take
+  Lehvak's pivots. Only the pieces that differ (each type's shields) are bound from the weights; the
+  build lists them. A Bohrok with a different body would drop `layout` and get a hand check.
 
 What the tool does, and why:
 
@@ -61,12 +78,10 @@ rotations about each joint in the Bohrok's own frame), and the clips are baked p
 ## 4. Add the type
 
 ```js
-// config.js
-bohrok: { types: { tahnok: { height: 1.74, maxHp: 60, damage: 10, material: { ... } } } },
-waves: { bohrokTypes: ['lehvak', 'tahnok'] },
-score: { tahnok: 175 },
-// main.js
-const BOHROK_MODELS = { lehvak: lehvakGlb, tahnok: tahnokGlb };
+// config.js: one entry in bohrok.types (stats default to Lehvak's), and the wave list
+waves: { bohrokTypes: ['lehvak', 'tahnok', ...] },
+// main.js: import the built model and list it
+const BOHROK_MODELS = { lehvak: lehvakGlb, tahnok: tahnokGlb, ... };
 ```
 
 Different textures, health, damage and speeds are config. A different attack (e.g. Tahnok's fire)
