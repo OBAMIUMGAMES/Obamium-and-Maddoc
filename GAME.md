@@ -1,9 +1,11 @@
-# Toaku: Desert Brawl
+# BIONICLE ITALIA: BRAWLERS
 
 - **Play in a browser:** `npm install && npm run build:web`, open `dist/index.html`.
   Keys: WASD move, J punch, K kick, G grab (Toaku), Space jump / dodge, Shift dodge, L special, Q/R camera, Enter start, Esc pause.
 - **Build the APK:** `npm run build:apk` (needs `apt-get install aapt apksigner zipalign dalvik-exchange` + JDK). Output: `builds/toaku-desert-brawl.apk` (debug-signed).
 - **Tests:** `npm test`
+- **App icon:** `node tools/build-icons.mjs` rebuilds `android/res/mipmap-*` from `assets/branding/app-icon-source.jpg`.
+- **Interface:** `src/index.html` + `src/style.css` (per-fighter themes = `body[data-fighter]` blocks); fonts in `assets/fonts/` are inlined at build, the main-menu art comes from `assets/branding/key-art.jpg`.
 - **Tuning:** everything is in `src/js/config.js` — both fighters' moves and clip timings, their look, enemies, waves; the roster is `src/js/characters.js`. Design: `design/game-brief.md`.
 - **Rebuild a fighter's model** from Meshy's rigged (Mixamo) exports of one character — the first
   file supplies the mesh and skin, every file contributes its animation clip:

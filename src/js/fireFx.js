@@ -163,5 +163,8 @@ export function createFireFx(scene, fx) {
     light.intensity = 0; lightK = 0;
   }
 
-  return { erupt, update, clear, get busy() { return active.length > 0; }, stats: () => ({ pool: pool.length, active: active.length, burning: active.filter((c) => c.state !== 'wait' && c.t >= 0).length }) };
+  /** Build the column pool up front so INFERNO SLAM does not allocate dozens of meshes on impact. */
+  function prewarm(n = 48) { while (pool.length < n) pool.push(makeColumn()); }
+
+  return { erupt, update, clear, prewarm, get busy() { return active.length > 0; }, stats: () => ({ pool: pool.length, active: active.length, burning: active.filter((c) => c.state !== 'wait' && c.t >= 0).length }) };
 }

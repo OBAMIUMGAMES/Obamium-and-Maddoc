@@ -168,7 +168,6 @@ export class Toaku extends ClipFighter {
     world.audio.thruster();
     world.shake(0.12);
     world.fx.shockwave(tmpV.set(this.pos.x, this.pos.y + 0.4, this.pos.z), 2.8, 0x9fdcff);
-    this.root.updateMatrixWorld(true);
     for (const fl of this.inst.flames) {
       fl.getWorldPosition(tmpV);
       for (let i = 0; i < 8; i++) world.fx.exhaust(tmpV, 1.6);
@@ -262,7 +261,6 @@ export class Toaku extends ClipFighter {
     this.facing = this.kickDir;
     if (prev < K.takeoff && this.clipT >= K.takeoff) { world.fx.dust(this.pos, 10, 3); world.audio.jump(); }
     if (prev < K.active[0] && this.clipT >= K.active[0]) {
-      this.root.updateMatrixWorld(true);
       this.inst.bones.LeftFoot.getWorldPosition(tmpV);
       world.fx.shockwave(tmpV, 2.6, 0xfff0c0);
       world.audio.whoosh();
@@ -526,7 +524,8 @@ export class Toaku extends ClipFighter {
       if (flameOn) fl.scale.set(1, 0.75 + Math.random() * 0.5 + this.thrust * 1.6, 1);
     }
     this.setThrustGlow(flameOn ? Math.min(1, 0.45 + this.thrust * 1.5) : 0);
-    if (flameOn || this.held) this.root.updateMatrixWorld(true);
+    // getWorldPosition() refreshes just the bone's own parent chain; re-walking the whole
+    // 66-bone hierarchy here every frame (the renderer does it again anyway) was wasted work
     if (flameOn) for (const fl of this.inst.flames) world.fx.exhaust(fl.getWorldPosition(tmpV));
     // the core glows brighter as the special meter fills, and pulses when it is ready
     const charge = this.meter / this.cfg.special.meterMax;

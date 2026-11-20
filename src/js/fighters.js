@@ -519,6 +519,11 @@ export class ToakuClassic extends Fighter {
 
 /** Shared enemy logic: getting hit, launch, knockdown, death. */
 class Enemy extends Fighter {
+  /** Free the GPU resources this enemy owns alone (geometry and most materials are shared). */
+  dispose() {
+    if (this.rig && this.rig.visorMat) this.rig.visorMat.dispose();
+  }
+
   constructor(rig, opts) {
     super(rig, opts);
     this.stun = 0;

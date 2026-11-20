@@ -50,9 +50,13 @@ function joint(parent, x, y, z) {
   parent.add(g);
   return g;
 }
-const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
-const sph = (r, ws = 12, hs = 10) => new THREE.SphereGeometry(r, ws, hs);
-const cyl = (rt, rb, h, seg = 8) => new THREE.CylinderGeometry(rt, rb, h, seg);
+// Primitive geometries are shared between every model that uses the same dimensions: each wave
+// used to build ~22 new GPU buffers per robot and never free them (a leak that grew all session).
+const geoCache = new Map();
+const shared = (key, make) => { let g = geoCache.get(key); if (!g) { g = make(); geoCache.set(key, g); } return g; };
+const box = (w, h, d) => shared(`b${w},${h},${d}`, () => new THREE.BoxGeometry(w, h, d));
+const sph = (r, ws = 12, hs = 10) => shared(`s${r},${ws},${hs}`, () => new THREE.SphereGeometry(r, ws, hs));
+const cyl = (rt, rb, h, seg = 8) => shared(`c${rt},${rb},${h},${seg}`, () => new THREE.CylinderGeometry(rt, rb, h, seg));
 
 /** Ribbed hose made of stacked tori, from a to b. */
 function hose(parent, a, b, radius, material) {
@@ -210,7 +214,7 @@ export function buildTonua() {
   add(j.hips, sph(0.09, 8, 6), blk);
   j.spine = joint(j.hips, 0, 0.05, 0);
   add(j.spine, cyl(0.17, 0.08, 0.6, 6), blk, [0, 0.32, 0], [0, 0, 0], [1, 1, 0.65]);
-  const gear = add(j.spine, new THREE.TorusGeometry(0.11, 0.035, 6, 16), tan, [0, 0.5, -0.12]);
+  const gear = add(j.spine, shared('t-gear', () => new THREE.TorusGeometry(0.11, 0.035, 6, 16)), tan, [0, 0.5, -0.12]);
   for (let i = 0; i < 10; i++) {
     const a = (i / 10) * Math.PI * 2;
     add(gear, box(0.04, 0.05, 0.04), tan, [Math.cos(a) * 0.15, Math.sin(a) * 0.15, 0], [0, 0, a]);

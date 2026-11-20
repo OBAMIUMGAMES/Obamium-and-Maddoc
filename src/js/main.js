@@ -15,7 +15,7 @@ import { Toaku } from './toaku.js';
 import { SuperTahu } from './tahu.js';
 import { waveComposition, killScore } from './combat.js';
 import { loadCharacterTemplate, buildCharacterInstance } from './characterModel.js';
-import { ROSTER, nextSelectable } from './characters.js';
+import { ROSTER, nextSelectable, fighterStats } from './characters.js';
 import toakuGlb from '../../assets/models/toaku.glb'; // bundled as bytes (esbuild binary loader)
 import tahuGlb from '../../assets/models/tahu.glb';
 
@@ -97,6 +97,7 @@ function setMap(id) {
 }
 setMap('desert');
 
+const hitPos = new THREE.Vector3(); // scratch: hits used to allocate a vector each
 /** The world facade fighters talk to (dependency-injected, no globals inside fighters). */
 const world = {
   cfg,
@@ -109,7 +110,7 @@ const world = {
   hitStop(t) { G.hitStop = Math.max(G.hitStop, t); },
   attackersActive() { let n = 0; for (const e of G.enemies) if (e.alive && e.attacking) n++; return n; },
   hitEnemy(e, dmg, dx, dz, knock, lift, stun, heavy, rapid = false) {
-    const c = e.center(new THREE.Vector3());
+    const c = e.center(hitPos);
     const killed = e.receiveHit(dmg, dx, dz, knock, lift, stun, world, rapid);
     fx.sparks(c, rapid ? 4 : heavy ? 22 : 12, rapid ? 0xc8ffd0 : 0xffd27a, heavy ? 12 : 8);
     fx.damageNumber(c.setY(c.y + 0.6), dmg >= 999 ? 'BURN' : dmg, heavy ? 'big' : rapid ? 'small' : '');
@@ -124,7 +125,7 @@ const world = {
     G.bestCombo = Math.max(G.bestCombo, n);
     const el = $('#combo');
     if (n >= 2) {
-      el.innerHTML = `<b>${n}</b> HITS`;
+      el.innerHTML = `<b>${n}</b><em>HITS</em>`;
       el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
       el.style.opacity = 1;
     }
@@ -198,7 +199,8 @@ let toakuTpl = null, tahuTpl = null;
 let assetsReady = false;
 const startBtn = $('#btn-start');
 startBtn.disabled = true;
-startBtn.textContent = 'LOADING';
+const startLabel = startBtn.querySelector('.cta-text');
+startLabel.textContent = 'LOADING';
 const loadStart = performance.now();
 const aniso = renderer.capabilities.getMaxAnisotropy();
 Promise.allSettled([
@@ -208,11 +210,12 @@ Promise.allSettled([
   results.forEach((r, i) => { if (r.status === 'rejected') console.warn(['Toaku', 'Super Tahu'][i], 'model failed to load:', r.reason); });
   G.modelLoadMs = Math.round(performance.now() - loadStart);
   setupShowcases();
+  warmShaders();
   renderPortraits();
   buildSelect();
   assetsReady = true;
   startBtn.disabled = false;
-  startBtn.textContent = 'FIGHT';
+  startLabel.textContent = 'INIZIO';
 });
 const rosterOf = (id) => ROSTER.find((c) => c.id === id);
 const available = (c) => !c.locked && (c.id !== 'tahu' || tahuTpl);
@@ -221,6 +224,44 @@ function createFighter(id) {
   if (id === 'tahu' && tahuTpl) return new SuperTahu(cfg.tahu, buildCharacterInstance(tahuTpl, 'tahu'));
   if (toakuTpl && !G.forceProcedural) return new Toaku(cfg.toaku, buildCharacterInstance(toakuTpl, 'toaku'));
   return new ToakuClassic(cfg.toaku);
+}
+
+/**
+ * Compile every shader the game can need before the first fight. three.js compiles a material the
+ * first time it is drawn; on a phone that is a 20-200 ms freeze, so a robot's first spawn, the first
+ * thruster burn or the first throw used to stutter. Each arena is compiled with everything in it
+ * (hidden pools and effects included) plus one robot of each variant.
+ */
+function warmShaders() {
+  fire.prewarm();
+  const start = G.map.id;
+  const temps = [0, 1, 2].map((v) => new Drone(cfg.drone, v));
+  for (const d of temps) { d.root.position.set(0, -50, 0); scene.add(d.root); }
+  for (const id of Object.keys(maps)) {
+    setMap(id);
+    const hidden = [];
+    const twoPass = new Set();
+    scene.traverse((o) => {
+      // un-hide meshes only: a shader's key includes the scene's light count, so lights keep their state
+      if (!o.visible && !o.isLight) { hidden.push(o); o.visible = true; }
+      for (const m of [].concat(o.material || [])) if (m.transparent && m.side === THREE.DoubleSide && !m.forceSinglePass) twoPass.add(m);
+    });
+    // a light inside a group that was hidden stays off: lit shaders are keyed by the live light count
+    const dimmed = [];
+    for (const h of hidden) h.traverse((o) => { if (o.isLight && o.visible) { dimmed.push(o); o.visible = false; } });
+    renderer.compile(scene, camera);
+    // transparent double-sided materials are drawn in two passes (back faces, then front faces),
+    // each with its own shader variant that compile() does not build on its own
+    for (const side of [THREE.BackSide, THREE.FrontSide]) {
+      for (const m of twoPass) { m.side = side; m.needsUpdate = true; }
+      renderer.compile(scene, camera);
+    }
+    for (const m of twoPass) { m.side = THREE.DoubleSide; m.needsUpdate = true; }
+    for (const o of dimmed) o.visible = true;
+    for (const o of hidden) o.visible = false;
+  }
+  for (const d of temps) { scene.remove(d.root); d.dispose(); }
+  setMap(start);
 }
 
 // ---------- spawning ----------
@@ -251,55 +292,71 @@ function startWave() {
   for (let i = 0; i < comp.drones; i++) G.toSpawn.push('drone');
   G.spawnT = 0.4;
   G.waveActive = true;
-  banner(`WAVE ${G.wave}`, '');
+  banner(`WAVE ${pad2(G.wave)}`, 'wave');
+  bump('#wave-panel');
   audio.charge();
 }
 
 // ---------- HUD ----------
+const pad2 = (n) => String(n).padStart(2, '0');
+/** Replay a one-shot CSS animation on an element (class 'bump'). */
+function bump(sel) { const el = $(sel); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
 let bannerTimer = 0;
 function banner(text, kind) {
   const el = $('#banner');
   el.textContent = text;
+  el.className = kind;
+  void el.offsetWidth; // restart the entrance animation when banners follow each other
   el.className = 'show ' + kind;
   clearTimeout(bannerTimer);
   bannerTimer = setTimeout(() => { el.className = kind; }, 1600);
 }
-const hud = { hp: $('#hp-fill'), hpLag: $('#hp-lag'), meter: $('#meter'), sp: $('#btn-special'), wave: $('#wave'), score: $('#score'), left: $('#left'), boss: $('#boss-fill') };
+const hud = { hp: $('#hp-fill'), hpLag: $('#hp-lag'), meter: $('#meter'), sp: $('#btn-special'), wave: $('#wave'), score: $('#score'), left: $('#left'), boss: $('#boss-fill'), combo: $('#combo') };
 let hpLag = 1;
+/** Last values written to the DOM: the HUD only touches an element when its value changes. */
+const shown = {};
+function put(key, v, write) { if (shown[key] !== v) { shown[key] = v; write(v); } }
 function updateHud(dt) {
   const p = G.player;
-  const hpf = p.hp / p.maxHp;
+  const hpf = Math.max(0, p.hp / p.maxHp);
   hpLag = hpLag > hpf ? Math.max(hpf, hpLag - dt * 0.5) : hpf;
-  hud.hp.style.width = hpf * 100 + '%';
-  hud.hpLag.style.width = hpLag * 100 + '%';
-  hud.hp.classList.toggle('low', hpf < 0.3);
-  const mf = p.meter / p.cfg.special.meterMax;
-  hud.meter.style.width = mf * 100 + '%';
-  const ready = mf >= 1;
-  hud.meter.classList.toggle('ready', ready);
-  hud.sp.classList.toggle('ready', ready);
-  hud.sp.style.setProperty('--fill', mf * 360 + 'deg');
-  hud.wave.textContent = `WAVE ${G.wave}`;
-  hud.score.textContent = G.score.toLocaleString();
-  const left = G.toSpawn.length + G.enemies.filter((e) => e.alive).length;
-  hud.left.textContent = `${left} ENEMIES`;
-  if (G.tonuaRef) hud.boss.style.width = (G.tonuaRef.hp / G.tonuaRef.maxHp) * 100 + '%';
-  if (p.comboTimer <= 0) $('#combo').style.opacity = 0;
+  // bars scale on the compositor (transform) instead of re-laying out a width every frame
+  put('hp', Math.round(hpf * 400) / 400, (v) => { hud.hp.style.transform = `scaleX(${v})`; hud.hp.classList.toggle('low', v < 0.3); });
+  put('lag', Math.round(hpLag * 400) / 400, (v) => { hud.hpLag.style.transform = `scaleX(${v})`; });
+  const mf = Math.min(1, p.meter / p.cfg.special.meterMax);
+  put('meter', Math.round(mf * 200) / 200, (v) => {
+    hud.meter.style.transform = `scaleX(${v})`;
+    hud.sp.style.setProperty('--fill', v * 360 + 'deg');
+  });
+  put('ready', mf >= 1, (v) => { hud.meter.classList.toggle('ready', v); hud.sp.classList.toggle('ready', v); });
+  put('specialOn', p.state === 'special', (v) => document.body.classList.toggle('special-on', v));
+  put('wave', G.wave, (v) => { hud.wave.textContent = pad2(v); });
+  put('score', G.score, (v) => { hud.score.textContent = v.toLocaleString(); });
+  let left = G.toSpawn.length;
+  for (const e of G.enemies) if (e.alive) left++;
+  put('left', left, (v) => { hud.left.textContent = pad2(v); bump('#enemy-panel'); });
+  if (G.tonuaRef) put('boss', Math.round((G.tonuaRef.hp / G.tonuaRef.maxHp) * 200) / 200, (v) => { hud.boss.style.transform = `scaleX(${Math.max(0, v)})`; });
+  put('comboOn', p.comboTimer > 0, (v) => { if (!v) hud.combo.style.opacity = 0; });
 }
-/** Per-fighter HUD: name, special meter label, button set. */
+/** Per-fighter HUD: theme, name, emblem, energy label, button set. */
 function configureHud(c) {
-  $('#pname').textContent = c.name;
-  $('#meter-label').textContent = c.special;
+  for (const k of Object.keys(shown)) delete shown[k]; // force a full refresh for the new fighter
   document.body.dataset.fighter = c.id;
+  $('#pname').textContent = c.name;
+  $('#meter-label').textContent = c.meterLabel;
+  const em = $('#emblem');
+  em.classList.toggle('portrait', !c.emblem);
+  if (c.emblem) em.querySelector('use').setAttribute('href', '#' + c.emblem);
+  else $('#emblem-img').src = portraits[c.id] || '';
   document.body.classList.toggle('has-kick', !!c.buttons.kick);
   document.body.classList.toggle('has-grab', !!c.buttons.grab);
-  $('#btn-jump').innerHTML = `<span>${c.buttons.jump}</span><small>${c.buttons.jumpSub}</small>`;
-  $('#btn-special').innerHTML = `<span>${c.buttons.special}</span>`;
+  $('#btn-jump').innerHTML = `<svg class="ic"><use href="#${c.buttons.jumpIcon}"></use></svg><span>${c.buttons.jump}</span>`;
+  $('#btn-special').innerHTML = `<svg class="ic"><use href="#${c.buttons.specialIcon}"></use></svg><span>${c.buttons.special}</span>`;
 }
 
 // ---------- flow ----------
 function clearWorld() {
-  for (const e of G.enemies) scene.remove(e.root);
+  for (const e of G.enemies) { scene.remove(e.root); e.dispose(); }
   G.enemies = [];
   if (G.player) scene.remove(G.player.root);
   G.player = null;
@@ -341,11 +398,11 @@ function setScreen(id) {
 }
 function showGameOver() {
   G.mode = 'over';
-  $('#over-stats').innerHTML = `Wave reached <b>${G.wave}</b><br>Robots scrapped <b>${G.kills}</b><br>Best combo <b>${G.bestCombo}</b><br>Score <b>${G.score.toLocaleString()}</b>`;
+  $('#over-stats').innerHTML = [['WAVE', pad2(G.wave)], ['ROBOTS SCRAPPED', G.kills], ['BEST COMBO', G.bestCombo], ['SCORE', G.score.toLocaleString()]].map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join('');
   let best = 0;
   const key = `toaku.best.${G.charId}`;
   try { best = Math.max(Number(localStorage.getItem(key) || 0), G.score); localStorage.setItem(key, best); } catch (_) { /* storage unavailable */ }
-  $('#over-best').textContent = `BEST ${best.toLocaleString()}`;
+  $('#over-best').textContent = `PERSONAL BEST ${best.toLocaleString()}`;
   setScreen('over');
 }
 function pause(on) {
@@ -356,6 +413,7 @@ function pause(on) {
 function toTitle() {
   clearWorld();
   G.mode = 'title';
+  document.body.dataset.fighter = 'menu'; // the main menu has its own neutral (cyan) theme
   setScreen('title');
   showShowcase(G.charId);
 }
@@ -395,10 +453,17 @@ function select(i) {
   G.sel = i;
   G.charId = c.id;
   document.querySelectorAll('#sel-cards .card').forEach((el, k) => el.classList.toggle('on', k === i));
+  document.body.dataset.fighter = c.id; // the whole screen takes the fighter's colours
   $('#sel-name').textContent = c.name;
-  $('#sel-name').style.color = c.color;
-  $('#sel-title').textContent = c.title;
-  $('#sel-stats').innerHTML = Object.entries(c.stats).map(([k, v]) => `<div class="stat"><span>${k.toUpperCase()}</span><i>${'<b></b>'.repeat(v)}${'<b class="off"></b>'.repeat(5 - v)}</i></div>`).join('');
+  $('#sel-title').textContent = c.title || '';
+  const plate = $('.sel-plate');
+  plate.style.animation = 'none'; void plate.offsetWidth; plate.style.animation = '';
+  const stats = fighterStats(c, cfg[c.id]);
+  $('#sel-stats').innerHTML = stats.map((st) => `<span class="stat-l">${st.label}</span><span class="stat-bar${st.max ? ' max' : ''}"><i></i></span><span class="stat-v${st.max ? ' max' : ''}">${st.value}</span>`).join('');
+  // bars grow from empty each time a fighter is picked
+  const bars = [...document.querySelectorAll('#sel-stats .stat-bar i')];
+  void $('#sel-stats').offsetWidth;
+  bars.forEach((b, k) => { b.style.transitionDelay = `${k * 0.06}s`; b.style.transform = `scaleX(${stats[k].fill})`; });
   $('#sel-moves').innerHTML = c.moves.map((m) => `<li>${m}</li>`).join('');
   $('#sel-special').innerHTML = `SPECIAL <b>${c.special}</b>`;
   $('#sel-arena').innerHTML = `ARENA <b>${maps[c.map].name}</b>`;
@@ -598,6 +663,7 @@ function stepGame(dt, inp) {
     const e = G.enemies[i];
     if (e.removed) {
       scene.remove(e.root);
+      e.dispose();
       if (e === G.tonuaRef) G.tonuaRef = null;
       G.enemies.splice(i, 1);
     }
@@ -665,7 +731,8 @@ function frame() {
   if (window.__game && window.__game.manual) return; // a test harness is stepping the game
   const dt = Math.min(clock.getDelta(), 1 / 20);
   const inp = input.poll();
-  if (G.mode === 'title' || G.mode === 'select') stepTitle(dt);
+  if (G.mode === 'title') { input.consume(); return; } // the opaque main menu hides the 3D scene: skip it
+  if (G.mode === 'select') stepTitle(dt);
   else stepGame(dt, inp);
   renderer.render(scene, camera);
   input.consume();
@@ -678,6 +745,10 @@ window.__game = {
   G, world, CONFIG, ROSTER, spawnDrone, spawnTonua, newGame, showSelect, select, fire,
   manual: false,
   get ready() { return assetsReady; },
+  /** Renderer counters for performance checks (draw calls, programs, live GPU objects). */
+  renderStats() { const i = renderer.info; return { calls: i.render.calls, triangles: i.render.triangles, programs: i.programs ? i.programs.length : 0, geometries: i.memory.geometries, textures: i.memory.textures, sceneChildren: scene.children.length }; },
+  /** Live shader programs (name + usage) to spot mid-fight compiles. */
+  programs() { return (renderer.info.programs || []).map((q) => `${q.name}#${q.id} x${q.usedTimes} ${q.cacheKey.replace(/\s+/g, "")}`); },
   get skinned() { return !!toakuTpl; },
   get tahuLoaded() { return !!tahuTpl; },
   /** The shared material of a fighter's model (for look-dev captures). */

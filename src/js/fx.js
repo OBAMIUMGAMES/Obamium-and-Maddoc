@@ -103,14 +103,27 @@ export function createFx(scene, camera, overlay) {
   }
 
   // ---- shockwave rings ----
-  const rings = [];
+  // Pooled: a ring that made (and disposed) its own material made the GPU recompile the shader on
+  // every throw, crash landing, kick and slam - a visible hitch on phones. The pool's materials live
+  // for the whole session, so the program is compiled once (at load, see warmShaders() in main.js).
   const ringGeo = new THREE.RingGeometry(0.85, 1, 40);
   ringGeo.rotateX(-Math.PI / 2);
-  function shockwave(at, radius = 4, hex = 0xfff0c0) {
-    const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: hex, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-    m.position.set(at.x, at.y + 0.15, at.z);
+  const rings = [];
+  for (let i = 0; i < 16; i++) {
+    const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    m.visible = false;
     scene.add(m);
-    rings.push({ m, t: 0, max: 0.35, radius });
+    rings.push({ m, t: 0, max: 0.35, radius: 1 });
+  }
+  let ri = 0;
+  function shockwave(at, radius = 4, hex = 0xfff0c0) {
+    const r = rings[ri = (ri + 1) % rings.length];
+    r.m.material.color.setHex(hex);
+    r.m.material.opacity = 0.9;
+    r.m.position.set(at.x, at.y + 0.15, at.z);
+    r.m.scale.setScalar(0.3);
+    r.m.visible = true;
+    r.t = 0; r.radius = radius;
   }
 
   // ---- punch after-images for MACHINEGUN IMPACT ----
@@ -200,15 +213,33 @@ export function createFx(scene, camera, overlay) {
   }
 
   // ---- floating damage numbers ----
+  // A fixed pool of elements, reused round-robin: MACHINEGUN IMPACT lands ~40 hits a second and
+  // creating/removing a DOM node per hit cost layout work and garbage every frame.
+  const NUM_POOL = 40;
   const nums = [];
-  const v3 = new THREE.Vector3();
-  function damageNumber(at, value, kind = '') {
+  for (let i = 0; overlay && i < NUM_POOL; i++) {
     const el = document.createElement('div');
-    el.className = 'dmg ' + kind;
-    el.textContent = value;
+    el.className = 'dmg';
+    el.style.display = 'none';
+    el.appendChild(document.createElement('span'));
     overlay.appendChild(el);
-    nums.push({ el, x: at.x + (Math.random() - 0.5) * 0.6, y: at.y, z: at.z, t: 0 });
-    if (nums.length > 40) { const n = nums.shift(); n.el.remove(); }
+    nums.push({ el, x: 0, y: 0, z: 0, t: 0, life: 0, live: false });
+  }
+  let ni = 0;
+  const v3 = new THREE.Vector3();
+  /** Floating damage number. kind: '' | 'big' (heavy hit) | 'small' (rapid) | 'tiny'; big values get 'crit'. */
+  function damageNumber(at, value, kind = '') {
+    if (!nums.length) return;
+    const n = nums[ni = (ni + 1) % nums.length];
+    const crit = typeof value === 'number' && value >= 30;
+    n.el.className = 'dmg ' + kind + (crit ? ' crit' : '');
+    n.el.firstChild.textContent = value;
+    n.el.style.display = '';
+    // restart the CSS pop-in animation on the reused element
+    n.el.style.animation = 'none'; void n.el.offsetWidth; n.el.style.animation = '';
+    n.x = at.x + (Math.random() - 0.5) * 0.6; n.y = at.y; n.z = at.z; n.t = 0;
+    n.life = kind === 'small' ? 0.55 : crit || kind === 'big' ? 1.0 : 0.8;
+    n.live = true;
   }
 
   function update(dt) {
@@ -239,13 +270,13 @@ export function createFx(scene, camera, overlay) {
       g.attributes.position.needsUpdate = true; g.attributes.color.needsUpdate = true;
       g.attributes.size.needsUpdate = true; g.attributes.alpha.needsUpdate = true;
     }
-    for (let i = rings.length - 1; i >= 0; i--) {
-      const r = rings[i];
+    for (const r of rings) {
+      if (!r.m.visible) continue;
       r.t += dt;
       const f = r.t / r.max;
       r.m.scale.setScalar(0.3 + f * r.radius);
       r.m.material.opacity = 0.9 * (1 - f);
-      if (f >= 1) { scene.remove(r.m); r.m.material.dispose(); rings.splice(i, 1); }
+      if (f >= 1) r.m.visible = false;
     }
     for (const g of ghosts) {
       if (!g.m.visible) continue;
@@ -262,20 +293,20 @@ export function createFx(scene, camera, overlay) {
       if (g.t >= g.max) g.m.visible = false;
     }
     const w = overlay.clientWidth, h = overlay.clientHeight;
-    for (let i = nums.length - 1; i >= 0; i--) {
-      const n = nums[i];
+    for (const n of nums) {
+      if (!n.live) continue;
       n.t += dt;
       v3.set(n.x, n.y + n.t * 1.6, n.z).project(camera);
-      if (n.t > 0.8 || v3.z > 1) { n.el.remove(); nums.splice(i, 1); continue; }
-      n.el.style.transform = `translate(${(v3.x * 0.5 + 0.5) * w}px, ${(-v3.y * 0.5 + 0.5) * h}px) translate(-50%,-50%) scale(${1 + Math.max(0, 0.15 - n.t) * 4})`;
-      n.el.style.opacity = String(Math.min(1, (0.8 - n.t) * 4));
+      if (n.t > n.life || v3.z > 1) { n.live = false; n.el.style.display = 'none'; continue; }
+      n.el.style.transform = `translate3d(${((v3.x * 0.5 + 0.5) * w) | 0}px, ${((-v3.y * 0.5 + 0.5) * h) | 0}px, 0)`;
+      n.el.style.opacity = String(Math.min(1, (n.life - n.t) * 4));
     }
   }
 
   function clear() {
     for (const c of cracks) c.m.visible = false;
-    for (const n of nums) n.el.remove();
-    nums.length = 0;
+    for (const n of nums) { n.live = false; n.el.style.display = 'none'; }
+    for (const r of rings) r.m.visible = false;
     for (const p of parts) p.life = 0;
     for (const p of smoke) p.life = 0;
   }

@@ -1,33 +1,67 @@
 /**
- * Playable roster for the character select screen. Adding a fighter = one entry here plus its
- * fighter class / model; locked entries show as "COMING SOON" slots.
+ * Playable roster for the character select screen and the per-fighter HUD. Adding a fighter = one
+ * entry here plus its fighter class / model and a theme block in style.css
+ * (body[data-fighter="<id>"]); locked entries show as "COMING SOON" slots.
  */
 export const ROSTER = [
   {
     id: 'toaku',
     name: 'TOAKU',
-    title: 'The Iron Colossus',
+    title: 'THE BUILDER',
     map: 'desert',
     special: 'MACHINEGUN IMPACT',
-    stats: { power: 5, speed: 3, defense: 5 },
+    meterLabel: 'ENERGY OVERFLOW',
+    emblem: 'mask-toaku', // SVG symbol in index.html; fighters without one show their rendered portrait
+    stats: { defense: 5 }, // designer rating (out of 5) where the game has no numeric value
     moves: ['4-punch combo', 'Rising flying kick', 'Grab, swing & throw', 'Thruster double jump + slam'],
-    color: '#45ff78',
-    buttons: { jump: 'JUMP', jumpSub: 'x2 thrusters', special: 'MACHINE<br>GUN<br>IMPACT', kick: true, grab: true },
+    color: '#39ff6a',
+    buttons: { jump: 'JUMP', jumpIcon: 'i-jump', special: 'MACHINEGUN<br>IMPACT', specialIcon: 'i-mgi', kick: true, grab: true },
   },
   {
     id: 'tahu',
     name: 'SUPER TAHU',
-    title: 'Toa of Fire',
+    title: '',
     map: 'terraces',
     special: 'INFERNO SLAM',
-    stats: { power: 4, speed: 5, defense: 3 },
+    meterLabel: 'INFERNO ENERGY',
+    emblem: null,
+    maxStats: true, // shown at MAX on the select screen (design decision)
+    stats: { defense: 3 },
     moves: ['4-punch combo', 'Spartan kick', 'Jump-and-roll dodge'],
-    color: '#ff8a2a',
-    buttons: { jump: 'DODGE', jumpSub: 'jump + roll', special: 'INFERNO<br>SLAM', kick: true, grab: false },
+    color: '#ff7a1a',
+    buttons: { jump: 'DODGE', jumpIcon: 'i-dodge', special: 'INFERNO<br>SLAM', specialIcon: 'i-fire', kick: true, grab: false },
   },
   { id: 'locked-1', locked: true },
   { id: 'locked-2', locked: true },
 ];
+
+/**
+ * Top of each select-screen bar: a stat equal to the cap fills its bar. The values themselves come
+ * from the fighter's gameplay config, so the screen always shows what the fighter really does.
+ */
+export const STAT_CAPS = { health: 500, attack: 80, defense: 5, speed: 8, energy: 10 };
+
+/**
+ * The five select-screen stats of a fighter, read from its gameplay config.
+ *  HEALTH  = max HP · ATTACK = damage of the full 4-punch combo · DEFENSE = designer rating /5
+ *  SPEED   = run speed (m/s) · ENERGY = special-meter charge per landed hit
+ * @param {object} c roster entry
+ * @param {object} f the fighter's config block (CONFIG.toaku, CONFIG.tahu, ...)
+ * @returns {{key:string, label:string, value:string, fill:number, max:boolean}[]}
+ */
+export function fighterStats(c, f) {
+  const hits = (f.punch && f.punch.hits) || f.combo || [];
+  const raw = {
+    health: [f.maxHp, `${f.maxHp} HP`],
+    attack: [hits.reduce((s, h) => s + h.damage, 0), `${hits.reduce((s, h) => s + h.damage, 0)} / COMBO`],
+    defense: [c.stats.defense, `${c.stats.defense} / 5`],
+    speed: [f.moveSpeed, `${f.moveSpeed} M/S`],
+    energy: [f.special.meterPerHit, `+${f.special.meterPerHit} / HIT`],
+  };
+  return Object.entries(raw).map(([key, [v, label]]) => (c.maxStats
+    ? { key, label: key.toUpperCase(), value: 'MAX', fill: 1, max: true }
+    : { key, label: key.toUpperCase(), value: label, fill: Math.max(0, Math.min(1, v / STAT_CAPS[key])), max: false }));
+}
 
 /** Index of the next selectable fighter in a direction (wraps, skips locked slots). */
 export function nextSelectable(roster, from, dir) {

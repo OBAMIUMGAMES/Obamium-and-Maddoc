@@ -3,60 +3,94 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#1a1408">
-  <title>Toaku: Desert Brawl</title>
+  <meta name="theme-color" content="#0b1016">
+  <title>BIONICLE ITALIA: BRAWLERS</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body data-fighter="toaku">
+<body data-fighter="menu">
+  <!-- Icon set (inline so it works from file:// and inside the APK) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-punch" viewBox="0 0 48 48"><path d="M10 20c0-3 2-5 5-5h3v-2c0-2 2-4 4-4s4 2 4 4v1c1-1 2-2 4-2 2 0 4 2 4 4v1c1-1 2-1 3-1 2 0 4 2 4 4v9c0 7-5 12-12 12h-6c-7 0-13-5-13-12z" fill="currentColor"/><path d="M18 15v8M26 14v9M34 17v6M14 27h14" stroke="rgba(0,0,0,.45)" stroke-width="2.4" fill="none" stroke-linecap="round"/></symbol>
+      <symbol id="i-kick" viewBox="0 0 48 48"><path d="M14 4h9l-1 18 16 6c4 2 6 5 5 9l-1 3H11c-2 0-3-2-3-3l2-11z" fill="currentColor"/><path d="M9 36h34" stroke="rgba(0,0,0,.45)" stroke-width="3"/><path d="M2 14h8M1 21h7M3 28h6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity=".6"/></symbol>
+      <symbol id="i-jump" viewBox="0 0 48 48"><path d="M24 4l14 14h-8v4H18v-4h-8z" fill="currentColor"/><path d="M24 20l12 12h-7v4H19v-4h-7z" fill="currentColor" opacity=".7"/><path d="M18 40l-3 6M24 40v7M30 40l3 6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" opacity=".55"/></symbol>
+      <symbol id="i-dodge" viewBox="0 0 48 48"><path d="M24 6a18 18 0 1 1-17 12" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><path d="M2 14l7 9 8-8z" fill="currentColor"/><circle cx="24" cy="24" r="6" fill="currentColor" opacity=".7"/></symbol>
+      <symbol id="i-grab" viewBox="0 0 48 48"><path d="M8 26V12c0-2 1.5-3 3-3s3 1 3 3v10h2V7c0-2 1.5-3 3-3s3 1 3 3v15h2V8c0-2 1.5-3 3-3s3 1 3 3v15h2V12c0-2 1.5-3 3-3s3 1 3 3v16c0 10-6 17-15 17-6 0-10-3-13-8L4 29c-1-2 0-4 2-4 1 0 2 .5 2 1z" fill="currentColor"/><path d="M24 38a14 6 0 0 0 14-8" stroke="rgba(0,0,0,.4)" stroke-width="2.4" fill="none"/></symbol>
+      <symbol id="i-mgi" viewBox="0 0 48 48"><circle cx="24" cy="24" r="8" fill="currentColor"/><g stroke="currentColor" stroke-width="3.4" stroke-linecap="round"><path d="M24 2v8M24 38v8M2 24h8M38 24h8M8.5 8.5l5.5 5.5M34 34l5.5 5.5M39.5 8.5L34 14M14 34l-5.5 5.5"/></g></symbol>
+      <symbol id="i-fire" viewBox="0 0 48 48"><path d="M25 2c2 8 11 12 11 24 0 9-6 18-13 18S10 37 10 29c0-6 3-10 6-13 0 5 2 7 4 8-1-9 2-17 5-22z" fill="currentColor"/><path d="M24 26c2 4 6 6 6 11a6 6 0 0 1-12 0c0-3 2-5 3-6 0 2 1 3 2 3 0-3 0-6 1-8z" fill="rgba(255,255,255,.75)"/></symbol>
+      <symbol id="i-bot" viewBox="0 0 24 24"><path d="M6 7h12v9H6zM9 16h6v4H9zM11 3h2v4h-2z" fill="currentColor"/><path d="M8 10h8v2H8z" fill="#ff3b2a"/></symbol>
+      <!-- Toaku's mask: grilled crown, heavy brow, green eyes, armoured jaw -->
+      <symbol id="mask-toaku" viewBox="0 0 64 64">
+        <path d="M20 30c-2-12 2-24 12-27 10 3 14 15 12 27z" fill="#3b3f45" stroke="#0b0d10" stroke-width="1.6"/>
+        <g fill="#15181c"><rect x="24" y="8" width="16" height="2.6" rx="1.3"/><rect x="22.5" y="12.5" width="19" height="2.6" rx="1.3"/><rect x="21.5" y="17" width="21" height="2.6" rx="1.3"/><rect x="21" y="21.5" width="22" height="2.6" rx="1.3"/></g>
+        <path d="M12 30l8-3h24l8 3-3 6-9 2H24l-9-2z" fill="#585d64" stroke="#0b0d10" stroke-width="1.6"/>
+        <path d="M17 33l10 2-1 3-8-1zM47 33l-10 2 1 3 8-1z" fill="var(--eye, #45ff78)"/>
+        <path d="M16 38l8 2h16l8-2-3 13-9 10h-8l-9-10z" fill="#3b3f45" stroke="#0b0d10" stroke-width="1.6"/>
+        <path d="M26 44h12l-2 10h-8z" fill="#cfc4a3" stroke="#0b0d10" stroke-width="1.2"/>
+        <g stroke="#0b0d10" stroke-width="1.4"><path d="M30 45v8M34 45v8"/></g>
+      </symbol>
+    </defs>
+  </svg>
+
   <canvas id="game"></canvas>
   <div id="touchzone"></div>
   <div id="numbers"></div>
   <div id="flash"></div>
   <div id="hurt"></div>
 
-  <!-- HUD -->
+  <!-- ======================= COMBAT HUD ======================= -->
   <div id="hud">
     <div id="player-panel">
-      <div class="name" id="pname">TOAKU</div>
-      <div class="bar hp"><div id="hp-lag"></div><div id="hp-fill"></div></div>
-      <div class="bar meter-wrap"><div id="meter"></div><span id="meter-label">MACHINEGUN IMPACT</span></div>
+      <div class="emblem" id="emblem"><svg class="mask"><use href="#mask-toaku"></use></svg><img id="emblem-img" alt=""></div>
+      <div class="bars">
+        <div class="name" id="pname">TOAKU</div>
+        <div class="bar hp"><div id="hp-lag"></div><div id="hp-fill"></div><i class="ticks"></i></div>
+        <div class="bar meter-wrap"><div id="meter"></div><span id="meter-label">ENERGY OVERFLOW</span></div>
+      </div>
     </div>
-    <div id="wave-panel"><div id="wave">WAVE 1</div><div id="left">0 ENEMIES</div></div>
-    <div id="score-panel"><div id="score">0</div><button id="btn-pause" aria-label="Pause">II</button></div>
+    <div id="wave-panel"><small>WAVE</small><div id="wave">01</div></div>
+    <div id="enemy-panel"><svg class="bot"><use href="#i-bot"></use></svg><div id="left">0</div><small>ENEMIES</small></div>
+    <div id="score-panel"><div class="score-box"><small>SCORE</small><div id="score">0</div></div><button id="btn-pause" aria-label="Pause"><i></i><i></i></button></div>
     <div id="bossbar"><div class="name">TONUA</div><div class="bar"><div id="boss-fill"></div></div></div>
     <div id="combo"></div>
     <div id="banner"></div>
     <div id="stick"><div id="knob"></div></div>
     <div id="buttons">
-      <button id="btn-special" class="act"><span>MACHINE<br>GUN<br>IMPACT</span></button>
-      <button id="btn-jump" class="act"><span>JUMP</span><small>x2 thrusters</small></button>
-      <button id="btn-kick" class="act"><span>KICK</span></button>
-      <button id="btn-grab" class="act"><span>GRAB</span></button>
-      <button id="btn-punch" class="act"><span>PUNCH</span></button>
+      <button id="btn-special" class="act"><svg class="ic"><use href="#i-mgi"></use></svg><span>MACHINEGUN<br>IMPACT</span></button>
+      <button id="btn-jump" class="act"><svg class="ic"><use href="#i-jump"></use></svg><span>JUMP</span></button>
+      <button id="btn-kick" class="act"><svg class="ic"><use href="#i-kick"></use></svg><span>KICK</span></button>
+      <button id="btn-grab" class="act"><svg class="ic"><use href="#i-grab"></use></svg><span>GRAB</span></button>
+      <button id="btn-punch" class="act"><svg class="ic"><use href="#i-punch"></use></svg><span>PUNCH</span></button>
     </div>
   </div>
 
-  <!-- Screens -->
+  <!-- ======================= MAIN MENU ======================= -->
   <div id="title" class="screen show">
-    <div class="logo"><span class="l1">TOAKU</span><span class="l2">DESERT BRAWL</span></div>
-    <p class="tag">Scrap the robot horde. Humble Tonua. Choose your fighter.</p>
-    <button id="btn-start" class="big">FIGHT</button>
-    <div class="howto">
-      <div><b>Left thumb</b> move · <b>Right drag</b> camera</div>
-      <div><b>PUNCH</b> combo · <b>KICK</b> · <b>GRAB</b> &amp; throw · <b>JUMP</b> / <b>DODGE</b></div>
-      <div><b>SPECIAL</b> when the meter is full</div>
+    <div class="menu-backdrop"></div>
+    <img class="key-art" src="ui/key-art.webp" alt="BIONICLE ITALIA: BRAWLERS">
+    <div class="menu-side">
+      <button id="btn-start" class="cta"><span class="cta-text">INIZIO</span></button>
+      <div class="howto">
+        <div><b>LEFT THUMB</b> move · <b>RIGHT DRAG</b> camera</div>
+        <div><b>PUNCH</b> combo · <b>KICK</b> · <b>GRAB</b> &amp; throw · <b>JUMP</b> / <b>DODGE</b></div>
+        <div><b>SPECIAL</b> when the energy bar is full</div>
+      </div>
     </div>
   </div>
 
+  <!-- ======================= CHARACTER SELECT ======================= -->
   <div id="select" class="screen">
-    <button id="btn-back" class="corner">&#8592; BACK</button>
+    <div class="sel-shade"></div>
+    <button id="btn-back" class="chip-btn">&#9664; MENU</button>
     <h2 class="sel-head">CHOOSE YOUR FIGHTER</h2>
     <div id="sel-info">
-      <div id="sel-name">TOAKU</div>
-      <div id="sel-title">The Iron Colossus</div>
+      <div class="sel-plate">
+        <div id="sel-name">TOAKU</div>
+        <div id="sel-title">THE BUILDER</div>
+      </div>
       <div id="sel-stats"></div>
-      <ul id="sel-moves"></ul>
       <div id="sel-special"></div>
+      <ul id="sel-moves"></ul>
       <div id="sel-arena"></div>
     </div>
     <div id="sel-row">
@@ -64,21 +98,26 @@
       <div id="sel-cards"></div>
       <button id="sel-next" class="arrow" aria-label="Next fighter">&#9654;</button>
     </div>
-    <button id="btn-go" class="big">FIGHT!</button>
+    <button id="btn-go" class="cta small"><span class="cta-text">SELECT</span></button>
   </div>
 
+  <!-- ======================= PAUSE / DEFEAT ======================= -->
   <div id="pause" class="screen">
-    <h2>PAUSED</h2>
-    <button id="btn-resume" class="big">RESUME</button>
-    <button id="btn-mute">SOUND: ON</button>
-    <button id="btn-quit">QUIT TO TITLE</button>
+    <div class="panel">
+      <h2>PAUSED</h2>
+      <button id="btn-resume" class="cta small"><span class="cta-text">RESUME</span></button>
+      <button id="btn-mute" class="chip-btn">SOUND: ON</button>
+      <button id="btn-quit" class="chip-btn">QUIT TO MENU</button>
+    </div>
   </div>
   <div id="over" class="screen">
-    <h2>DEFEATED</h2>
-    <p id="over-stats"></p>
-    <p id="over-best"></p>
-    <button id="btn-retry" class="big">FIGHT AGAIN</button>
-    <button id="btn-change">CHANGE FIGHTER</button>
+    <div class="panel">
+      <h2>DEFEATED</h2>
+      <div id="over-stats"></div>
+      <p id="over-best"></p>
+      <button id="btn-retry" class="cta small"><span class="cta-text">FIGHT AGAIN</span></button>
+      <button id="btn-change" class="chip-btn">CHANGE FIGHTER</button>
+    </div>
   </div>
   <script src="game.js"></script>
 </body>

@@ -1,15 +1,44 @@
-# Game Brief — Toaku: Desert Brawl
+# Game Brief — BIONICLE ITALIA: BRAWLERS
 
 **Genre:** 3D arena brawler (mobile, landscape, Android APK)
 **Pitch:** Pick your fighter and hold the arena against endless robot hordes and the pint-sized
 rival TONUA. TOAKU, a towering gunmetal-and-cream war machine with a green core, fights in a desert
 of ancient ruins; SUPER TAHU, the Toa of fire, fights on the sunset terraces of a hilltop memorial.
 
+## Interface
+One visual language: angular metal frames, Oxanium display type, Rajdhani text (both SIL OFL,
+`assets/fonts/`, inlined into the stylesheet at build). Every themed element reads its colours from
+`body[data-fighter]` variables in `src/style.css`, so a new fighter needs one theme block.
+
+| Screen | Content |
+|---|---|
+| Main menu | the key art (`assets/branding/key-art.jpg`) at its own proportions, as tall as the screen allows, over a pre-blurred copy of itself; large **INIZIO** button (glow + shine); controls hint. The 3D scene is not rendered behind it. |
+| Character select | name plate, subtitle (Toaku: THE BUILDER; Super Tahu: none), five animated stat bars, special, moves, arena, roster strip with 3D-rendered portraits, **SELECT**, ◀ MENU; the fighter idles live in their arena |
+| Combat HUD | emblem (Toaku: his mask, Super Tahu: his portrait), name, health bar, thinner/shorter energy bar under it (Toaku: ENERGY OVERFLOW, Super Tahu: INFERNO ENERGY), WAVE 0N panel, separate red enemies-left chip, score, pause |
+| Effects | wave announcement sweep, combo counter, banners, damage numbers (pop-in; heavy hits bigger and gold, 30+ largest with a red-orange glow), special-ready ring around the special button |
+| Pause / defeat | framed panels; defeat lists wave, robots scrapped, best combo, score, personal best |
+
+Themes: **Toaku** dark gunmetal, neon green, metallic gray, black/silver. **Super Tahu** metallic gold,
+deep red, fiery orange (red health bar in a gold frame).
+
+**Select-screen stats** come from the gameplay config (`fighterStats()` in `src/js/characters.js`):
+HEALTH = max HP, ATTACK = damage of the full 4-punch combo, DEFENSE = the designer rating /5 (the
+game has no numeric defence), SPEED = run speed, ENERGY = special meter per landed hit; each bar is
+the value over a fixed cap (500 HP, 80 dmg, 5, 8 m/s, 10). Super Tahu is shown at MAX in every stat
+by design — note his real HP (340) is lower than Toaku's (400); the display does not change gameplay.
+
+**Touch controls:** the button and stick positions/sizes (their touch areas) are pixel-identical to
+v0.4 — verified by measuring every control in both builds at 915×412, 740×360 and 1024×768.
+
+**App icon:** Toaku + logo artwork (`assets/branding/app-icon-source.jpg`), built by
+`tools/build-icons.mjs` into an adaptive icon (artwork in the 66 dp safe zone, blurred artwork
+behind, so a circle mask keeps the whole logo) plus legacy and round PNGs for Android 7.
+App name: BIONICLE ITALIA: BRAWLERS (package id unchanged, so it installs over older builds).
+
 ## Character select
-The FIGHT button on the title opens CHOOSE YOUR FIGHTER: a card per fighter (3D-rendered portrait),
-stats, moves, special and arena, with the fighter idling live in their own arena behind the menu.
-Two locked COMING SOON slots are ready for new fighters (`src/js/characters.js` — one roster entry
-plus a fighter class/model per character). Game over offers FIGHT AGAIN or CHANGE FIGHTER.
+INIZIO on the main menu opens CHOOSE YOUR FIGHTER. Two locked COMING SOON slots are ready for new
+fighters (`src/js/characters.js` — one roster entry plus a fighter class/model and a theme block per
+character). Game over offers FIGHT AGAIN or CHANGE FIGHTER.
 
 ## Characters
 | | Toaku (player) | Tonua (rival) | Scrapbot (horde) |
@@ -117,3 +146,13 @@ Both fighter GLBs are embedded in the bundle (esbuild binary loader), so the gam
 procedural. Maps share one interface (ground height, walls, navigation, spawns, camera floor), so
 fighters and enemies work on either. All tuning — moves, clip timings, the fighters' look — lives
 in `src/js/config.js`. Build: `npm install && npm run build:apk` → `builds/toaku-desert-brawl.apk`.
+
+**Performance (v0.5).** Toaku's grab stuttered because every shockwave ring (the throw, the crash
+landing, also kicks and slams) created and disposed its own material, so the GPU recompiled the ring
+shaders each time — a 20-200 ms freeze on phones. Rings are now pooled with permanent materials, and
+`warmShaders()` compiles every shader at load (hidden effect pools, both arenas, each robot
+variant, the two-pass variants of transparent double-sided materials, with the real light count),
+so no shader compiles during play. Also: primitive geometry shared between robots (each wave used to
+leak ~22 GPU buffers per robot), damage numbers reuse a fixed pool of elements, no per-frame
+hierarchy walk while Toaku holds an enemy, the HUD writes to the page only when a value changes and
+moves bars with transforms, and the main menu stops 3D rendering while it covers the screen.
