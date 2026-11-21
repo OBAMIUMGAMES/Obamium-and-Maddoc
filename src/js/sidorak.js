@@ -231,6 +231,19 @@ export class Sidorak extends Enemy {
   dispose() { disposeInstance(this.inst); }
   get attacking() { return ATTACKS.includes(this.state) || this.state === 'chargeWindup'; }
 
+  /**
+   * Shared code may ask any enemy to flinch with 'hurt' (Super Tahu's INFERNO SLAM roots everyone
+   * with its heat). A boss has no flinch state: it is a stagger by his own poise rules, or nothing.
+   */
+  setState(s) {
+    if (s === 'hurt') {
+      if (!this.ai || this.poiseImmune > 0 || !this.alive) return;
+      s = 'stagger';
+      this.poise = 0; this.poiseImmune = this.cfg.poise.immune;
+    }
+    super.setState(s);
+  }
+
   /** The intro gesture: points the right claw at the player (cinematic). */
   playIntro() { this.setState('point'); }
   /** Cinematic over: the fight starts. */

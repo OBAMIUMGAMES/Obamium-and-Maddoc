@@ -59,10 +59,11 @@ export function createSidorakFx(scene, cfg, rhotukaGeo) {
   const spinGeo = rhotukaGeo || paintRhotuka(new THREE.CylinderGeometry(0.5, 0.5, 0.08, 24));
   const spinMat = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.55, roughness: 0.35, emissive: 0x2a0000 });
   const blurGeo = new THREE.CircleGeometry(0.62, 32); blurGeo.rotateX(-Math.PI / 2);
-  const blurMat = glowMat(0xff3020, 0.35); blurMat.side = THREE.DoubleSide;
+  const blurMat = glowMat(0xff3020, 0.5); blurMat.side = THREE.DoubleSide;
   const spinners = [];
   for (let i = 0; i < 2; i++) {
     const holder = new THREE.Group();
+    holder.rotation.order = 'YXZ';
     const m = new THREE.Mesh(spinGeo, spinMat), blur = new THREE.Mesh(blurGeo, blurMat);
     m.frustumCulled = blur.frustumCulled = false;
     holder.add(m, blur);
@@ -131,7 +132,8 @@ export function createSidorakFx(scene, cfg, rhotukaGeo) {
     p.spin += dt * 26; // spins fast: ~4 turns a second
     p.holder.position.set(p.x, p.y, p.z);
     p.m.rotation.y = p.spin;
-    p.holder.rotation.z = 0.18 * Math.sin(p.t * 3); // a slight wobble in flight
+    // tilted toward its flight like a thrown wheel, so it reads from any camera angle; a slight wobble
+    p.holder.rotation.set(1.05, Math.atan2(p.vx, p.vz), 0.18 * Math.sin(p.t * 3));
     if (Math.random() < 0.6) world.fx.emit({ x: p.x + (Math.random() - 0.5) * c.radius, y: p.y, z: p.z + (Math.random() - 0.5) * c.radius, vx: 0, vy: 0.4, vz: 0, g: 0, s: 0.45, max: 0.3, r: 1, gC: 0.35, b: 0.2, drag: 2 });
     const ground = world.map.groundHeight(p.x, p.z);
     if (pl && pl.alive && touches(pl, p.x, p.y, p.z, c.radius)) {

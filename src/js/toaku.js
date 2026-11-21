@@ -274,7 +274,8 @@ export class Toaku extends ClipFighter {
 
   // ---------------------------------------------------------------- grab, giant swing, throw
   grabbable(e, world) {
-    return e.alive && e.targetable && !UNGRABBABLE.has(e.state) && e.altitude() < 1.6 && world.map.sameLevel(this.pos, e.pos);
+    // bosses are far too heavy to lift (e.heavy): the grab simply whiffs
+    return e.alive && e.targetable && !e.heavy && !UNGRABBABLE.has(e.state) && e.altitude() < 1.6 && world.map.sameLevel(this.pos, e.pos);
   }
 
   /** Closest grabbable enemy in front (or right next to him in any direction). */

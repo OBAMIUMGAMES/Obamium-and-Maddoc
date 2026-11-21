@@ -27,6 +27,13 @@ import nuhvokGlb from '../../assets/models/bohrok/nuhvok.glb';
 import kohrakGlb from '../../assets/models/bohrok/kohrak.glb';
 import { Bohrok, loadBohrokTemplate, bohrokConfig } from './bohrok.js';
 import { createBohrokElements } from './bohrokElements.js';
+import sidorakGlb from '../../assets/models/sidorak.glb';
+import rhotukaGlb from '../../assets/models/rhotuka.glb';
+import { Sidorak, loadSidorakTemplate } from './sidorak.js';
+import { createSidorakFx, paintRhotuka } from './sidorakFx.js';
+import { BossEncounter } from './bossEncounter.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
 const $ = (s) => document.querySelector(s);
 const cfg = CONFIG;
@@ -57,6 +64,9 @@ for (const m of Object.values(maps)) scene.add(m.group);
 const fx = createFx(scene, camera, $('#numbers'));
 const fire = createFireFx(scene, fx);
 const elements = createBohrokElements(scene, cfg.bohrok.elements); // Bohrok specials (pooled)
+let bossFx = null;      // Sidorak's projectiles and shockwave (pooled; created once the Rhotuka model is in)
+let sidorakTpl = null;  // the boss template (clips baked once)
+let encounter = null;   // the running boss encounter (warning, cinematic, fight, defeat)
 const audio = createAudio();
 const input = createInput(document.body);
 
@@ -86,6 +96,9 @@ function makeEnv(p) {
 
 // ---------- game state ----------
 const G = {
+  gameCam: new THREE.Vector3(), // the smoothed gameplay camera (scripted shots blend over it)
+  bossZoom: 0,
+  bossRef: null,
   mode: 'title', // title | select | playing | paused | over
   charId: 'toaku',
   sel: 0,
@@ -114,6 +127,7 @@ const world = {
   fx,
   audio,
   elements,
+  get bossFx() { return bossFx; },
   get map() { return G.map; },
   get player() { return G.player; },
   get enemies() { return G.enemies; },
@@ -124,7 +138,9 @@ const world = {
     const c = e.center(hitPos);
     const killed = e.receiveHit(dmg, dx, dz, knock, lift, stun, world, rapid);
     fx.sparks(c, rapid ? 4 : heavy ? 22 : 12, rapid ? 0xc8ffd0 : 0xffd27a, heavy ? 12 : 8);
-    fx.damageNumber(c.setY(c.y + 0.6), dmg >= 999 ? 'BURN' : dmg, heavy ? 'big' : rapid ? 'small' : '');
+    // a boss shows what it really took (one hit is capped)
+    const dealt = e.boss ? e.lastHitDamage : dmg;
+    fx.damageNumber(c.setY(c.y + 0.6), dealt >= 999 ? 'BURN' : dealt, heavy ? 'big' : rapid ? 'small' : '');
     if (!rapid) {
       audio.hit(heavy);
       world.hitStop(heavy ? cfg.feel.hitStopHeavy : cfg.feel.hitStop);
@@ -197,7 +213,12 @@ const world = {
 function onKill(e) {
   G.kills++;
   const p = G.player;
-  if (e.kind === 'tonua') {
+  if (e.kind === 'sidorak') {
+    G.score += killScore(cfg.score.sidorak, p.combo, cfg.score.comboBonus);
+    banner('SIDORAK DEFEATED!', 'win');
+    world.hitStop(0.35);
+    audio.roar();
+  } else if (e.kind === 'tonua') {
     G.score += killScore(cfg.score.tonua, p.combo, cfg.score.comboBonus);
     banner('TONUA DEFEATED!', 'win');
     world.hitStop(0.25);
@@ -222,8 +243,11 @@ Promise.allSettled([
   loadCharacterTemplate(toakuGlb, cfg.toaku, { envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso }).then((t) => { toakuTpl = t; }),
   loadCharacterTemplate(tahuGlb, cfg.tahu, { envMap: makeEnv(maps.terraces.env), maxAnisotropy: aniso }).then((t) => { tahuTpl = t; }),
   ...Object.entries(BOHROK_MODELS).map(([kind, glb]) => loadBohrokTemplate(glb, bohrokConfig(cfg.bohrok, kind), { envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso }).then((t) => { bohrokTpl[kind] = t; })),
+  loadSidorakTemplate(sidorakGlb, cfg.sidorak, { envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso }).then((t) => { sidorakTpl = t; }),
+  loadRhotuka(rhotukaGlb).then((geo) => { bossFx = createSidorakFx(scene, cfg.sidorak, geo); }),
 ]).then((results) => {
-  const names = ['Toaku', 'Super Tahu', ...Object.keys(BOHROK_MODELS)];
+  const names = ['Toaku', 'Super Tahu', ...Object.keys(BOHROK_MODELS), 'Sidorak', 'Rhotuka'];
+  if (!bossFx) bossFx = createSidorakFx(scene, cfg.sidorak); // a plain disc stands in for the spinner
   results.forEach((r, i) => { if (r.status === 'rejected') console.warn(names[i], 'model failed to load:', r.reason); });
   G.modelLoadMs = Math.round(performance.now() - loadStart);
   setupShowcases();
@@ -234,6 +258,22 @@ Promise.allSettled([
   startBtn.disabled = false;
   startLabel.textContent = 'INIZIO';
 });
+/** The Rhotuka spinner as a static geometry (unit diameter, flat in XZ), painted. */
+async function loadRhotuka(bytes) {
+  const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(buf, '');
+  let mesh = null;
+  gltf.scene.updateMatrixWorld(true);
+  gltf.scene.traverse((o) => { if (o.isMesh && !mesh) mesh = o; });
+  // dequantise into a plain float geometry with the node transform baked in
+  const src = mesh.geometry, geo = new THREE.BufferGeometry(), v = new THREE.Vector3();
+  const pos = new Float32Array(src.attributes.position.count * 3);
+  for (let i = 0; i < src.attributes.position.count; i++) { v.fromBufferAttribute(src.attributes.position, i).applyMatrix4(mesh.matrixWorld); v.toArray(pos, i * 3); }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  if (src.index) geo.setIndex(Array.from(src.index.array));
+  geo.computeVertexNormals();
+  return paintRhotuka(geo);
+}
 const rosterOf = (id) => ROSTER.find((c) => c.id === id);
 const available = (c) => !c.locked && (c.id !== 'tahu' || tahuTpl);
 /** A fresh fighter. Toaku falls back to the procedural classic model if his rig failed to load. */
@@ -253,6 +293,7 @@ function warmShaders() {
   fire.prewarm();
   const start = G.map.id;
   const temps = Object.entries(bohrokTpl).map(([kind, tpl]) => new Bohrok(bohrokConfig(cfg.bohrok, kind), tpl));
+  if (sidorakTpl) temps.push(new Sidorak(cfg.sidorak, sidorakTpl));
   for (const d of temps) { d.root.position.set(0, -50, 0); scene.add(d.root); }
   for (const id of Object.keys(maps)) {
     setMap(id);
@@ -282,7 +323,7 @@ function warmShaders() {
   }
   // upload every Bohrok type's textures now: the warm-up robots stand out of view, so their first
   // on-screen appearance would otherwise upload them mid-fight
-  for (const tpl of Object.values(bohrokTpl)) tpl.scene.traverse((o) => { if (o.isMesh && o.material.map) renderer.initTexture(o.material.map); });
+  for (const tpl of [...Object.values(bohrokTpl), sidorakTpl].filter(Boolean)) tpl.scene.traverse((o) => { if (o.isMesh && o.material.map) renderer.initTexture(o.material.map); });
   for (const d of temps) { scene.remove(d.root); d.dispose(); }
   setMap(start);
 }
@@ -299,6 +340,62 @@ function spawnBohrok(kind) {
   scene.add(b.root);
   G.enemies.push(b);
 }
+/**
+ * Sidorak lands in the arena: on the player's level, in front of them, clear of walls and ruins,
+ * facing the player.
+ */
+function spawnSidorak() {
+  const p = G.player, map = G.map, c = cfg.sidorak;
+  let at = null;
+  for (const d of [14, 12, 10, 8]) {
+    for (let k = 0; k < 16 && !at; k++) {
+      const a = p.facing + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 8);
+      const x = p.pos.x + Math.sin(a) * d, z = p.pos.z + Math.cos(a) * d;
+      if (!map.sameLevel(p.pos, { x, z })) continue;
+      const y = map.groundHeight(x, z);
+      const [rx, rz] = map.resolve(x, z, x, z, c.radius + 0.8, y, y);
+      if (Math.hypot(rx - x, rz - z) > 0.05) continue; // a wall or ruin is in the way
+      at = { x, z };
+    }
+    if (at) break;
+  }
+  if (!at) at = map.spawnPoint(p.pos, 10, 14);
+  const b = new Sidorak(c, sidorakTpl);
+  b.pos.set(at.x, map.groundHeight(at.x, at.z), at.z);
+  b.groundY = b.pos.y;
+  b.facing = Math.atan2(p.pos.x - b.pos.x, p.pos.z - b.pos.z);
+  b.sync();
+  scene.add(b.root);
+  G.enemies.push(b);
+  G.bossRef = b;
+  fx.dust(b.pos, 24, 6, 2.2); fx.shockwave(b.pos, 7, 0xff5a3a, 0.55); world.shake(0.7); audio.slam(); audio.roar();
+  return b;
+}
+/** Clear the field for the boss: leftover enemies are scrapped, effects cleared. */
+function clearForBoss() {
+  for (const e of G.enemies) if (e.alive) { e.alive = false; e.die(world); }
+  G.tonuaRef = null;
+  $('#bossbar').classList.remove('show');
+  elements.clear();
+}
+const bossBarEls = { root: $('#sidorak-bar'), fill: $('#sidorak-bar .sb-fill'), trail: $('#sidorak-bar .sb-trail'), flash: $('#sidorak-bar .sb-flash') };
+/** The encounter's view of the page: overlays, letterbox, the boss bar. */
+const bossUi = {
+  warning(on) { $('#boss-warning').classList.toggle('show', on); },
+  cinematic(on) { document.body.classList.toggle('cine', on); },
+  title(on) { $('#boss-title').classList.toggle('show', on); },
+  bar(on) { bossBarEls.root.classList.toggle('show', on); bossBarEls.root.classList.toggle('gone', !on); },
+  barValue(bar) {
+    put('bossFill', Math.round(bar.fill * 1000) / 1000, (v) => { bossBarEls.fill.style.transform = `scaleX(${v})`; });
+    put('bossTrail', Math.round(bar.trail * 1000) / 1000, (v) => { bossBarEls.trail.style.transform = `scaleX(${v})`; });
+    put('bossFlash', Math.round(bar.flash * 20) / 20, (v) => { bossBarEls.flash.style.opacity = v * 0.85; });
+  },
+};
+/** Hide every boss overlay (new game, quit). */
+function resetBossUi() {
+  bossUi.warning(false); bossUi.cinematic(false); bossUi.title(false);
+  bossBarEls.root.classList.remove('show', 'gone');
+}
 function spawnTonua() {
   const t = new Tonua(cfg.tonua);
   const s = G.map.spawnPoint(G.player.pos, 8, 12);
@@ -313,7 +410,19 @@ function spawnTonua() {
 
 function startWave() {
   G.wave++;
-  const comp = waveComposition(G.wave, cfg.waves);
+  // a defeated boss sinks away as the next wave begins
+  for (const e of G.enemies) if (e.boss && !e.alive) e.sink();
+  let comp = waveComposition(G.wave, cfg.waves);
+  if (comp.boss && !sidorakTpl) comp = waveComposition(G.wave, { ...cfg.waves, boss: null }); // model missing: a normal wave
+  if (comp.boss) {
+    // the boss wave: no spawning, the encounter takes over (warning, cinematic, fight)
+    G.toSpawn = [];
+    G.waveActive = true;
+    encounter = new BossEncounter(cfg.sidorak.intro, { ui: bossUi, clearEnemies: clearForBoss, spawn: spawnSidorak, audio });
+    encounter.start();
+    bump('#wave-panel');
+    return;
+  }
   G.toSpawn = [];
   if (comp.tonua) G.toSpawn.push('tonua');
   G.toSpawn.push(...comp.bohrok);
@@ -390,6 +499,9 @@ function clearWorld() {
   fx.clear();
   fire.clear();
   elements.clear();
+  if (bossFx) bossFx.clear();
+  encounter = null; G.bossRef = null;
+  resetBossUi();
   $('#frost').classList.remove('on');
 }
 function newGame(id = G.charId) {
@@ -413,6 +525,8 @@ function newGame(id = G.charId) {
   G.camYaw = G.camYawTarget = s.facing + Math.PI;
   G.camLift = 0;
   camera.position.set(p.pos.x + Math.sin(G.camYaw) * cfg.camera.distance, p.pos.y + cfg.camera.height, p.pos.z + Math.cos(G.camYaw) * cfg.camera.distance);
+  G.gameCam.copy(camera.position);
+  G.bossZoom = 0;
   G.tonuaRef = null;
   G.breakT = 1.2; G.waveActive = false;
   hpLag = 1;
@@ -617,7 +731,7 @@ window.addEventListener('keydown', (e) => {
 
 // ---------- loop ----------
 const clock = new THREE.Clock();
-const camPos = new THREE.Vector3(), look = new THREE.Vector3();
+const camPos = new THREE.Vector3(), look = new THREE.Vector3(), camScript = new THREE.Vector3();
 const idleInput = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, special: false };
 let titleT = 0;
 
@@ -660,6 +774,9 @@ function stepGame(dt, inp) {
   if (G.mode !== 'playing') return;
   if (G.hitStop > 0) { G.hitStop -= dt; dt *= 0.05; }
   const p = G.player;
+  // boss warning / cinematic / defeat focus: controls locked, the player cannot be hurt
+  const scripted = encounter && encounter.active && encounter.lockInput;
+  if (scripted) { inp = idleInput; p.invuln = Math.max(p.invuln || 0, 0.25); }
   // camera yaw from drag + gentle auto-follow behind the fighter while moving
   G.camYawTarget -= inp.camDX * cfg.camera.dragSensitivity;
   const moving = Math.hypot(inp.moveX, inp.moveY) > 0.3 && Math.abs(inp.moveY) > 0.5 && inp.moveY > 0;
@@ -673,6 +790,7 @@ function stepGame(dt, inp) {
 
   p.update(dt, inp, G.camYaw, world);
   for (const e of G.enemies) e.update(dt, world);
+  if (bossFx) bossFx.update(dt, world);
   // body separation (same level only; bodies being swung or thrown pass through)
   const all = [p, ...G.enemies.filter((e) => !e.removed && e.state !== 'spawn' && e.state !== 'grabbed' && e.state !== 'thrown')];
   for (let i = 0; i < all.length; i++) {
@@ -682,7 +800,9 @@ function stepGame(dt, inp) {
       const d = Math.hypot(dx, dz), min = a.radius + b.radius;
       if (d < min && d > 0.0001 && Math.abs(a.pos.y - b.pos.y) < 2) {
         const push = (min - d) / d;
-        const wa = a === p ? 0.15 : 0.5, wb = b === p ? 0.15 : 0.5;
+        // a boss barely moves; whoever touches him is shoved aside instead
+        const wOf = (x, o) => (x.heavy ? 0.04 : o.heavy ? 0.9 : x === p ? 0.15 : 0.5);
+        const wa = wOf(a, b), wb = wOf(b, a);
         const [ax, az] = G.map.resolve(a.pos.x, a.pos.z, a.pos.x - dx * push * wa, a.pos.z - dz * push * wa, a.radius, a.pos.y, a.groundY);
         const [bx, bz] = G.map.resolve(b.pos.x, b.pos.z, b.pos.x + dx * push * wb, b.pos.z + dz * push * wb, b.radius, b.pos.y, b.groundY);
         a.pos.x = ax; a.pos.z = az; b.pos.x = bx; b.pos.z = bz;
@@ -709,7 +829,7 @@ function stepGame(dt, inp) {
         if (kind === 'tonua') spawnTonua(); else spawnBohrok(kind);
         G.spawnT = cfg.waves.spawnInterval * (kind === 'tonua' ? 2 : 1);
       }
-      if (!G.toSpawn.length && alive === 0) {
+      if (!G.toSpawn.length && alive === 0 && !(encounter && encounter.active)) {
         G.waveActive = false;
         G.breakT = cfg.waves.breakTime;
         if (G.wave > 0) {
@@ -723,19 +843,30 @@ function stepGame(dt, inp) {
     }
   }
 
-  // camera: chase cam that rises over terrace walls instead of clipping into them
+  // boss encounter: warning -> cinematic -> fight -> defeat (it may take the camera for a while)
+  const camOverride = encounter && encounter.active ? encounter.update(dt, world) : null;
+
+  // camera: chase cam that rises over terrace walls instead of clipping into them; it pulls back
+  // during a boss fight so the 5.4 m boss stays in frame
   G.specialCam = Math.max(0, G.specialCam - dt);
-  const zoom = G.specialCam > 0 ? 0.72 : 1;
+  G.bossZoom += ((G.bossRef && G.bossRef.alive ? 1 : 0) - G.bossZoom) * Math.min(1, dt * 1.5);
+  const zoom = (G.specialCam > 0 ? 0.72 : 1) * (1 + cfg.camera.bossPull * G.bossZoom);
   const dist = cfg.camera.distance * zoom;
   const tx = p.pos.x + Math.sin(G.camYaw) * dist;
   const tz = p.pos.z + Math.cos(G.camYaw) * dist;
-  let ty = p.pos.y + Math.max(0, p.altitude()) * -0.4 + cfg.camera.height * (G.specialCam > 0 ? 0.8 : 1);
+  let ty = p.pos.y + Math.max(0, p.altitude()) * -0.4 + cfg.camera.height * (G.specialCam > 0 ? 0.8 : 1) * (1 + cfg.camera.bossLift * G.bossZoom);
   const floor = Math.max(G.map.cameraFloor(tx, tz), G.map.cameraFloor((tx + p.pos.x) / 2, (tz + p.pos.z) / 2));
   G.camLift += (Math.max(0, floor - ty) - G.camLift) * Math.min(1, dt * 5);
   ty += G.camLift;
   camPos.set(tx, ty, tz);
-  camera.position.lerp(camPos, Math.min(1, dt * cfg.camera.followLerp + (dt === 0 ? 0 : 0.02)));
-  look.set(p.pos.x, p.pos.y + Math.max(0, p.altitude()) * 0.3 + cfg.camera.lookHeight, p.pos.z);
+  // the gameplay camera is smoothed on its own; a scripted shot is blended over it (no snaps in or out)
+  G.gameCam.lerp(camPos, Math.min(1, dt * cfg.camera.followLerp + (dt === 0 ? 0 : 0.02)));
+  camera.position.copy(G.gameCam);
+  look.set(p.pos.x, p.pos.y + Math.max(0, p.altitude()) * 0.3 + cfg.camera.lookHeight + cfg.camera.bossLook * G.bossZoom, p.pos.z);
+  if (camOverride) {
+    camera.position.lerp(camScript.set(camOverride.pos.x, camOverride.pos.y, camOverride.pos.z), camOverride.w);
+    look.lerp(camScript.set(camOverride.look.x, camOverride.look.y, camOverride.look.z), camOverride.w);
+  }
   camera.lookAt(look);
   if (G.view) {
     // test/replay camera: fixed angle relative to the fighter's facing (set by the capture harness)
@@ -774,6 +905,11 @@ frame();
 // ---------- automated smoke tests / animation capture ----------
 window.__game = {
   G, world, CONFIG, ROSTER, spawnTonua, spawnBohrok, elements, newGame, showSelect, select, fire,
+  get encounter() { return encounter; },
+  get bossFx() { return bossFx; },
+  get sidorakTemplate() { return sidorakTpl; },
+  /** Test harness: jump straight to the boss wave (it starts after a short break). */
+  startBoss() { G.wave = cfg.waves.boss.first - 1; G.waveActive = false; G.toSpawn = []; G.noWaves = false; G.breakT = 0.05; for (const e of G.enemies) { e.alive = false; e.removed = true; } },
   get bohrokTemplates() { return bohrokTpl; },
   manual: false,
   get ready() { return assetsReady; },
@@ -804,6 +940,7 @@ window.__game = {
     const p = G.player;
     G.camYaw = G.camYawTarget = p.facing + Math.PI + rel;
     camera.position.set(p.pos.x + Math.sin(G.camYaw) * dist, p.pos.y + height, p.pos.z + Math.cos(G.camYaw) * dist);
+    G.gameCam.copy(camera.position);
     camera.lookAt(p.pos.x, p.pos.y + cfg.camera.lookHeight, p.pos.z);
     renderer.render(scene, camera);
   },

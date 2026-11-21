@@ -33,9 +33,9 @@ export function createAudio() {
     s.connect(f); f.connect(g); g.connect(master);
     s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.05);
   }
-  function tone(type, f0, f1, dur, peak) {
+  function tone(type, f0, f1, dur, peak, delay = 0) {
     if (!ctx || muted) return;
-    const t = ctx.currentTime;
+    const t = ctx.currentTime + delay;
     const o = ctx.createOscillator(); o.type = type;
     o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
     const g = ctx.createGain(); env(g, t, 0.005, peak, dur);
@@ -68,5 +68,13 @@ export function createAudio() {
     inferno() { tone('sawtooth', 60, 220, 1.4, 0.35); noise(1.6, 420, 0.4, 0.55, 'lowpass'); tone('triangle', 110, 330, 1.2, 0.2); },
     /** A fire column bursting out of the ground. */
     fireColumn() { noise(0.9, 300 + Math.random() * 200, 0.5, 0.5, 'lowpass'); tone('sine', 70, 35, 0.5, 0.45); },
+    /** Boss warning: a two-tone alarm, four times. */
+    warning() { for (let i = 0; i < 4; i++) { tone('sawtooth', 620, 620, 0.26, 0.16, i * 0.6); tone('sawtooth', 440, 440, 0.26, 0.16, i * 0.6 + 0.3); } },
+    /** Sidorak's roar (the charge, the intro). */
+    roar() { tone('sawtooth', 95, 55, 0.9, 0.35); tone('square', 140, 70, 0.7, 0.12); noise(0.8, 260, 0.6, 0.45, 'lowpass'); },
+    /** Energy bolt from the Herding Blade. */
+    laser() { tone('sawtooth', 1400, 180, 0.32, 0.22); noise(0.15, 3200, 1.2, 0.2); },
+    /** A Rhotuka spinner launching. */
+    whirr() { tone('square', 300, 900, 0.4, 0.1); tone('triangle', 900, 1600, 0.45, 0.12); noise(0.3, 1800, 2, 0.15); },
   };
 }

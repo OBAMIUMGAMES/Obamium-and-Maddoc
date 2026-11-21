@@ -38,18 +38,30 @@ export function angleDiff(a, b) {
 /**
  * Wave composition for a given wave number (1-based). Every standard enemy is a Bohrok: the wave
  * grows by `perWave` each time (capped at `max`), the six types mixed, the mix rotating every wave;
- * Tonua joins every `tonuaEvery` waves.
+ * Tonua joins every `tonuaEvery` waves. A boss wave (isBossWave) is the boss alone.
  * @param {number} wave
  * @param {{base:number, perWave:number, max:number, tonuaEvery:number, types:string[]}} cfg
- * @returns {{tonua:boolean, bohrok:string[]}}
+ * @returns {{tonua:boolean, bohrok:string[], boss:string|null}}
  */
 export function waveComposition(wave, cfg) {
+  if (isBossWave(wave, cfg)) return { tonua: false, bohrok: [], boss: 'sidorak' };
   const types = cfg.types || [];
   const n = types.length ? Math.min(cfg.max, cfg.base + (wave - 1) * cfg.perWave) : 0;
   return {
     tonua: wave % cfg.tonuaEvery === 0,
     bohrok: Array.from({ length: n }, (_, i) => types[(i + wave - 1) % types.length]),
+    boss: null,
   };
+}
+
+/**
+ * Is this a boss wave? The first boss comes at cfg.boss.first, then every cfg.boss.every waves (0:
+ * only once). A boss wave is the boss alone.
+ */
+export function isBossWave(wave, cfg) {
+  const b = cfg.boss;
+  if (!b || wave < b.first) return false;
+  return b.every ? (wave - b.first) % b.every === 0 : wave === b.first;
 }
 
 /**

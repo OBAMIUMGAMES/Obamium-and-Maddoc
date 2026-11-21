@@ -243,3 +243,20 @@ test('segmentDistance measures to the nearest point of the segment', () => {
   assert.equal(segmentDistance(3, 0, -1, 0, 1, 0), 2); // past the end
   assert.equal(segmentDistance(0, 0, 0, 0, 0, 0), 0); // degenerate segment
 });
+
+test('a boss is far too heavy to grab: the grab whiffs and Sidorak is never swung', async () => {
+  // regression: the grab only checked alive/targetable/state, so Toaku would giant-swing a 5.4 m boss
+  const { Sidorak } = await import('../../../src/js/sidorak.js');
+  const { sidorakTemplate, testCfg } = await import('../sidorak/fixture.mjs');
+  const { t, world } = setup();
+  const boss = new Sidorak(testCfg(), sidorakTemplate());
+  boss.pos.set(0, 0, 2.6); boss.facing = Math.PI; boss.activate();
+  for (const k of Object.keys(boss.cool)) boss.cool[k] = 99;
+  world.enemies.push(boss);
+  run(t, world, 1, { grab: true });
+  run(t, world, Math.ceil(C.grab.end / C.grab.speed / dt) + 5);
+  assert.notEqual(boss.state, 'grabbed');
+  assert.notEqual(boss.state, 'thrown');
+  assert.equal(t.held, null);
+  assert.equal(t.state, 'idle');
+});
