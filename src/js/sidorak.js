@@ -18,6 +18,7 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { measureSidorak, solveSidorak, applySidorak, sidorakPose, SIDORAK_DRIVEN } from './sidorakRig.js';
 import { SIDORAK_CLIPS, WALK, RUN, SLASH_KEYS, SMASH_KEYS, BLAST_KEYS, RHOTUKA_KEYS, STUMBLE_KEYS } from './sidorakAnims.js';
+import { retargetFrame, closeLoop, resampleFrames, groundCycle, groundSpeed, runWarp as warpRun, warpTime, motionDuration } from './sidorakMocap.js';
 import { Enemy } from './fighters.js';
 import { disposeInstance } from './characterModel.js';
 import { angleDiff, applyDamage } from './combat.js';
@@ -28,7 +29,8 @@ import { angleDiff, applyDamage } from './combat.js';
  * Load Sidorak's GLB and bake his animations.
  * @param {Uint8Array} bytes assets/models/sidorak.glb
  * @param {object} cfg CONFIG.sidorak
- * @param {{envMap?:THREE.Texture, maxAnisotropy?:number}} [opts]
+ * @param {{envMap?:THREE.Texture, maxAnisotropy?:number, motions?:Object<string,object>}} [opts]
+ *   motions: captured motions by name (assets/models/sidorak-runfast.json as runFast)
  */
 export async function loadSidorakTemplate(bytes, cfg, opts = {}) {
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
@@ -44,7 +46,7 @@ export async function loadSidorakTemplate(bytes, cfg, opts = {}) {
  */
 export function makeSidorakTemplate(scene, cfg, opts = {}) {
   const rig = measureSidorak(scene, cfg.joints);
-  const baked = bakeSidorakClips(scene, rig);
+  const baked = bakeSidorakClips(scene, rig, 30, opts.motions || {});
   scene.traverse((o) => {
     if (!o.isMesh) return;
     o.castShadow = true;
@@ -53,23 +55,36 @@ export function makeSidorakTemplate(scene, cfg, opts = {}) {
     if (cfg.material) { m.metalness = cfg.material.metalness; m.roughness = cfg.material.roughness; }
     if (opts.envMap) { m.envMap = opts.envMap; m.envMapIntensity = (cfg.material && cfg.material.envMapIntensity) || 0.6; }
   });
-  return { scene, rig, clips: baked.clips, standHeight: baked.standHeight, scale: cfg.height / baked.standHeight, keyPoints: baked.keyPoints };
+  return { scene, rig, clips: baked.clips, standHeight: baked.standHeight, scale: cfg.height / baked.standHeight, keyPoints: baked.keyPoints,
+    runCycle: baked.runCycle, runMocap: baked.runMocap, runGround: baked.runGround, runWarp: baked.runWarp };
 }
 
-/** Vertices whose height decides grounding: the soles (all clips) and a sparse whole body (lying clips). */
+/**
+ * Vertices whose height decides grounding: everything low at rest (all clips), each foot alone (the
+ * captured run's stances) and a sparse whole body (lying clips).
+ */
 function groundSets(scene, rig) {
-  const feet = [], body = [];
+  const feet = [], body = [], footR = [], footL = [];
+  // each foot on its own: the low pieces carried by that leg (the Herding Blade's tip is low at rest too)
+  const leg = (S) => new Set(['knee_', 'ankle_', 'toe_'].map((j) => rig.bones[j + S]));
+  const legR = leg('R'), legL = leg('L');
   const footTop = rig.j.ankle_R.pos.y * 2.2;
   scene.traverse((o) => {
     if (!o.isSkinnedMesh) return;
     const pos = o.geometry.attributes.position, si = o.geometry.attributes.skinIndex, sw = o.geometry.attributes.skinWeight;
     for (let i = 0; i < pos.count; i++) {
       const rec = { mesh: o, x: pos.getX(i), y: pos.getY(i), z: pos.getZ(i), j: [si.getX(i), si.getY(i), si.getZ(i), si.getW(i)], w: [sw.getX(i), sw.getY(i), sw.getZ(i), sw.getW(i)] };
-      if (pos.getY(i) < footTop) feet.push(rec);
+      if (pos.getY(i) < footTop) {
+        feet.push(rec);
+        let d = 0;
+        for (let k = 1; k < 4; k++) if (rec.w[k] > rec.w[d]) d = k;
+        const b = o.skeleton.bones[rec.j[d]];
+        if (legR.has(b)) footR.push(rec); else if (legL.has(b)) footL.push(rec);
+      }
       if (i % 3 === 0) body.push(rec);
     }
   });
-  return { feet, body };
+  return { feet, body, footR, footL };
 }
 
 /**
@@ -78,7 +93,7 @@ function groundSets(scene, rig) {
  * Proper 4-weight skinning is used (the rig's weights are blended), on a reduced vertex set.
  * Also measures the standing height (scale), and where the blade, claw and head are (hit boxes).
  */
-export function bakeSidorakClips(scene, rig, fps = 30) {
+export function bakeSidorakClips(scene, rig, fps = 30, motions = {}) {
   scene.updateMatrixWorld(true);
   const toModel = new THREE.Matrix4().copy(scene.matrixWorld).invert();
   const sets = groundSets(scene, rig);
@@ -119,7 +134,48 @@ export function bakeSidorakClips(scene, rig, fps = 30) {
     return solved;
   };
   const clips = {};
+  let runCycle = RUN.cycle, runMocap = false, runGround = null, runWarp = null;
+  const _p = new THREE.Vector3();
   for (const [name, def] of Object.entries(SIDORAK_CLIPS)) {
+    const motion = def.mocap && motions[def.mocap.motion];
+    if (motion) {
+      // motion capture: retargeted onto this rig (its own skin and bone lengths), loop closed
+      const ref = solveSidorak(rig, sidorakPose(def.mocap.ref));
+      const closed = closeLoop(motion.times.map((_, k) => retargetFrame(rig, motion, k, { ref, keep: def.mocap.keep, feet: def.mocap.feet })));
+      const { frames, times } = resampleFrames(closed, motion.times, def.mocap.resample);
+      // grounding (groundCycle): through each stance the planted foot is put exactly on the ground;
+      // through the flight phases the body keeps the capture's own arc
+      const n = frames.length - 1; // the loop's last key repeats the first
+      const m = { ankR: [], ankL: [], lowR: [], lowL: [], low: [] };
+      for (let k = 0; k < n; k++) {
+        applySidorak(bones, frames[k]); update();
+        m.ankR.push(bones.ankle_R.getWorldPosition(_p).applyMatrix4(toModel).y);
+        m.ankL.push(bones.ankle_L.getWorldPosition(_p).applyMatrix4(toModel).y);
+        m.lowR.push(minY(sets.footR)); m.lowL.push(minY(sets.footL)); m.low.push(Math.min(minY(sets.feet), minY(sets.body)));
+      }
+      const g = groundCycle(m, def.mocap.contact);
+      const toParent = new THREE.Matrix4().copy(rig.j.root.parentM).invert().setPosition(0, 0, 0);
+      const ankles = [];
+      for (const [k, f] of frames.entries()) {
+        f.root.p.add(new THREE.Vector3(0, g.lifts[k % n], 0).applyMatrix4(toParent));
+        applySidorak(bones, f); scene.updateMatrixWorld(true);
+        ankles.push({ ankle_R: bones.ankle_R.getWorldPosition(new THREE.Vector3()).applyMatrix4(toModel), ankle_L: bones.ankle_L.getWorldPosition(new THREE.Vector3()).applyMatrix4(toModel) });
+      }
+      // played by distance along the run's own distance map: a planted foot stays where it landed
+      const feet = frames.map((_, k) => g.planted[k % n] && 'ankle_' + g.planted[k % n]);
+      runWarp = { times, dist: warpRun(ankles, times, feet, groundSpeed(ankles, times, feet)) };
+      runCycle = runWarp.dist[runWarp.dist.length - 1]; // model units per cycle
+      runGround = g;
+      const duration = motionDuration(motion);
+      runMocap = true;
+      const kt = [];
+      for (const j of SIDORAK_DRIVEN) {
+        kt.push(new THREE.QuaternionKeyframeTrack(`${bones[j].name}.quaternion`, times, frames.flatMap((f) => f[j].q.toArray())));
+        if (frames[0][j].p) kt.push(new THREE.VectorKeyframeTrack(`${bones[j].name}.position`, times, frames.flatMap((f) => f[j].p.toArray())));
+      }
+      clips[name] = new THREE.AnimationClip(name, duration, kt);
+      continue;
+    }
     const n = Math.max(2, Math.round(def.duration * (def.loop ? fps : fps * 1.5)) + 1);
     const times = [], tracks = Object.fromEntries(SIDORAK_DRIVEN.map((j) => [j, { q: [], p: [] }]));
     for (let i = 0; i < n; i++) {
@@ -147,7 +203,7 @@ export function bakeSidorakClips(scene, rig, fps = 30) {
   // back to the rest pose for cloning
   for (const j of SIDORAK_DRIVEN) { bones[j].quaternion.copy(rest[j].q); bones[j].position.copy(rest[j].p); }
   scene.updateMatrixWorld(true);
-  return { clips, standHeight: top, keyPoints: {} };
+  return { clips, standHeight: top, keyPoints: {}, runCycle, runMocap, runGround, runWarp };
 }
 
 const CHANNELS = Object.keys(SIDORAK_CLIPS);
@@ -326,7 +382,7 @@ export class Sidorak extends Enemy {
         // committed: only a slight curve toward the player in the first moments
         if (this.stateT < cfg.charge.homing) { this.turnTowards(toPl, 0.9, dt); this.chargeDir = { x: Math.sin(this.facing), z: Math.cos(this.facing) }; }
         this.vel.x = this.chargeDir.x * cfg.charge.speed; this.vel.z = this.chargeDir.z * cfg.charge.speed;
-        if (Math.random() < 0.5) world.fx.dust(this.pos, 2, 2.2, 1.3);
+        if (Math.random() < 0.5) world.fx.dust(this.pos, 2, cfg.height * 0.42, cfg.height * 0.25);
         break;
       }
       case 'stumble': {
@@ -385,8 +441,11 @@ export class Sidorak extends Enemy {
     }
     if (this.state === 'charge') {
       this.runDist += moved;
-      const cyc = RUN.cycle * this.inst.tpl.scale;
-      this.inst.actions.chargeRun.time = ((this.runDist / cyc) % 1) * SIDORAK_CLIPS.chargeRun.duration;
+      // distance-driven: the planted foot keeps pace with the ground (the capture along its own
+      // distance map, the procedural run evenly)
+      const tpl = this.inst.tpl;
+      this.inst.actions.chargeRun.time = tpl.runWarp ? warpTime(tpl.runWarp.dist, tpl.runWarp.times, this.runDist / tpl.scale)
+        : ((this.runDist / (tpl.runCycle * tpl.scale)) % 1) * tpl.clips.chargeRun.duration;
       this.blocked = moved < cfg.charge.speed * dt * 0.4 ? this.blocked + dt : 0;
     }
     this.turnShuffle = 0;
@@ -480,7 +539,7 @@ export class Sidorak extends Enemy {
       if (along < -cfg.charge.overshoot || run > cfg.charge.maxDist || this.blocked > 0.12) {
         this.setState('stumble');
         world.shake(0.35);
-        world.fx.dust(this.pos, 14, 4, 1.6);
+        world.fx.dust(this.pos, 14, cfg.height * 0.75, cfg.height * 0.3);
         world.audio.land && world.audio.land();
       }
     } else if (st === 'blast') {
@@ -579,6 +638,6 @@ export class Sidorak extends Enemy {
     super.sync();
     // a light hit jolts the whole body back a little; it never interrupts the move
     this.inst.holder.rotation.x = -0.06 * this.recoil;
-    this.inst.holder.position.z = -0.25 * this.recoil;
+    this.inst.holder.position.z = -0.045 * this.cfg.height * this.recoil;
   }
 }

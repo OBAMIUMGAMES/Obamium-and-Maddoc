@@ -5,7 +5,7 @@
 - **Build the APK:** `npm run build:apk` (needs `apt-get install aapt apksigner zipalign dalvik-exchange` + JDK). Output: `builds/toaku-desert-brawl.apk` (debug-signed).
 - **Tests:** `npm test`
 - **Bohrok enemies:** `for k in lehvak tahnok gahlok pahrak nuhvok kohrak; do node tools/build-bohrok.mjs $k assets/source/bohrok/$k.meshy.glb; done` rebuilds the six models (rig fix + optimisation; build Lehvak first, the others reuse its layout). Details: `design/bohrok-import.md`.
-- **Sidorak (first boss, wave 5):** `node tools/build-sidorak.mjs` recompresses `assets/source/sidorak/` (the rig is kept exactly as delivered). Code: `src/js/sidorak.js`, animations `src/js/sidorakAnims.js`, encounter `src/js/bossEncounter.js`. Design: `design/game-brief.md` → Sidorak.
+- **Sidorak (first boss, wave 5):** `node tools/build-sidorak.mjs` recompresses `assets/source/sidorak/` (the rig is kept exactly as delivered) and extracts the motion of the RunFast capture (`runfast.meshy.glb` → `assets/models/sidorak-runfast.json`) that his charge runs with. Code: `src/js/sidorak.js`, animations `src/js/sidorakAnims.js`, the capture's retarget onto his rig `src/js/sidorakMocap.js`, encounter `src/js/bossEncounter.js`. Design: `design/game-brief.md` → Sidorak.
 - **App icon:** `node tools/build-icons.mjs` rebuilds `android/res/mipmap-*` from `assets/branding/app-icon-source.jpg`.
 - **Interface:** `src/index.html` + `src/style.css` (per-fighter themes = `body[data-fighter]` blocks); fonts in `assets/fonts/` are inlined at build, the main-menu art comes from `assets/branding/key-art.jpg`.
 - **Tuning:** everything is in `src/js/config.js` — both fighters' moves and clip timings, their look, enemies, waves; the roster is `src/js/characters.js`. Design: `design/game-brief.md`.

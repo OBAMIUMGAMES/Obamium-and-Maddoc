@@ -43,6 +43,14 @@ export function localRot(J, euler, out) {
 }
 
 /**
+ * Bone local rotation for a rotation q (quaternion) about the joint in the character frame - the
+ * quaternion form of localRot (motion-capture retargeting supplies quaternions).
+ */
+export function localRotQ(J, q, out) {
+  return out.copy(J.parentQ).invert().multiply(q).multiply(J.parentQ).multiply(J.q0);
+}
+
+/**
  * A leg measured at rest: hip H, knee K, ankle A (model space), segment lengths and the angles of
  * thigh and shin from straight down (positive toward +Z), in the side (y-z) plane.
  */

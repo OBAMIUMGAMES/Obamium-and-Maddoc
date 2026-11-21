@@ -91,9 +91,10 @@ test('the cinematic camera orbits him smoothly (no snaps), ends low looking up, 
   const ang = (c) => { const d = Math.atan2(c.pos.x - b.pos.x, c.pos.z - b.pos.z) - b.facing; return Math.atan2(Math.sin(d), Math.cos(d)); };
   const a1 = ang(cams[Math.round(1.0 / dt)]), a4 = ang(cams[Math.round(4.0 / dt)]);
   assert.ok(a1 > 0.5 && a4 < -0.5, `orbit from ${a1.toFixed(2)} to ${a4.toFixed(2)} rad`);
-  // the last shot is low, looking up at his head
+  // the last shot is low, looking up at his head (the shots are framed by his height)
   const last = cams[cams.length - 1];
-  assert.ok(last.pos.y < 1.5 && last.look.y > 4, 'low angle');
+  assert.ok(last.pos.y < 0.25 * b.height && last.look.y > 0.75 * b.height, 'low angle');
+  assert.ok(Math.hypot(last.pos.x - b.pos.x, last.pos.z - b.pos.z) < 2 * b.height, 'close on him');
   // fight: the scripted camera fades out over blendBack, then the gameplay camera is back alone
   const back = step(s, Math.round((I.blendBack + 0.1) / dt));
   assert.ok(back[0] && back[0].w > 0.9, 'starts from the last shot');
@@ -189,5 +190,5 @@ test('the defeat shot stands somewhere real: beside him on his level, never in a
   step(s2, Math.round((I.warning + I.cinematic) / dt) + 3);
   const b2 = s2.enc.boss; b2.hp = 5; s2.world.hitEnemy(b2, 50, 0, 1, 2, 0, 0.3, true);
   const c2 = step(s2, 60).pop();
-  assert.ok(c2.pos.y > b2.pos.y + 10, 'looks down on him from above');
+  assert.ok(c2.pos.y > b2.pos.y + 1.8 * b2.height, 'looks down on him from above');
 });

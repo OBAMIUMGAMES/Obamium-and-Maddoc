@@ -112,7 +112,7 @@ function point(t) {
 
 // ---- charge -------------------------------------------------------------------------------------
 /** Head down, weight forward, arms back, one foot back: about to rush. */
-const CHARGE_SET = P({
+export const CHARGE_SET = P({
   root: { y: -0.13, z: -0.04 }, spine: [0.42, 0, 0], head: [-0.38, 0, 0],
   shR: [0.35, 0.1, 0.12], elR: [-0.3, 0, 0],
   shL: [0.35, -0.1, -0.12], elL: [-0.2, 0, 0],
@@ -300,6 +300,32 @@ function death(t) {
 }
 
 /**
+ * The charge's run is motion capture: the RunFast clip Meshy exported for Sidorak (a Mixamo rig),
+ * retargeted onto the game rig at load (sidorakMocap.js). Only rotations travel, so the game's own
+ * bones and skin do the deforming: nothing is stretched (the source rig stretches the left arm).
+ * What is kept of it:
+ *  - keep: the Herding Blade arm is held toward RUN_HOLD (the blade carried low at his side and
+ *    trailing back off the ground, not flung over his shoulder - in the source the left arm swings
+ *    ~2.2 rad); the claw's elbow and the neck lightly held (their armour covers crease at the
+ *    deepest bends); legs, hips, spine and the claw's shoulder exactly as captured.
+ *  - feet: the ankles take only the pitch of the captured ankle bend, capped (heel and toe armour
+ *    are skinned to different bones: any twist cracks the foot) - flat through the stance.
+ *  - contact: stance detection for grounding (the capture floats; sidorakMocap.groundCycle).
+ * Strain-checked on the real mesh like every other clip; see design/game-brief.md (Sidorak).
+ */
+/** What the capture's held joints are held toward: the charge pose, the blade trailing back off the ground. */
+export const RUN_HOLD = P({ ...CHARGE_SET, wrL: [1.1, 0, 0] });
+
+export const RUN_MOCAP = {
+  motion: 'runFast',
+  keep: { shoulder_L: 0.35, elbow_L: 0.5, wrist_L: 0.2, elbow_R: 0.75, neck: 0.7, head: 0.7 },
+  feet: { level: 1, max: 0.3 },
+  contact: 0.09, // a foot is planted while its ankle is within this much (model units) of its lowest
+  resample: 4,    // frames per captured key interval for grounding (the capture is 30 fps)
+  ref: RUN_HOLD,
+};
+
+/**
  * Every Sidorak clip: duration in seconds (looping clips repeat; one-shots are driven by the state
  * timer), pose(t) with t in [0, 1]. full: ground the whole body when baking (he lies on it), not only the feet.
  */
@@ -308,7 +334,7 @@ export const SIDORAK_CLIPS = {
   walk: { duration: 1.6, loop: true, pose: walk },
   point: { duration: 4.2, pose: point },  // started 1.1 s into the cinematic: raise, thrust, hold, lowered by ~5 s
   chargeWindup: { duration: 0.8, pose: chargeWindup },
-  chargeRun: { duration: 0.7, loop: true, pose: chargeRun },
+  chargeRun: { duration: 0.7, loop: true, pose: chargeRun, mocap: RUN_MOCAP }, // the capture when loaded, else this procedural run
   stumble: { duration: 1.8, pose: stumble, full: true },
   slash: { duration: 1.2, pose: slash },
   smash: { duration: 1.6, pose: smash, full: true },

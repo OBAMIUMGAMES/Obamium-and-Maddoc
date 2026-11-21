@@ -214,10 +214,12 @@ pieces only fold so far (roundness 0.76, ~1.1 m across) — so it bobs slightly 
 wave, at most 8 alive at once, mixed types rotating each wave (`waves`). Score 175.
 
 ## Sidorak — first boss (wave 5, then every 5th wave)
-King of the Visorak: 5.4 m tall (1.5 × Toaku), 1400 HP, one phase only — no Visorak, no second form,
+King of the Visorak: as tall as Toaku and never taller — 3.3 m in his stance, Toaku's height in his
+fight stance (Toaku is 3.6 m upright) — 1400 HP, one phase only: no Visorak, no second form,
 nothing else on the field. Model: the Meshy Smart Rig exactly as delivered (36 bones, weights and bind
 pose untouched — the corrected right arm included); `tools/build-sidorak.mjs` only recompresses it
-(594 → 188 KB). Code: `src/js/sidorak.js` (boss), `sidorakRig.js` / `sidorakAnims.js` (animation),
+(594 → 188 KB) and extracts the motion of Meshy's RunFast export for him
+(`assets/models/sidorak-runfast.json`, rotations only, 24 KB). Code: `src/js/sidorak.js` (boss), `sidorakRig.js` / `sidorakAnims.js` (animation),
 `sidorakFx.js` (projectiles), `bossEncounter.js` (warning, cinematic, defeat), values in `config.js` →
 `sidorak`.
 
@@ -233,25 +235,42 @@ and his red boss bar slides in. On the terraces the orbit pulls in so it never e
 
 **Animation.** Idle, walk (distance-driven, no foot sliding), intro point, charge wind-up / run /
 stumble, Herding Blade slash, overhead smash, energy blast, Rhotuka launch, stagger and defeat, all
-built from logical poses on the inspected joints and baked at load (~0.1 s). Only shoulders, elbows,
+built from logical poses on the inspected joints and baked at load (~0.1 s) — except the charge's
+run, which is the RunFast motion capture (below). Only shoulders, elbows,
 the blade wrist, spine, neck, head, root and legs are ever rotated; the claw, its fingers, the forearm
 segments and the upper-chest bone keep their rest transforms (the claw stays rigid, the blade stays
 attached, no bone ever stretches). Every pose was checked for armour strain on the real mesh (posed
 edge length / rest length): big swings are shared between the torso and the shoulder, because the
 shoulder armour is partly skinned to the chest.
 
+**The charge's run: motion capture** (`src/js/sidorakMocap.js`, settings `RUN_MOCAP` in
+`sidorakAnims.js`). The RunFast export's own rig stretches his left arm, so its skeleton and skin are
+never used: only the motion is retargeted onto the game's rig — each body part's rotation away from
+the shared bind pose drives the matching joint, the hips' offset moves the body — and the game's own
+bones and weights deform him (no bone changes length; the left arm's longest edge stays at its rest
+length). Kept of the capture: legs, hips, spine and the claw's shoulder as captured; the Herding Blade
+arm is held toward the charge pose (blade low at his side, trailing back off the ground, never over
+his shoulder); the claw's elbow and the neck lightly held; the ankles take only the pitch of the
+captured ankle bend, at most 0.3 rad (a twist would crack the foot armour). The capture floats and
+drifts, so at load the loop is closed (its 7° thigh drift spread over the cycle), each foot is put
+exactly on the ground through its stance (the flight phases keep the capture's arc; the capture is
+resampled 4× first, so no frame in between dips a toe into the ground), and a distance map is read
+from the planted feet: played by distance along it, a planted foot stays where it landed (played
+evenly, the capture's feet would skate ~40% of the way). Natural pace at his size: ~11.9 m/s (5.6 m
+per cycle); the charge runs at 12 m/s.
+
 | Attack | When | Tell | Damage | Counter |
 |---|---|---|---|---|
-| Herding Blade slash (left arm, horizontal) | within 4.8 m | 0.48 s wind-up, blade drawn back | 32, only during the 0.14 s swing | step out of reach, then hit him in the 0.75 s recovery |
-| Overhead smash | within 4.8 m | blade raised overhead, a straining pause | 44 under the blade + 18 shockwave out to 8 m | get clear, **jump** the ring; 1.2 s recovery |
-| Charge | 10 m and further | 0.8 s crouch, head down | 36 + launched | side-step; a miss (or a wall) trips him: **stumble**, 1.5× damage taken, heavy hits stagger |
-| Energy blast (from the blade) | 6–30 m | blade aimed, glow gathering | 22 | side-step the red bolt (17 m/s, no homing) |
-| Rhotuka (right arm) | 6–26 m | arm raised and aimed | 15 + **immobilised 1.1 s** | side-step the spinner (15 m/s); jumping and attacking still work while held |
+| Herding Blade slash (left arm, horizontal) | within 3 m | 0.48 s wind-up, blade drawn back | 28, only during the 0.14 s swing | step out of reach, then hit him in the 0.75 s recovery |
+| Overhead smash | within 3 m | blade raised overhead, a straining pause | 44 under the blade + 18 shockwave out to 5.5 m | get clear, **jump** the ring; 1.2 s recovery |
+| Charge (the captured sprint, 12 m/s) | 7 m and further | 0.8 s crouch, head down | 36 + launched | side-step; a miss (or a wall) trips him: **stumble**, 1.5× damage taken, heavy hits stagger |
+| Energy blast (from the blade) | 5–30 m | blade aimed, glow gathering | 22 | side-step the red bolt (17 m/s, no homing) |
+| Rhotuka (right arm) | 5–26 m | arm raised and aimed | 15 + **immobilised 1.1 s** | side-step the spinner (15 m/s); jumping and attacking still work while held |
 
 He turns slowly (1.8 rad/s — circle him), must face the player before starting an attack, and leaves
 a recovery window after each one. Weak hits never interrupt him (a jolt only); heavy hits in an
-opening, or 110 poise damage in quick succession, **stagger** him — then he cannot be staggered for
-5 s (no stun-lock), and nothing he does chains into an unavoidable hit on the player. A single hit is
+opening, or 220 poise damage in quick succession, **stagger** him — then he cannot be staggered for
+7 s (no stun-lock), and nothing he does chains into an unavoidable hit on the player. A single hit is
 capped at 120 (Super Tahu's INFERNO SLAM is a huge chunk, not an instant kill); he cannot be grabbed,
 launched or knocked away, and shoves the player aside instead. The playable characters are unchanged.
 

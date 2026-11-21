@@ -63,8 +63,11 @@ test('far from the player he walks toward them (heavy and slower than the fighte
   assert.ok(top <= C.walkSpeed + 1e-6 && top < CONFIG.toaku.moveSpeed * 0.6, `walk ${top.toFixed(2)} m/s`);
 });
 
+/** A distance he charges from (between the charge's minimum range and its reach). */
+const CHARGE_FROM = (C.charge.minRange + C.charge.maxDist * 0.75) / 2;
+
 test('Herding Blade slash: winds up facing the player, hurts only during the swing, once', () => {
-  const { b, world, player } = setup(C.slash.range - 1.5);
+  const { b, world, player } = setup(C.slash.range * 0.6);
   b.facing = Math.PI + 0.35; // not quite facing: turns first
   only(b, 'slash');
   let start = null, hitAt = null;
@@ -77,7 +80,7 @@ test('Herding Blade slash: winds up facing the player, hurts only during the swi
 });
 
 test('slash: stepping back out of the blade\'s reach during the wind-up avoids it', () => {
-  const { b, world, player } = setup(C.slash.range - 1.5);
+  const { b, world, player } = setup(C.slash.range * 0.6);
   only(b, 'slash');
   run(world, 60 * 2, () => { if (b.state === 'slash' && b.stateT > 0.15 && player.pos.z === 0) player.pos.z = -8; b.cool.slash = b.state === 'slash' ? 99 : b.cool.slash; });
   assert.equal(player.hits.length, 0);
@@ -85,17 +88,17 @@ test('slash: stepping back out of the blade\'s reach during the wind-up avoids i
 
 test('overhead smash: a direct blow under the blade, then a shockwave along the ground - jumping clears the wave', () => {
   // standing right under it: hit by the blade
-  let { b, world, player } = setup(C.slash.range - 1.2);
+  let { b, world, player } = setup(C.slash.range * 0.6);
   only(b, 'smash');
   run(world, 60 * 2.2, () => { b.cool.smash = b.state === 'smash' || b.state === 'recover' ? 99 : b.cool.smash; });
   assert.ok(player.hits.some((h) => h.dmg === C.smash.damage), `blade hit (${player.hits.map((h) => h.dmg)})`);
   // further out: the shockwave reaches; a grounded player is hit, a jumping one is not
   for (const airborne of [false, true]) {
-    ({ b, world, player } = setup(C.slash.range - 0.5));
+    ({ b, world, player } = setup(C.slash.range * 0.85));
     only(b, 'smash');
     run(world, 60 * 0.2);                      // he starts the smash at this distance
     assert.equal(b.state, 'smash');
-    player.pos.z = -3.5;                        // backs off: outside the blade, inside the wave
+    player.pos.z = -C.smash.wave.radius * 0.45; // backs off: outside the blade, inside the wave
     run(world, 60 * 2, () => {
       const k = b.state === 'smash' ? b.stateT / SIDORAK_CLIPS.smash.duration : 1;
       if (airborne && k > SMASH_KEYS.impact - 0.08) { player.pos.y = 1.2; player.vel.y = 0; }
@@ -107,7 +110,7 @@ test('overhead smash: a direct blow under the blade, then a shockwave along the 
 });
 
 test('charge: from far away he rushes; a hit sends the player flying', () => {
-  const { b, world, player } = setup(18);
+  const { b, world, player } = setup(CHARGE_FROM);
   only(b, 'charge');
   const s = statesOf(world, 60 * 4);
   assert.ok(s.includes('chargeWindup') && s.includes('charge'), s.join('>'));
@@ -117,7 +120,7 @@ test('charge: from far away he rushes; a hit sends the player flying', () => {
 });
 
 test('charge: dodged, he overshoots and stumbles - open to punishment (more damage, heavy hits stagger)', () => {
-  const { b, world, player } = setup(18);
+  const { b, world, player } = setup(CHARGE_FROM);
   only(b, 'charge');
   // reacts 0.1 s into the rush and runs sideways at Toaku's speed
   const s = statesOf(world, 60 * 4, () => {
@@ -136,9 +139,10 @@ test('charge: dodged, he overshoots and stumbles - open to punishment (more dama
 });
 
 test('charge into a wall: he stops dead and stumbles', () => {
-  const { b, world, player } = setup(18);
+  const { b, world, player } = setup(CHARGE_FROM);
   only(b, 'charge');
-  world.map.resolve = (px, pz, nx, nz) => (nz < 12 ? [px, pz] : [nx, nz]); // a wall at z = 12
+  const wall = CHARGE_FROM * 0.6;
+  world.map.resolve = (px, pz, nx, nz) => (nz < wall ? [px, pz] : [nx, nz]); // a wall between them
   player.pos.x = 0;
   const s = statesOf(world, 60 * 4, () => b.state !== 'stumble');
   assert.equal(b.state, 'stumble', s.join('>'));

@@ -57,40 +57,47 @@ test('every clip keeps him on the ground at every moment (no floating, no sinkin
   }
 });
 
-test('he stands at his configured height, well above the playable fighters', () => {
+test('he stands at his configured height: as tall as Toaku, never taller', () => {
   const inst = posed('idle', 0);
   let hi = -Infinity; const v = new THREE.Vector3();
   inst.model.traverse((o) => { if (o.isSkinnedMesh) { const pa = o.geometry.attributes.position; for (let i = 0; i < pa.count; i++) { v.fromBufferAttribute(pa, i); o.applyBoneTransform(i, v); v.applyMatrix4(o.matrixWorld); hi = Math.max(hi, v.y); } } });
   assert.ok(Math.abs(hi - CONFIG.sidorak.height) < 0.05, `height ${hi.toFixed(2)} m`);
-  assert.ok(CONFIG.sidorak.height > CONFIG.toaku.height * 1.3 && CONFIG.sidorak.height > CONFIG.tahu.height * 1.3);
+  // Toaku is 3.6 m upright and 3.3 m in his fight stance (measured in game): Sidorak's stance is no taller
+  assert.ok(CONFIG.sidorak.height <= CONFIG.toaku.height * 0.92 && CONFIG.sidorak.height >= CONFIG.toaku.height * 0.88,
+    `${CONFIG.sidorak.height} m against Toaku's ${CONFIG.toaku.height} m`);
+  // and no clip ever stands him up taller than that (the point, the raised blade of the smash included)
+  for (const [name, def] of Object.entries(SIDORAK_CLIPS)) {
+    for (const t of [0, 0.25, 0.5, 0.75, 1]) assert.ok(wp(posed(name, def.loop ? t % 1 : t), 'headTop').y < CONFIG.sidorak.height, `${name} at ${t}: head above his height`);
+  }
 });
 
 test('intro gesture: the RIGHT claw is raised level and thrust at the player, the torso turns into it, then he returns to his stance', () => {
   const stance = posed('stagger', 0), peak = posed('point', (POINT_KEYS.thrust[1] + POINT_KEYS.hold) / 2), end = posed('point', 1);
+  const H = CONFIG.sidorak.height; // distances in units of his height
   const sh = wp(peak, 'shoulder_R'), claw = wp(peak, 'wrist_R');
-  assert.ok(claw.z - sh.z > 1.6, `claw thrust forward ${(claw.z - sh.z).toFixed(2)} m`);
-  assert.ok(Math.abs(claw.y - sh.y) < 0.9, `claw near shoulder height (${(claw.y - sh.y).toFixed(2)} m)`);
+  assert.ok(claw.z - sh.z > 0.3 * H, `claw thrust forward ${(claw.z - sh.z).toFixed(2)} m`);
+  assert.ok(Math.abs(claw.y - sh.y) < 0.17 * H, `claw near shoulder height (${(claw.y - sh.y).toFixed(2)} m)`);
   // from in front of the chest (stance) up to shoulder height and straight out
-  assert.ok(wp(peak, 'wrist_R').z - wp(stance, 'wrist_R').z > 0.4, 'the claw goes out toward the player');
-  assert.ok(wp(peak, 'wrist_R').y - wp(stance, 'wrist_R').y > 0.3, 'and up to shoulder height');
+  assert.ok(wp(peak, 'wrist_R').z - wp(stance, 'wrist_R').z > 0.075 * H, 'the claw goes out toward the player');
+  assert.ok(wp(peak, 'wrist_R').y - wp(stance, 'wrist_R').y > 0.055 * H, 'and up to shoulder height');
   // the left arm (Herding Blade) is not the one pointing
-  assert.ok(wp(peak, 'hand_L').z < claw.z - 1, 'the blade hand stays back');
+  assert.ok(wp(peak, 'hand_L').z < claw.z - 0.18 * H, 'the blade hand stays back');
   // torso turned into the gesture: right shoulder brought forward
-  assert.ok(wp(peak, 'shoulder_R').z > wp(stance, 'shoulder_R').z + 0.1, 'right shoulder leads');
-  for (const k of ['wrist_R', 'hand_L', 'headTop']) assert.ok(wp(end, k).distanceTo(wp(stance, k)) < 0.02, `${k} back in the stance`);
+  assert.ok(wp(peak, 'shoulder_R').z > wp(stance, 'shoulder_R').z + 0.018 * H, 'right shoulder leads');
+  for (const k of ['wrist_R', 'hand_L', 'headTop']) assert.ok(wp(end, k).distanceTo(wp(stance, k)) < 0.004 * H, `${k} back in the stance`);
 });
 
 test('every one-shot clip starts and ends in the combat stance; idle only sways around it (clean blends)', () => {
   const stance = posed('stagger', 0); // = STANCE exactly
   for (const t of [0, 0.25, 0.5, 0.75]) {
     const p = posed('idle', t);
-    for (const k of ['wrist_R', 'bladeTip', 'headTop']) assert.ok(wp(p, k).distanceTo(wp(stance, k)) < 0.6, `idle at ${t}: ${k} sways ${wp(p, k).distanceTo(wp(stance, k)).toFixed(2)} m`);
+    for (const k of ['wrist_R', 'bladeTip', 'headTop']) assert.ok(wp(p, k).distanceTo(wp(stance, k)) < 0.11 * CONFIG.sidorak.height, `idle at ${t}: ${k} sways ${wp(p, k).distanceTo(wp(stance, k)).toFixed(2)} m`);
   }
   for (const [name, def] of Object.entries(SIDORAK_CLIPS)) {
     if (def.loop || name === 'death' || name === 'chargeWindup') continue; // death stays down; the wind-up leads into the run
     for (const t of name === 'stumble' ? [1] : [0, 1]) {                    // a stumble starts from the charge
       const p = posed(name, t);
-      for (const k of ['wrist_R', 'bladeTip', 'headTop']) assert.ok(wp(p, k).distanceTo(wp(stance, k)) < 0.03, `${name} at ${t}: ${k} off the stance by ${wp(p, k).distanceTo(wp(stance, k)).toFixed(3)}`);
+      for (const k of ['wrist_R', 'bladeTip', 'headTop']) assert.ok(wp(p, k).distanceTo(wp(stance, k)) < 0.0056 * CONFIG.sidorak.height, `${name} at ${t}: ${k} off the stance by ${wp(p, k).distanceTo(wp(stance, k)).toFixed(3)}`);
     }
   }
 });
@@ -116,11 +123,11 @@ test('walking: a planted foot stays put while the body moves (no foot sliding)',
     bob = Math.max(bob, Math.abs(track[i].y - track[0].y));
   }
   assert.ok(frames > 30, `planted frames ${frames}`);
-  assert.ok(slide < 0.01, `planted foot slid ${slide.toFixed(3)} m in one frame (the body moves ${(cyc / N).toFixed(3)} m)`);
-  assert.ok(bob < 0.15, `heel roll lifts the ankle ${bob.toFixed(3)} m`);
+  assert.ok(slide < 0.0019 * CONFIG.sidorak.height, `planted foot slid ${slide.toFixed(3)} m in one frame (the body moves ${(cyc / N).toFixed(3)} m)`);
+  assert.ok(bob < 0.028 * CONFIG.sidorak.height, `heel roll lifts the ankle ${bob.toFixed(3)} m`);
   // and the swing foot really steps: it travels a full stride and lifts off the ground
   assert.ok(track[N].z - track[0].z > cyc * 0.95, 'one stride per cycle');
-  assert.ok(Math.max(...track.map((p) => p.y)) - track[0].y > 0.15, 'the foot lifts');
+  assert.ok(Math.max(...track.map((p) => p.y)) - track[0].y > 0.028 * CONFIG.sidorak.height, 'the foot lifts');
 });
 
 test('the fixture is the real skeleton: 36 joints, claw with three fingers on the right, blade on the left', () => {

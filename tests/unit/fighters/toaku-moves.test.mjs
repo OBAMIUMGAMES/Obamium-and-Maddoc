@@ -245,7 +245,7 @@ test('segmentDistance measures to the nearest point of the segment', () => {
 });
 
 test('a boss is far too heavy to grab: the grab whiffs and Sidorak is never swung', async () => {
-  // regression: the grab only checked alive/targetable/state, so Toaku would giant-swing a 5.4 m boss
+  // regression: the grab only checked alive/targetable/state, so Toaku would giant-swing the boss
   const { Sidorak } = await import('../../../src/js/sidorak.js');
   const { sidorakTemplate, testCfg } = await import('../sidorak/fixture.mjs');
   const { t, world } = setup();

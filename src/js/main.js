@@ -29,6 +29,7 @@ import { Bohrok, loadBohrokTemplate, bohrokConfig } from './bohrok.js';
 import { createBohrokElements } from './bohrokElements.js';
 import sidorakGlb from '../../assets/models/sidorak.glb';
 import rhotukaGlb from '../../assets/models/rhotuka.glb';
+import sidorakRunFast from '../../assets/models/sidorak-runfast.json'; // captured run for the charge (motion only)
 import { Sidorak, loadSidorakTemplate } from './sidorak.js';
 import { createSidorakFx, paintRhotuka } from './sidorakFx.js';
 import { BossEncounter } from './bossEncounter.js';
@@ -243,7 +244,7 @@ Promise.allSettled([
   loadCharacterTemplate(toakuGlb, cfg.toaku, { envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso }).then((t) => { toakuTpl = t; }),
   loadCharacterTemplate(tahuGlb, cfg.tahu, { envMap: makeEnv(maps.terraces.env), maxAnisotropy: aniso }).then((t) => { tahuTpl = t; }),
   ...Object.entries(BOHROK_MODELS).map(([kind, glb]) => loadBohrokTemplate(glb, bohrokConfig(cfg.bohrok, kind), { envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso }).then((t) => { bohrokTpl[kind] = t; })),
-  loadSidorakTemplate(sidorakGlb, cfg.sidorak, { envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso }).then((t) => { sidorakTpl = t; }),
+  loadSidorakTemplate(sidorakGlb, cfg.sidorak, { envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso, motions: { runFast: sidorakRunFast } }).then((t) => { sidorakTpl = t; }),
   loadRhotuka(rhotukaGlb).then((geo) => { bossFx = createSidorakFx(scene, cfg.sidorak, geo); }),
 ]).then((results) => {
   const names = ['Toaku', 'Super Tahu', ...Object.keys(BOHROK_MODELS), 'Sidorak', 'Rhotuka'];
@@ -347,7 +348,7 @@ function spawnBohrok(kind) {
 function spawnSidorak() {
   const p = G.player, map = G.map, c = cfg.sidorak;
   let at = null;
-  for (const d of [14, 12, 10, 8]) {
+  for (const d of c.spawnDist) {
     for (let k = 0; k < 16 && !at; k++) {
       const a = p.facing + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 8);
       const x = p.pos.x + Math.sin(a) * d, z = p.pos.z + Math.cos(a) * d;
@@ -359,7 +360,7 @@ function spawnSidorak() {
     }
     if (at) break;
   }
-  if (!at) at = map.spawnPoint(p.pos, 10, 14);
+  if (!at) at = map.spawnPoint(p.pos, c.spawnDist[c.spawnDist.length - 1], c.spawnDist[0]);
   const b = new Sidorak(c, sidorakTpl);
   b.pos.set(at.x, map.groundHeight(at.x, at.z), at.z);
   b.groundY = b.pos.y;
@@ -368,7 +369,8 @@ function spawnSidorak() {
   scene.add(b.root);
   G.enemies.push(b);
   G.bossRef = b;
-  fx.dust(b.pos, 24, 6, 2.2); fx.shockwave(b.pos, 7, 0xff5a3a, 0.55); world.shake(0.7); audio.slam(); audio.roar();
+  // he lands: dust and a ring sized to him
+  fx.dust(b.pos, 24, c.height * 1.2, c.height * 0.45); fx.shockwave(b.pos, c.height * 1.4, 0xff5a3a, 0.55); world.shake(0.6); audio.slam(); audio.roar();
   return b;
 }
 /** Clear the field for the boss: leftover enemies are scrapped, effects cleared. */
@@ -846,8 +848,8 @@ function stepGame(dt, inp) {
   // boss encounter: warning -> cinematic -> fight -> defeat (it may take the camera for a while)
   const camOverride = encounter && encounter.active ? encounter.update(dt, world) : null;
 
-  // camera: chase cam that rises over terrace walls instead of clipping into them; it pulls back
-  // during a boss fight so the 5.4 m boss stays in frame
+  // camera: chase cam that rises over terrace walls instead of clipping into them; it pulls back a
+  // little during a boss fight (his charge and projectiles cover ground)
   G.specialCam = Math.max(0, G.specialCam - dt);
   G.bossZoom += ((G.bossRef && G.bossRef.alive ? 1 : 0) - G.bossZoom) * Math.min(1, dt * 1.5);
   const zoom = (G.specialCam > 0 ? 0.72 : 1) * (1 + cfg.camera.bossPull * G.bossZoom);

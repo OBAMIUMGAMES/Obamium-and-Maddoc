@@ -18,15 +18,18 @@ const clamp01 = (t) => Math.max(0, Math.min(1, t));
 const lerp = (a, b, t) => a + (b - a) * t;
 
 /**
- * The intro camera at time t (s), relative to the boss: [angle from his facing (+ = his left),
- * distance, height, look height]. Continuous everywhere (no snaps); see INTRO_SHOTS.
+ * The intro camera at time t (s), relative to the boss: angle from his facing (+ = his left), then
+ * distance, camera height and look height in units of HIS height (the shots frame him at any size).
+ * Continuous everywhere (no snaps).
  */
 export const INTRO_SHOTS = [
-  { t: 1.0, a: 0.9, r: 12.5, h: 3.6, look: 3.2 },   // arrival: front-left three-quarter (the blade side)
-  { t: 4.0, a: -0.9, r: 10.0, h: 2.6, look: 3.4 },  // orbit across his front to the claw side while he points
-  { t: 5.0, a: -0.35, r: 8.5, h: 0.7, look: 4.4 },  // low angle, looking up at him: the title card
-  { t: 6.0, a: -0.25, r: 8.2, h: 0.6, look: 4.5 },
+  { t: 1.0, a: 0.9, r: 2.3, h: 0.67, look: 0.59 },    // arrival: front-left three-quarter (the blade side)
+  { t: 4.0, a: -0.9, r: 1.85, h: 0.48, look: 0.63 },  // orbit across his front to the claw side while he points
+  { t: 5.0, a: -0.35, r: 1.57, h: 0.13, look: 0.81 }, // low angle, looking up at him: the title card
+  { t: 6.0, a: -0.25, r: 1.52, h: 0.11, look: 0.83 },
 ];
+/** Defeat shot, in units of his height: side-on distances to try, camera and look heights, the fallback from above. */
+export const DEFEAT_SHOT = { R: [2.05, 1.5], h: 0.78, look: 0.19, high: 2.4, highR: 0.56 };
 
 /** Shot parameters at intro time t (between the keys, eased). */
 export function introShot(t) {
@@ -163,11 +166,11 @@ export class BossEncounter {
 
   /** Orbit / low-angle shot around the boss at intro time t. */
   introCamera(t, world, dt) {
-    const b = this.boss, s = introShot(t);
+    const b = this.boss, s = introShot(t), H = b.height;
     const a = b.facing + s.a;
-    const x = b.pos.x + Math.sin(a) * s.r, z = b.pos.z + Math.cos(a) * s.r;
-    const y = this.clearLift(world, b.pos, x, z, b.pos.y + s.h, dt);
-    return { pos: { x, y, z }, look: { x: b.pos.x, y: b.pos.y + s.look, z: b.pos.z } };
+    const x = b.pos.x + Math.sin(a) * s.r * H, z = b.pos.z + Math.cos(a) * s.r * H;
+    const y = this.clearLift(world, b.pos, x, z, b.pos.y + s.h * H, dt);
+    return { pos: { x, y, z }, look: { x: b.pos.x, y: b.pos.y + s.look * H, z: b.pos.z } };
   }
 
   /**
@@ -175,10 +178,10 @@ export class BossEncounter {
    * the camera takes a side-on spot on his own level when there is one.
    */
   defeatSpot(world) {
-    const b = this.boss, f = b.facing, back = this.cfg.fallBack, map = world.map;
+    const b = this.boss, f = b.facing, back = this.cfg.fallBack, map = world.map, H = b.height;
     const cx = b.pos.x - Math.sin(f) * back, cz = b.pos.z - Math.cos(f) * back;
     for (const a of [1.35, -1.35, 0.8, -0.8, 2.2, -2.2, Math.PI, 0]) {
-      for (const R of [11, 8]) {
+      for (const R of DEFEAT_SHOT.R.map((r) => r * H)) {
         const x = cx + Math.sin(f + a) * R, z = cz + Math.cos(f + a) * R;
         const y = map.groundHeight(x, z);
         // a spot someone could stand on (inside the arena, not in a wall), on his level, nothing higher in between
@@ -188,14 +191,14 @@ export class BossEncounter {
         return { cx, cz, angle: f + a, R, high: false };
       }
     }
-    return { cx, cz, angle: f + 1.35, R: 3, high: true }; // nowhere at his side: look down on him from above
+    return { cx, cz, angle: f + 1.35, R: DEFEAT_SHOT.highR * H, high: true }; // nowhere at his side: look down on him from above
   }
 
   /** Side-on shot of the fallen boss (or from above when there is no room beside him). */
   defeatCamera(world, dt) {
-    const d = this.defeatAt, b = this.boss;
+    const d = this.defeatAt, b = this.boss, H = b.height;
     const x = d.cx + Math.sin(d.angle) * d.R, z = d.cz + Math.cos(d.angle) * d.R;
-    const y = d.high ? b.pos.y + 13 : this.clearLift(world, { x: d.cx, y: b.pos.y, z: d.cz }, x, z, b.pos.y + 4.2, dt);
-    return { pos: { x, y, z }, look: { x: d.cx, y: b.pos.y + 1.0, z: d.cz } };
+    const y = d.high ? b.pos.y + DEFEAT_SHOT.high * H : this.clearLift(world, { x: d.cx, y: b.pos.y, z: d.cz }, x, z, b.pos.y + DEFEAT_SHOT.h * H, dt);
+    return { pos: { x, y, z }, look: { x: d.cx, y: b.pos.y + DEFEAT_SHOT.look * H, z: d.cz } };
   }
 }

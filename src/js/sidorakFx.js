@@ -159,7 +159,7 @@ export function createSidorakFx(scene, cfg, rhotukaGeo) {
     const c = cfg.smash.wave, y = world.map.groundHeight(x, z);
     waves.push({ x, y, z, t: 0, r: 0, hit: false });
     world.fx.shockwave({ x, y, z }, c.radius, 0xffb070, c.time);
-    world.fx.dust({ x, y, z }, 16, 5, 1.4);
+    world.fx.dust({ x, y, z }, 16, c.radius * 0.62, c.radius * 0.18);
   }
   function updateWave(w, dt, world) {
     const c = cfg.smash.wave, pl = world.player;
@@ -179,7 +179,7 @@ export function createSidorakFx(scene, cfg, rhotukaGeo) {
   /** Show / move / hide the blade's charge glow (k: 0..1 charge). */
   function chargeAt(pos, k) {
     chargeGlow.visible = k > 0;
-    if (k > 0) { chargeGlow.position.copy(pos); chargeGlow.scale.setScalar(0.15 + 0.55 * k * (1 + 0.15 * Math.sin(performance.now() * 0.05))); }
+    if (k > 0) { chargeGlow.position.copy(pos); chargeGlow.scale.setScalar(cfg.blast.radius * (0.25 + 0.85 * k * (1 + 0.15 * Math.sin(performance.now() * 0.05)))); }
   }
 
   function update(dt, world) {

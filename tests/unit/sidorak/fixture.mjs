@@ -6,6 +6,9 @@ import { makeSidorakTemplate } from '../../../src/js/sidorak.js';
 import { createSidorakFx } from '../../../src/js/sidorakFx.js';
 import { Fighter } from '../../../src/js/fighters.js';
 import { CONFIG } from '../../../src/js/config.js';
+import runFast from '../../../assets/models/sidorak-runfast.json' with { type: 'json' };
+
+export { runFast };
 
 /** [bone, parent, world rest position] - Sidorak faces +Z, his right side is -X. */
 export const SIDORAK_JOINTS = [
@@ -62,11 +65,16 @@ export function syntheticSidorakScene() {
 /** Sidorak's config with a deterministic rng (the attack choice uses it). */
 export const testCfg = (over = {}) => ({ ...CONFIG.sidorak, rng: () => 0.1, ...over });
 
-let _tpl = null;
-/** Template baked once from the synthetic scene and shared, like in the game. */
+let _tpl = null, _mocapTpl = null;
+/** Template baked once from the synthetic scene and shared, like in the game (procedural clips only). */
 export function sidorakTemplate() {
   if (!_tpl) _tpl = makeSidorakTemplate(syntheticSidorakScene(), CONFIG.sidorak);
   return _tpl;
+}
+/** The same, with the captured run (assets/models/sidorak-runfast.json) retargeted onto it, as in the game. */
+export function sidorakMocapTemplate() {
+  if (!_mocapTpl) _mocapTpl = makeSidorakTemplate(syntheticSidorakScene(), CONFIG.sidorak, { motions: { runFast } });
+  return _mocapTpl;
 }
 
 /** World stand-in: flat ground, straight routing, the real boss effects (projectiles, shockwave). */
