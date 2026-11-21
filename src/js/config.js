@@ -254,6 +254,48 @@ export const CONFIG = {
     }])),
   },
 
+  /**
+   * SIDORAK - King of the Visorak, the first boss (src/js/sidorak.js). Model: assets/models/sidorak.glb
+   * (Meshy Smart Rig as delivered; tools/build-sidorak.mjs only recompresses it).
+   */
+  sidorak: {
+    height: 5.4,              // 1.5 x Toaku (3.6 m): towers over the playable fighters
+    radius: 1.25,
+    maxHp: 1400,              // ~23 Bohrok; about a minute of fighting for Toaku, a little more for Tahu
+    material: { metalness: 0.45, roughness: 0.55, envMapIntensity: 0.7 },
+    walkSpeed: 2.6,           // heavy, deliberate (Toaku runs 6.2): he closes distance with the charge
+    turnRate: 1.8,            // rad/s - slow to turn: circling him works
+    attackTurnRate: 2.6,      // tracking during a wind-up, until the commit point
+    faceToAttack: 0.45,       // only starts an attack when roughly facing the player (rad)
+    blendRate: 9,             // clip cross-fade speed: heavy transitions
+    maxDamagePerHit: 120,     // one hit is never more than this (INFERNO SLAM's 999: a big chunk, not a kill)
+    vulnerableMul: 1.5,       // damage taken while he is down after a missed charge
+    bigHit: 30,               // the boss bar flashes for hits this big
+    openingGap: 1.0, attackGap: 0.55, // breathing room before the first attack and between attacks
+    sinkTime: 2.5,            // the fallen body sinks away when the next wave starts
+    firstCooldowns: { slash: 0, smash: 3, charge: 2, blast: 1.5, rhotuka: 5 },
+    // weak hits never interrupt him; heavy hits in an opening, or this much damage in quick succession, stagger
+    poise: { max: 110, decay: 25, decayDelay: 1.2, heavyMul: 1.6, heavyKnock: 6, heavyDamage: 25, immune: 5 },
+    recover: { slash: 0.75, smash: 1.2, charge: 0.9, blast: 0.7, rhotuka: 0.8, stumble: 0.6 }, // the windows to hit back (s)
+    slash: { range: 4.8, damage: 32, knock: 8, bladeRadius: 0.5, cooldown: 2.2 },          // wind-up 0.48 s, swing 0.14 s
+    smash: { chance: 0.4, damage: 44, knock: 9, radius: 2.2, cooldown: 6,                   // blade held overhead 0.2 s before the slam
+      wave: { damage: 18, radius: 8, time: 0.55, band: 1.2 } },                              // ground shockwave: jump it
+    charge: { minRange: 10, maxDist: 28, chance: 0.75, speed: 14, homing: 0.25, damage: 36, knock: 16, lift: 7, overshoot: 3, cooldown: 7 },
+    blast: { minRange: 6, maxRange: 30, chance: 0.6, speed: 17, damage: 22, radius: 0.55, cooldown: 4.5 },
+    rhotuka: { minRange: 6, maxRange: 26, chance: 0.6, speed: 15, damage: 15, radius: 0.75, immobilize: 1.1, muzzle: 1.0, cooldown: 9 },
+    // encounter timings (s): warning, cinematic (point at 1.1 s, title at 4 s), camera blend back, defeat focus
+    intro: { warning: 2.6, cinematic: 6.0, point: 1.1, title: 4.0, blendBack: 0.9, defeat: 5.0, barFade: 3.0, fallBack: 2.0 },
+    // logical joint -> bone, from inspecting the rig (faces +Z; his right is -X). The right arm ends in
+    // the claw (wrist + three finger chains), the left in the Herding Blade (hand + blade tip).
+    joints: {
+      root: 'Bone_000', pelvis: 'Bone_001', spine: 'Bone_003', chest: 'Bone_002', neck: 'Bone_014', head: 'Bone_013', headTop: 'Bone_012',
+      shoulder_R: 'Bone_019', elbow_R: 'Bone_018', wrist_R: 'Bone_015',
+      shoulder_L: 'Bone_024', elbow_L: 'Bone_023', wrist_L: 'Bone_022', hand_L: 'Bone_021', bladeTip: 'Bone_020',
+      hip_R: 'Bone_007', knee_R: 'Bone_006', ankle_R: 'Bone_005', toe_R: 'Bone_004',
+      hip_L: 'Bone_011', knee_L: 'Bone_010', ankle_L: 'Bone_009', toe_L: 'Bone_008',
+    },
+  },
+
   waves: {
     // every standard enemy is a Bohrok (src/js/combat.js waveComposition)
     base: 3,                    // wave 1: three Bohrok
@@ -267,7 +309,7 @@ export const CONFIG = {
     healBetweenWaves: 60,
   },
 
-  score: { bohrok: 175, tonua: 1000, comboBonus: 10 },
+  score: { bohrok: 175, tonua: 1000, sidorak: 5000, comboBonus: 10 },
 
   feel: {
     hitStop: 0.05,

@@ -11,6 +11,7 @@
  * mesh piece is bound rigidly to one bone, so nothing ever stretches.
  */
 import * as THREE from 'three';
+import { measureJoint, localRot, measureLeg, solveLeg } from './poseRig.js';
 
 /** Joints the animation system writes (names from tools/build-bohrok.mjs). */
 export const DRIVEN = ['root', 'spine', 'neck', 'arm_R', 'shield_R', 'arm_L', 'shield_L', 'thigh_R', 'shin_R', 'foot_R', 'thigh_L', 'shin_L', 'foot_L'];
@@ -69,36 +70,11 @@ export function measureRig(model) {
   const missing = REQUIRED.filter((n) => !bones[n]);
   if (missing.length) throw new Error(`Bohrok rig is missing joints: ${missing.join(', ')} (build the model with tools/build-bohrok.mjs)`);
   const j = {};
-  for (const [n, b] of Object.entries(bones)) {
-    const w = b.matrixWorld.clone().premultiply(toModel);
-    const pw = b.parent.matrixWorld.clone().premultiply(toModel);
-    j[n] = {
-      name: n,
-      q0: b.quaternion.clone(), p0: b.position.clone(),
-      parentQ: new THREE.Quaternion().setFromRotationMatrix(pw), // parent's rest rotation in model space
-      parentM: pw,
-      pos: new THREE.Vector3().setFromMatrixPosition(w),          // rest pivot in model space
-    };
-  }
+  for (const [n, b] of Object.entries(bones)) j[n] = measureJoint(b, toModel);
   const box = new THREE.Box3().setFromObject(model);
   const legs = {};
-  for (const S of ['R', 'L']) {
-    const H = j['thigh_' + S].pos, K = j['shin_' + S].pos, A = j['foot_' + S].pos;
-    legs[S] = {
-      H, K, A,
-      L1: Math.hypot(K.y - H.y, K.z - H.z), L2: Math.hypot(A.y - K.y, A.z - K.z),
-      th1: Math.atan2(K.z - H.z, H.y - K.y), th2: Math.atan2(A.z - K.z, K.y - A.y), // angle from straight down, + toward +Z
-    };
-  }
+  for (const S of ['R', 'L']) legs[S] = measureLeg(j['thigh_' + S].pos, j['shin_' + S].pos, j['foot_' + S].pos);
   return { bones, j, legs, box, height: box.max.y - box.min.y, ground: box.min.y };
-}
-
-/** Model-space rotation (character frame) -> bone local rotation, compounding through the parents. */
-function localRot(J, euler, out) {
-  _q.setFromEuler(_e.set(euler[0], euler[1], euler[2], 'YXZ'));
-  // L = (P0^-1 R P0) L0 : rotate about the pivot in the character frame as seen through the parent's rest frame
-  out.copy(J.parentQ).invert().multiply(_q).multiply(J.parentQ).multiply(J.q0);
-  return out;
 }
 
 /**
@@ -136,17 +112,8 @@ export function solvePose(rig, pose) {
     const tg = _v.set(L.A.x, L.A.y + f[1], L.A.z + f[0]), tb = tg.clone().applyMatrix4(rootM);
     const Az = tg.z + (tb.z - tg.z) * pose.feetRel, Ay = tg.y + (tb.y - tg.y) * pose.feetRel;
     const footPitch = f[2] - r.pitch * pose.feetRel; // tucked feet tilt with the body
-    let dz = Az - H.z, dy = H.y - Ay;
-    let D = Math.hypot(dz, dy);
-    const Dmax = L.L1 + L.L2 - 1e-4, Dmin = Math.abs(L.L1 - L.L2) + 1e-3;
-    if (D > Dmax) { dz *= Dmax / D; dy *= Dmax / D; D = Dmax; } else if (D < Dmin) { const s = Dmin / (D || 1); dz *= s; dy *= s; D = Dmin; }
-    const phi = Math.atan2(dz, dy);
-    const alpha = Math.acos(Math.min(1, Math.max(-1, (L.L1 * L.L1 + D * D - L.L2 * L.L2) / (2 * L.L1 * D))));
-    const th1 = phi + alpha; // knee bends forward
-    const Kz = H.z + Math.sin(th1) * L.L1, Ky = H.y - Math.cos(th1) * L.L1;
-    const th2 = Math.atan2(H.z + dz - Kz, Ky - (H.y - dy));
-    // angles from straight down toward +Z are rotations by -angle about X
-    const w1 = -(th1 - L.th1), w2 = -(th2 - L.th2), w3 = -footPitch;
+    const { w1, w2 } = solveLeg(L, H, Az, Ay);
+    const w3 = -footPitch;
     const spread = (S === 'R' ? 1 : -1) * pose.footSpread;
     out['thigh_' + S] = { q: localRot(J['thigh_' + S], [w1 - r.pitch, 0, spread], new THREE.Quaternion()) };
     out['shin_' + S] = { q: localRot(J['shin_' + S], [w2 - w1, 0, 0], new THREE.Quaternion()) };
