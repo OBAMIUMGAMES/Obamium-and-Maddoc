@@ -10,7 +10,7 @@ import { createFx } from './fx.js';
 import { createFireFx } from './fireFx.js';
 import { createAudio } from './audio.js';
 import { createInput } from './input.js';
-import { ToakuClassic, Drone, Tonua } from './fighters.js';
+import { ToakuClassic, Tonua } from './fighters.js';
 import { Toaku } from './toaku.js';
 import { SuperTahu } from './tahu.js';
 import { waveComposition, killScore } from './combat.js';
@@ -26,6 +26,7 @@ import pahrakGlb from '../../assets/models/bohrok/pahrak.glb';
 import nuhvokGlb from '../../assets/models/bohrok/nuhvok.glb';
 import kohrakGlb from '../../assets/models/bohrok/kohrak.glb';
 import { Bohrok, loadBohrokTemplate, bohrokConfig } from './bohrok.js';
+import { createBohrokElements } from './bohrokElements.js';
 
 const $ = (s) => document.querySelector(s);
 const cfg = CONFIG;
@@ -55,6 +56,7 @@ const maps = { desert: buildArena(cfg.arena), terraces: buildTerraces() };
 for (const m of Object.values(maps)) scene.add(m.group);
 const fx = createFx(scene, camera, $('#numbers'));
 const fire = createFireFx(scene, fx);
+const elements = createBohrokElements(scene, cfg.bohrok.elements); // Bohrok specials (pooled)
 const audio = createAudio();
 const input = createInput(document.body);
 
@@ -111,6 +113,7 @@ const world = {
   cfg,
   fx,
   audio,
+  elements,
   get map() { return G.map; },
   get player() { return G.player; },
   get enemies() { return G.enemies; },
@@ -179,6 +182,8 @@ const world = {
       fire.erupt({ x: s.x, y: s.y, z: s.z, delay: 0.18 + d / S.waveSpeed, radius: 1 + Math.random() * 0.45, height: 9 + Math.random() * 5 });
     }
   },
+  /** Kohrak's ice: frost around the screen edge while the player is slowed. */
+  onFrozen(on) { $('#frost').classList.toggle('on', on); },
   onPlayerHurt() {
     $('#hurt').classList.remove('go'); void $('#hurt').offsetWidth; $('#hurt').classList.add('go');
     if (navigator.vibrate) navigator.vibrate(30);
@@ -198,7 +203,7 @@ function onKill(e) {
     world.hitStop(0.25);
     $('#bossbar').classList.remove('show');
   } else {
-    G.score += killScore(cfg.score[e.kind] ?? (e.family === 'bohrok' ? cfg.score.bohrok : cfg.score.drone), p.combo, cfg.score.comboBonus);
+    G.score += killScore(cfg.score[e.kind] ?? cfg.score.bohrok, p.combo, cfg.score.comboBonus);
   }
 }
 
@@ -247,7 +252,7 @@ function createFighter(id) {
 function warmShaders() {
   fire.prewarm();
   const start = G.map.id;
-  const temps = [...[0, 1, 2].map((v) => new Drone(cfg.drone, v)), ...Object.entries(bohrokTpl).map(([kind, tpl]) => new Bohrok(bohrokConfig(cfg.bohrok, kind), tpl))];
+  const temps = Object.entries(bohrokTpl).map(([kind, tpl]) => new Bohrok(bohrokConfig(cfg.bohrok, kind), tpl));
   for (const d of temps) { d.root.position.set(0, -50, 0); scene.add(d.root); }
   for (const id of Object.keys(maps)) {
     setMap(id);
@@ -283,18 +288,11 @@ function warmShaders() {
 }
 
 // ---------- spawning ----------
-function spawnDrone() {
-  const d = new Drone(cfg.drone, Math.floor(Math.random() * 3));
-  const s = G.map.spawnPoint(G.player.pos);
-  d.pos.set(s.x, G.map.groundHeight(s.x, s.z) - 1.5, s.z);
-  scene.add(d.root);
-  G.enemies.push(d);
-}
-/** A Bohrok of the given type bursts out of the ground (falls back to a Scrapbot if its model failed). */
+/** A Bohrok of the given type bursts out of the ground (another type if its model failed to load). */
 function spawnBohrok(kind) {
-  const tpl = bohrokTpl[kind];
-  if (!tpl) { spawnDrone(); return; }
-  const b = new Bohrok(bohrokConfig(cfg.bohrok, kind), tpl);
+  const tpl = bohrokTpl[kind] || Object.values(bohrokTpl)[0];
+  if (!tpl) return;
+  const b = new Bohrok(bohrokConfig(cfg.bohrok, tpl === bohrokTpl[kind] ? kind : Object.keys(bohrokTpl)[0]), tpl);
   const s = G.map.spawnPoint(G.player.pos);
   b.pos.set(s.x, G.map.groundHeight(s.x, s.z), s.z);
   b.sync();
@@ -318,9 +316,7 @@ function startWave() {
   const comp = waveComposition(G.wave, cfg.waves);
   G.toSpawn = [];
   if (comp.tonua) G.toSpawn.push('tonua');
-  for (let i = 0; i < comp.drones; i++) G.toSpawn.push('drone');
-  // Bohrok spread through the wave rather than arriving in a clump
-  comp.bohrok.forEach((kind, i) => G.toSpawn.splice(Math.min(G.toSpawn.length, 2 + i * 3), 0, kind));
+  G.toSpawn.push(...comp.bohrok);
   G.spawnT = 0.4;
   G.waveActive = true;
   banner(`WAVE ${pad2(G.wave)}`, 'wave');
@@ -393,6 +389,8 @@ function clearWorld() {
   G.player = null;
   fx.clear();
   fire.clear();
+  elements.clear();
+  $('#frost').classList.remove('on');
 }
 function newGame(id = G.charId) {
   if (!assetsReady) return;
@@ -708,7 +706,7 @@ function stepGame(dt, inp) {
       const alive = G.enemies.filter((e) => e.alive).length;
       if (G.toSpawn.length && G.spawnT <= 0 && alive < cfg.waves.maxAlive) {
         const kind = G.toSpawn.shift();
-        if (kind === 'tonua') spawnTonua(); else if (kind === 'drone') spawnDrone(); else spawnBohrok(kind);
+        if (kind === 'tonua') spawnTonua(); else spawnBohrok(kind);
         G.spawnT = cfg.waves.spawnInterval * (kind === 'tonua' ? 2 : 1);
       }
       if (!G.toSpawn.length && alive === 0) {
@@ -755,6 +753,7 @@ function stepGame(dt, inp) {
   G.map.update(dt, p.pos);
   fx.update(dt);
   fire.update(dt);
+  elements.update(dt, world);
   updateHud(dt);
 }
 
@@ -774,7 +773,7 @@ frame();
 
 // ---------- automated smoke tests / animation capture ----------
 window.__game = {
-  G, world, CONFIG, ROSTER, spawnDrone, spawnTonua, spawnBohrok, newGame, showSelect, select, fire,
+  G, world, CONFIG, ROSTER, spawnTonua, spawnBohrok, elements, newGame, showSelect, select, fire,
   get bohrokTemplates() { return bohrokTpl; },
   manual: false,
   get ready() { return assetsReady; },

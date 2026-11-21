@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { Toaku, segmentDistance } from '../../../src/js/toaku.js';
-import { Drone } from '../../../src/js/fighters.js';
+import { Bohrok, bohrokConfig } from '../../../src/js/bohrok.js';
+import { syntheticTemplate } from '../bohrok/fixture.mjs';
 import { sampleRoot } from '../../../src/js/clipUtils.js';
 import { CONFIG } from '../../../src/js/config.js';
 
@@ -46,10 +47,11 @@ function makeWorld(player) {
   return world;
 }
 
-/** A drone standing still (stunned) at (x, z) and ready to be hit or grabbed. */
-function standingDrone(x, z) {
-  const d = new Drone(CONFIG.drone, 0);
+/** A Bohrok standing still (stunned, on its legs) at (x, z) and ready to be hit or grabbed. */
+function standingBohrok(x, z) {
+  const d = new Bohrok(bohrokConfig(CONFIG.bohrok, 'lehvak'), syntheticTemplate());
   d.pos.set(x, 0, z);
+  d.closed = 0; d.weights.ball = 0; d.weights.idle = 1;
   d.setState('hurt');
   d.stun = 99;
   d.targetable = true;
@@ -99,7 +101,7 @@ test('the rising flying kick hits each enemy once and carries Toaku forward by i
 
 test('grab: catches the enemy in front, holds it through the giant swing, throws it along his facing', () => {
   const { t, world } = setup();
-  const d = standingDrone(0, 2.6);
+  const d = standingBohrok(0, 2.6);
   world.enemies.push(d);
   run(t, world, 1, { grab: true });
   assert.equal(t.state, 'grab');
@@ -119,7 +121,7 @@ test('grab: catches the enemy in front, holds it through the giant swing, throws
   assert.ok(d.vel.z > C.grab.throwSpeed * 0.9 && Math.abs(d.vel.x) < 0.5, `thrown with ${d.vel.toArray().map((v) => v.toFixed(1))}`);
   run(t, world, 90);
   assert.ok(d.pos.z > 10, `flew ${d.pos.z.toFixed(1)} m`);
-  assert.ok(!d.alive, 'grab + crash landing destroys a drone');
+  assert.ok(!d.alive || d.maxHp - d.hp >= C.grab.landDamage, `the crash landing hurt it (${d.hp}/${d.maxHp})`);
   assert.equal(t.state, 'idle');
 });
 
@@ -127,7 +129,7 @@ test('after the throw the grab plays out to its end instead of exiting as a whif
   // regression: once the enemy left his hands the move thought it was still reaching, found
   // nothing grabbable, flagged a miss and quit on the spot
   const { t, world } = setup();
-  world.enemies.push(standingDrone(0, 2.6));
+  world.enemies.push(standingBohrok(0, 2.6));
   run(t, world, 1, { grab: true });
   const toRelease = Math.ceil(C.grab.releaseAt / C.grab.speed / dt);
   run(t, world, toRelease);
@@ -141,8 +143,8 @@ test('after the throw the grab plays out to its end instead of exiting as a whif
 
 test('the thrown enemy smashes into another enemy in its flight path', () => {
   const { t, world } = setup();
-  const thrown = standingDrone(0, 2.6);
-  const victim = standingDrone(0.4, 9);
+  const thrown = standingBohrok(0, 2.6);
+  const victim = standingBohrok(0.4, 9);
   world.enemies.push(thrown, victim);
   run(t, world, 1, { grab: true });
   run(t, world, Math.ceil(C.grab.releaseAt / C.grab.speed / dt) + 30);
@@ -153,8 +155,8 @@ test('the thrown enemy smashes into another enemy in its flight path', () => {
 
 test('the swung body knocks away an enemy it sweeps through', () => {
   const { t, world } = setup();
-  const held = standingDrone(0, 2.0);
-  const bystander = standingDrone(0.9, 2.4); // beside the held body's path, not the grab target
+  const held = standingBohrok(0, 2.0);
+  const bystander = standingBohrok(0.9, 2.4); // beside the held body's path, not the grab target
   world.enemies.push(held, bystander);
   run(t, world, 1, { grab: true });
   run(t, world, Math.ceil((C.grab.catchAt + 0.2) / C.grab.speed / dt));
@@ -166,7 +168,7 @@ test('the swung body knocks away an enemy it sweeps through', () => {
 
 test('a grab with nothing in reach whiffs and recovers quickly', () => {
   const { t, world } = setup();
-  world.enemies.push(standingDrone(0, 9)); // too far
+  world.enemies.push(standingBohrok(0, 9)); // too far
   run(t, world, 1, { grab: true });
   run(t, world, Math.ceil(C.grab.whiffEnd / C.grab.speed / dt) + 2);
   assert.equal(t.state, 'idle');
@@ -176,7 +178,7 @@ test('a grab with nothing in reach whiffs and recovers quickly', () => {
 
 test('if Toaku is knocked out mid-swing the enemy is let go', () => {
   const { t, world } = setup();
-  const d = standingDrone(0, 2.6);
+  const d = standingBohrok(0, 2.6);
   world.enemies.push(d);
   run(t, world, 1, { grab: true });
   run(t, world, Math.ceil(C.grab.catchAt / C.grab.speed / dt) + 3);

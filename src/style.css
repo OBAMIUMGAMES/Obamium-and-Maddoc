@@ -215,6 +215,9 @@ body[data-fighter="tahu"] #btn-jump { --btn-rgb: 255, 90, 60; }
 #flash.fire { background: radial-gradient(circle, rgba(255,220,150,.85), rgba(255,90,0,.35) 45%, rgba(255,60,0,0) 75%); }
 #hurt { position: fixed; inset: 0; box-shadow: inset 0 0 120px rgba(255,40,20,.85); opacity: 0; pointer-events: none; z-index: 2; }
 #hurt.go { animation: flash .35s ease-out; }
+/* Kohrak's ice: frosted screen edges while the player is slowed */
+#frost { position: fixed; inset: 0; box-shadow: inset 0 0 90px 10px rgba(170,230,255,.75), inset 0 0 22px 2px rgba(255,255,255,.7); opacity: 0; pointer-events: none; z-index: 2; transition: opacity .25s; }
+#frost.on { opacity: 1; }
 @keyframes flash { 0% { opacity: 1; } 100% { opacity: 0; } }
 
 /* ======================= SCREENS ======================= */

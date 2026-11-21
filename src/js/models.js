@@ -31,7 +31,7 @@ const C = {
   gun: 0x4a4c52, gunDark: 0x2c2d31, silver: 0xa9adb3, cream: 0xe2d6ae, black: 0x121214,
   green: 0x2fd14a, greenGlow: 0x39ff6a,
   orange: 0xe8742a, tGray: 0x8a8d90, tBlack: 0x1b1b1e, dome: 0x4aa6ff, tan: 0xb59a6a,
-  rust: 0x8a5a3c, droneGray: 0x6f7378, red: 0xff2a1a,
+  red: 0xff2a1a,
 };
 
 /** Adds a mesh to parent with position/rotation/scale shorthand. */
@@ -255,46 +255,4 @@ export function buildTonua() {
     j['hip' + S] = hp; j['kn' + S] = kn;
   }
   return { root, j, flames: [], eyes: [], fistL: j.fistL, fistR: j.fistR };
-}
-
-/**
- * Basic robotic grunt ("Scrapbot"): boxy rusty body, red visor, claw arms.
- * @param {number} variant 0..2 changes tint
- */
-export function buildDrone(variant = 0) {
-  const tints = [C.droneGray, C.rust, 0x5a6470];
-  const body = mat(tints[variant % 3], { metal: 0.55, rough: 0.5, flat: true });
-  const dark = mat(0x2a2b2e, { metal: 0.5, rough: 0.6 });
-  const visor = new THREE.MeshStandardMaterial({ color: 0x400000, emissive: C.red, emissiveIntensity: 1.2 });
-
-  const root = new THREE.Group();
-  const j = {};
-  j.hips = joint(root, 0, 0.62, 0);
-  add(j.hips, box(0.4, 0.16, 0.3), dark);
-  j.spine = joint(j.hips, 0, 0.05, 0);
-  add(j.spine, box(0.62, 0.55, 0.45), body, [0, 0.32, 0]);
-  add(j.spine, box(0.5, 0.12, 0.5), dark, [0, 0.62, -0.02]);
-  add(j.spine, cyl(0.02, 0.02, 0.3, 4), dark, [0.18, 0.8, -0.1]);
-  j.head = joint(j.spine, 0, 0.72, 0.05);
-  add(j.head, box(0.36, 0.24, 0.32), body, [0, 0.08, 0]);
-  const v = add(j.head, box(0.3, 0.07, 0.04), visor, [0, 0.1, 0.17]);
-  for (const side of [-1, 1]) {
-    const S = side < 0 ? 'L' : 'R';
-    const sh = joint(j.spine, side * 0.38, 0.5, 0);
-    add(sh, sph(0.09, 6, 4), dark);
-    add(sh, box(0.12, 0.34, 0.12), body, [0, -0.18, 0]);
-    const el = joint(sh, 0, -0.36, 0);
-    add(el, box(0.1, 0.3, 0.1), dark, [0, -0.15, 0]);
-    const fist = joint(el, 0, -0.32, 0);
-    add(fist, box(0.05, 0.16, 0.12), body, [-0.04, -0.06, 0.03], [0, 0, 0.3]);
-    add(fist, box(0.05, 0.16, 0.12), body, [0.04, -0.06, 0.03], [0, 0, -0.3]);
-    j['sh' + S] = sh; j['el' + S] = el; j['fist' + S] = fist;
-    const hp = joint(j.hips, side * 0.15, -0.05, 0);
-    add(hp, box(0.12, 0.28, 0.12), dark, [0, -0.14, 0]);
-    const kn = joint(hp, 0, -0.28, 0);
-    add(kn, box(0.15, 0.26, 0.15), body, [0, -0.12, 0]);
-    add(kn, box(0.18, 0.06, 0.28), dark, [0, -0.27, 0.04]);
-    j['hip' + S] = hp; j['kn' + S] = kn;
-  }
-  return { root, j, flames: [], eyes: [v], visorMat: visor, fistL: j.fistL, fistR: j.fistR };
 }

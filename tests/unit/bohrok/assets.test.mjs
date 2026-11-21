@@ -47,11 +47,11 @@ test('every Bohrok source rig maps all driven joints, on the correct side', asyn
   }
 });
 
-test('all Bohrok types share the same core stats and outlast a Scrapbot', () => {
+test('all Bohrok types share the same core stats, and each has its own element', () => {
   const ref = CONFIG.bohrok.types.lehvak;
   for (const k of kinds) {
     const t = CONFIG.bohrok.types[k];
     assert.equal(t.maxHp, ref.maxHp); assert.equal(t.damage, ref.damage); assert.equal(t.height, ref.height);
-    assert.ok(t.maxHp > CONFIG.drone.maxHp, k);
+    assert.ok(CONFIG.bohrok.elements[t.element], k);
   }
 });

@@ -17,10 +17,14 @@ const clamp01 = (t) => Math.max(0, Math.min(1, t));
 /** 0..1 progress of t through the window [a, b], eased. */
 const win = (t, a, b) => ease(clamp01((t - a) / (b - a)));
 
-/** Fighting stance: crouched a little, shields held forward at the sides, head low and level. */
+/**
+ * Classic Bohrok stance (design/references/bohrok-idle-stance.jpg): arms out to the sides with the
+ * elbow plates high, claws hanging down and outward beside the body, legs barely bent, torso upright,
+ * head at rest. Every clip starts and ends here.
+ */
 export const STAND = fullPose({
-  root: { y: -0.05 }, spine: [0.14, 0, 0], neck: [0.04, 0, 0],
-  arm: [0, 0.55, 1.12], shield: [0.05, 0.25, 0.3], footSpread: 0.06,
+  root: { y: -0.04 }, spine: [0.04, 0, 0], neck: [0, 0, 0],
+  arm: [0, 0.15, -0.05], shield: [0.08, 0.08, 0.8], footSpread: 0.05,
 });
 
 /**
@@ -53,15 +57,15 @@ export function closing(t) {
 // ---- head-extension attack ------------------------------------------------------------------
 const WINDUP = fullPose({
   root: { y: -0.15, z: -0.05 }, spine: [0.3, 0, 0], neck: [0.16, 0, 0], ext: -0.04,
-  arm: [0.1, 0.8, 0.95], shield: [0.25, 0.5, 0.35], footSpread: 0.12, foot_R: [0.08, 0, 0], foot_L: [-0.06, 0, 0],
+  arm: [0.05, -0.1, 0.0], shield: [0.15, 0.0, 0.95], footSpread: 0.12, foot_R: [0.08, 0, 0], foot_L: [-0.06, 0, 0],
 });
 const LUNGE = fullPose({
   root: { y: -0.12, z: 0.07 }, spine: [0.4, 0, 0], neck: [-0.04, 0, 0], ext: 0.62,
-  arm: [-0.1, 0.35, 1.18], shield: [-0.1, 0.1, 0.35], footSpread: 0.12, foot_R: [0.08, 0, 0], foot_L: [-0.06, 0, 0],
+  arm: [0, -0.3, 0.1], shield: [0.0, -0.1, 0.9], footSpread: 0.12, foot_R: [0.08, 0, 0], foot_L: [-0.06, 0, 0],
 });
 const RETRACT = fullPose({
   root: { y: -0.1, z: 0 }, spine: [0.24, 0, 0], neck: [0.08, 0, 0], ext: 0,
-  arm: [0.05, 0.6, 1.08], shield: [0.1, 0.3, 0.3], footSpread: 0.09, foot_R: [0.04, 0, 0], foot_L: [-0.03, 0, 0],
+  arm: [0, 0.05, -0.02], shield: [0.08, 0.05, 0.82], footSpread: 0.09, foot_R: [0.04, 0, 0], foot_L: [-0.03, 0, 0],
 });
 /** Attack timing (fractions of the clip). The hit is resolved at IMPACT. */
 export const ATTACK_KEYS = { windup: 0.4, impact: 0.53, hold: 0.6, retract: 0.78 };
@@ -74,15 +78,48 @@ function attack(t) {
   return lerpPose(RETRACT, STAND, ease((t - K.retract) / (1 - K.retract)));                               // back to stance
 }
 
+// ---- elemental specials ---------------------------------------------------------------------------
+// 'cast': crouch and rear the head back (charging), then spit the element forward from the mouth.
+// 'slam' (earth): rise up with the shields raised, then hammer them down for the shockwave.
+// Both start and end in STAND; the controller maps its wind-up/active/recover times onto CAST_KEYS.
+const CAST_LOAD = fullPose({
+  root: { y: -0.14, z: -0.08 }, spine: [-0.08, 0, 0], neck: [-0.3, 0, 0], ext: -0.05,
+  arm: [0, 0.1, -0.25], shield: [0.05, 0.12, 0.7], footSpread: 0.12, foot_R: [0.1, 0, 0], foot_L: [-0.08, 0, 0],
+});
+const CAST_FIRE = fullPose({
+  root: { y: -0.1, z: 0.04 }, spine: [0.26, 0, 0], neck: [-0.1, 0, 0], ext: 0.3,
+  arm: [0, -0.05, -0.12], shield: [0.0, 0.05, 0.8], footSpread: 0.12, foot_R: [0.1, 0, 0], foot_L: [-0.08, 0, 0],
+});
+const SLAM_LOAD = fullPose({
+  root: { y: 0.0, z: -0.06, pitch: -0.1 }, spine: [-0.22, 0, 0], neck: [-0.25, 0, 0],
+  arm: [0, 0.15, -0.75], shield: [0.0, 0.1, 0.35], footSpread: 0.14,
+});
+const SLAM_HIT = fullPose({
+  root: { y: -0.22, z: 0.04, pitch: 0.18 }, spine: [0.42, 0, 0], neck: [0.12, 0, 0],
+  arm: [0, 0.35, 0.3], shield: [0.2, 0.15, 1.05], footSpread: 0.16,
+});
+/** Special timing (fractions of the clip): charge until `release`, hold the release pose until `hold`. */
+export const CAST_KEYS = { load: 0.42, release: 0.52, hold: 0.7 };
+/** A special: STAND -> load (wind-up) -> fire (release) -> held -> STAND. */
+function special(load, fire) {
+  return (t) => {
+    const K = CAST_KEYS;
+    if (t < K.load) return lerpPose(STAND, load, ease(t / K.load));
+    if (t < K.release) { const u = (t - K.load) / (K.release - K.load); return lerpPose(load, fire, u * u * (2 - u)); }
+    if (t < K.hold) return fire;
+    return lerpPose(fire, STAND, ease((t - K.hold) / (1 - K.hold)));
+  };
+}
+
 // ---- hit and death ------------------------------------------------------------------------------
 const FLINCH = fullPose({
   root: { y: -0.07, z: -0.06, pitch: -0.12 }, spine: [-0.28, 0, 0], neck: [-0.35, 0.1, 0],
-  arm: [0, 0.25, 0.85], shield: [-0.25, 0, 0.1], footSpread: 0.1,
+  arm: [0, 0.1, -0.35], shield: [-0.2, 0, 0.45], footSpread: 0.1,
 });
 function hit(t) { return t < 0.22 ? lerpPose(STAND, FLINCH, ease(t / 0.22)) : lerpPose(FLINCH, STAND, ease((t - 0.22) / 0.78)); }
 const SLUMP = fullPose({
   root: { y: -0.3, pitch: 0.3, roll: 0.35 }, spine: [0.45, 0, 0.15], neck: [0.55, 0, 0.25],
-  arm: [0.3, 0.3, 1.0], shield: [0.4, 0.3, 0.3], foot_R: [0.12, 0, 0], foot_L: [-0.1, 0, 0], footSpread: 0.2,
+  arm: [0.2, 0.2, 0.5], shield: [0.3, 0.2, 0.6], foot_R: [0.12, 0, 0], foot_L: [-0.1, 0, 0], footSpread: 0.2,
 });
 const DOWN = fullPose({
   root: { y: -0.62, pitch: 0.5, roll: 1.2 }, spine: [0.5, 0, 0.2], neck: [0.8, 0, 0.3],
@@ -142,6 +179,8 @@ export const BOHROK_CLIPS = {
   close: { duration: 0.75, pose: closing },
   ball: { duration: 1.0, loop: true, pose: () => CLOSED, samples: 2 },
   attack: { duration: 0.8, pose: attack },
+  cast: { duration: 1.0, pose: special(CAST_LOAD, CAST_FIRE) },
+  slam: { duration: 1.0, pose: special(SLAM_LOAD, SLAM_HIT) },
   hit: { duration: 0.36, pose: hit },
   death: { duration: 0.9, pose: death },
 };

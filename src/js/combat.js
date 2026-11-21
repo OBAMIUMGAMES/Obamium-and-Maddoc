@@ -36,21 +36,19 @@ export function angleDiff(a, b) {
 }
 
 /**
- * Wave composition for a given wave number (1-based). Bohrok replace Scrapbots one for one, so a
- * wave keeps its size while getting tougher: from wave bohrokFrom, one more every bohrokEvery waves,
- * up to bohrokMax, cycling through bohrokTypes (starting one type later each wave).
+ * Wave composition for a given wave number (1-based). Every standard enemy is a Bohrok: the wave
+ * grows by `perWave` each time (capped at `max`), the six types mixed, the mix rotating every wave;
+ * Tonua joins every `tonuaEvery` waves.
  * @param {number} wave
- * @param {{baseDrones:number, dronesPerWave:number, tonuaEvery:number, bohrokFrom?:number, bohrokEvery?:number, bohrokMax?:number, bohrokTypes?:string[]}} cfg
- * @returns {{drones:number, tonua:boolean, bohrok:string[]}}
+ * @param {{base:number, perWave:number, max:number, tonuaEvery:number, types:string[]}} cfg
+ * @returns {{tonua:boolean, bohrok:string[]}}
  */
 export function waveComposition(wave, cfg) {
-  const total = cfg.baseDrones + (wave - 1) * cfg.dronesPerWave;
-  const types = cfg.bohrokTypes || [];
-  const n = types.length && wave >= cfg.bohrokFrom ? Math.min(cfg.bohrokMax, 1 + Math.floor((wave - cfg.bohrokFrom) / cfg.bohrokEvery), total) : 0;
+  const types = cfg.types || [];
+  const n = types.length ? Math.min(cfg.max, cfg.base + (wave - 1) * cfg.perWave) : 0;
   return {
-    drones: total - n,
     tonua: wave % cfg.tonuaEvery === 0,
-    bohrok: Array.from({ length: n }, (_, i) => types[(i + wave - (cfg.bohrokFrom || 0)) % types.length]), // the mix rotates every wave
+    bohrok: Array.from({ length: n }, (_, i) => types[(i + wave - 1) % types.length]),
   };
 }
 

@@ -1,11 +1,12 @@
 /**
- * Fighters: Toaku (player), Tonua (rival) and Scrapbot drones (horde).
+ * Fighters: Toaku (player, procedural fallback model), the shared Enemy base (Bohrok in bohrok.js)
+ * and Tonua (rival).
  * Each fighter owns a rig and a small state machine. Toaku is animated by ToakuAnimator
  * (skinned Meshy model, IK legs, keyframed moves); enemies use the lightweight procedural
  * pose blending below. No external animation files.
  */
 import * as THREE from 'three';
-import { buildToaku, buildTonua, buildDrone } from './models.js';
+import { buildToaku, buildTonua } from './models.js';
 import { inArc, angleDiff, applyDamage, addMeter } from './combat.js';
 import { ToakuAnimator } from './toakuAnimator.js';
 
@@ -13,6 +14,8 @@ const JOINTS = ['hips', 'spine', 'head', 'shL', 'shR', 'elL', 'elR', 'hipL', 'hi
 /** Enemy states whose body pitch (root.rotation.x) is driven by the state itself. */
 const TILTED = new Set(['launched', 'dying', 'down', 'grabbed', 'thrown']);
 const tmpV = new THREE.Vector3();
+/** Damage-over-time effects (fire burn, acid) land in ticks this many seconds apart. */
+const DOT_TICK = 0.5;
 
 /** Blank target pose. */
 export function pose() {
@@ -73,8 +76,46 @@ export class Fighter {
     this.removed = false;
     this.baseHipY = rig.j && rig.j.hips ? rig.j.hips.position.y : 0;
     this.flash = 0;
+    // status effects from Bohrok specials (see tickStatus)
+    this.slowT = 0; this.slowMul = 1; this.slowKind = null;
+    this.dots = null; this.dotAcc = 0;
   }
   setState(s) { this.state = s; this.stateT = 0; }
+
+  /**
+   * Slow this fighter's movement to `mul` x speed for `time` s (ice, the earth stagger). The
+   * strongest slow wins; a new one extends the old.
+   */
+  applySlow(mul, time, kind = null) {
+    if (this.slowT <= 0 || mul <= this.slowMul) { this.slowMul = mul; this.slowKind = kind; }
+    this.slowT = Math.max(this.slowT, time);
+  }
+  /** Damage over time: `dps` for `time` s, one slot per kind (fire burn, acid). */
+  applyDot(kind, dps, time) {
+    this.dots = this.dots || {};
+    const d = this.dots[kind] || (this.dots[kind] = { t: 0, dps: 0 });
+    d.dps = d.t > 0 ? Math.max(d.dps, dps) : dps;
+    d.t = Math.max(d.t, time);
+  }
+  /** True while a fire burn is on. */
+  burning() { return !!(this.dots && this.dots.fire && this.dots.fire.t > 0); }
+  /** Count status timers down; damage over time lands in ticks of DOT_TICK s. */
+  tickStatus(dt, world) {
+    if (this.slowT > 0) { this.slowT = Math.max(0, this.slowT - dt); if (this.slowT === 0) { this.slowMul = 1; this.slowKind = null; } }
+    if (!this.dots) return;
+    let dps = 0;
+    for (const k in this.dots) { const d = this.dots[k]; if (d.t > 0) { dps += d.dps; d.t = Math.max(0, d.t - dt); } }
+    if (!dps) { this.dotAcc = 0; return; }
+    this.dotAcc += dt;
+    if (this.dotAcc >= DOT_TICK) { this.dotAcc -= DOT_TICK; this.statusDamage(dps * DOT_TICK, world); }
+  }
+  /** Damage over time: no flinch, no invulnerability frames; a killing tick goes through takeHit. */
+  statusDamage(dmg, world) {
+    if (!this.alive) return;
+    if (this.hp - dmg <= 0) { this.invuln = 0; this.takeHit(this.hp, this.pos.x, this.pos.z, world); return; }
+    this.hp -= dmg;
+    if (world.fx && world.fx.damageNumber) world.fx.damageNumber(this.center(tmpV).setY(this.pos.y + this.height + 0.2), Math.round(dmg), 'small');
+  }
   /** Center of mass, world space. */
   center(out = tmpV) { return out.set(this.pos.x, this.pos.y + this.height * 0.55, this.pos.z); }
   /** Height above the ground directly below. */
@@ -87,7 +128,8 @@ export class Fighter {
     const px = this.pos.x, pz = this.pos.z;
     const ground0 = map.groundHeight(px, pz);
     this.vel.y -= g * dt;
-    const [nx, nz] = map.resolve(px, pz, px + this.vel.x * dt, pz + this.vel.z * dt, this.radius, this.pos.y, ground0);
+    const mm = this.slowT > 0 ? this.slowMul : 1; // slowed (ice, stagger): covers less ground
+    const [nx, nz] = map.resolve(px, pz, px + this.vel.x * dt * mm, pz + this.vel.z * dt * mm, this.radius, this.pos.y, ground0);
     this.pos.x = nx; this.pos.z = nz;
     this.pos.y += this.vel.y * dt;
     const gy = map.groundHeight(nx, nz);
@@ -654,114 +696,6 @@ export class Enemy extends Fighter {
     }
     return true;
   }
-}
-
-/** Basic robotic horde grunt. */
-export class Drone extends Enemy {
-  constructor(cfg, variant) {
-    super(buildDrone(variant), { radius: cfg.radius, height: cfg.height, maxHp: cfg.maxHp });
-    this.cfg = cfg;
-    this.kind = 'drone';
-    this.knockMul = 1;
-    this.cool = Math.random() * cfg.attackCooldown;
-    this.strafeDir = Math.random() < 0.5 ? -1 : 1;
-    this.speedMul = 0.85 + Math.random() * 0.3;
-    this.setState('spawn');
-    this.root.rotation.order = 'YXZ';
-  }
-  update(dt, world) {
-    const cfg = this.cfg;
-    this.stateT += dt;
-    this.cool -= dt;
-    const pl = world.player;
-    const map = world.map;
-    // route via the map (on the terraces: around the ring / up the stairs) until we share a level
-    const same = map.sameLevel(this.pos, pl.pos);
-    const wp = map.waypoint(this.pos, pl.pos);
-    const routing = !same || Math.hypot(wp.x - pl.pos.x, wp.z - pl.pos.z) > 0.01;
-    const dx = wp.x - this.pos.x, dz = wp.z - this.pos.z;
-    const dist = Math.hypot(dx, dz) || 1;
-    const toYaw = Math.atan2(dx, dz);
-    const p = pose();
-    let blend = 1 - Math.exp(-14 * dt);
-    if (!this.updateCarried(dt, p, world) && !this.updateHitStates(dt, p, world)) {
-      switch (this.state) {
-        case 'spawn': {
-          // burrow up out of the ground
-          if (this.spawnY === undefined) { this.spawnY = map.groundHeight(this.pos.x, this.pos.z); this.groundY = this.spawnY; }
-          const f = Math.min(1, this.stateT / 0.8);
-          this.pos.y = this.spawnY - 1.5 * (1 - f);
-          this.vel.set(0, 0, 0);
-          if (Math.random() < 0.4) world.fx.dust(this.pos, 1, 1.5, 0.8);
-          p.shL = [-2.6, 0, 0]; p.shR = [-2.6, 0, 0];
-          this.facing = toYaw;
-          if (f >= 1) { this.targetable = true; this.setState('idle'); }
-          this.root.position.copy(this.pos); this.root.rotation.y = this.facing;
-          applyPose(this.rig, p, blend, this.baseHipY);
-          return;
-        }
-        case 'idle': {
-          if (!pl.alive) { this.vel.x *= 0.8; this.vel.z *= 0.8; p.shL[0] = -0.3; p.shR[0] = -0.3; p.head[1] = Math.sin(this.stateT * 2); break; }
-          this.turnTowards(toYaw, 6, dt);
-          let mvx = 0, mvz = 0;
-          const canAttack = !routing && world.attackersActive() < cfg.maxSimultaneousAttackers;
-          if (routing || dist > cfg.attackRange * (canAttack ? 0.9 : 1.9)) {
-            mvx = dx / dist; mvz = dz / dist;
-          } else if (!canAttack || this.cool > 0) {
-            // circle the player menacingly
-            mvx = (-dz / dist) * this.strafeDir * 0.6; mvz = (dx / dist) * this.strafeDir * 0.6;
-            if (dist < cfg.attackRange * 1.4) { mvx -= dx / dist * 0.6; mvz -= dz / dist * 0.6; }
-            if (Math.random() < dt * 0.3) this.strafeDir *= -1;
-          }
-          if (canAttack && this.cool <= 0 && dist <= cfg.attackRange && pl.altitude() < 2) { this.setState('windup'); world.audio.beep(); break; }
-          const sp = cfg.moveSpeed * this.speedMul;
-          this.vel.x += (mvx * sp - this.vel.x) * Math.min(1, 8 * dt);
-          this.vel.z += (mvz * sp - this.vel.z) * Math.min(1, 8 * dt);
-          const hs = Math.hypot(this.vel.x, this.vel.z);
-          this.walkPhase += dt * (4 + hs * 2.4);
-          p.shL[0] = -0.5; p.shR[0] = -0.5; p.elL[0] = -0.6; p.elR[0] = -0.6;
-          walkPose(p, this.walkPhase, Math.min(1, hs / 2.5), 0.3, 0.6);
-          p.spine[0] = 0.15;
-          break;
-        }
-        case 'windup': {
-          this.turnTowards(toYaw, 5, dt);
-          this.vel.x *= 0.8; this.vel.z *= 0.8;
-          p.shL = [-2.6, 0, -0.2]; p.shR = [-2.6, 0, 0.2]; p.elL[0] = -0.8; p.elR[0] = -0.8; p.spine[0] = -0.35; p.bob = 0.04;
-          this.rig.visorMat.emissiveIntensity = 1.2 + this.stateT * 8;
-          if (this.stateT >= cfg.windup) {
-            this.setState('strike');
-            this.vel.x = Math.sin(this.facing) * 7; this.vel.z = Math.cos(this.facing) * 7;
-            this.hitDone = false;
-          }
-          break;
-        }
-        case 'strike': {
-          p.shL = [-1.2, 0, 0.1]; p.shR = [-1.2, 0, -0.1]; p.elL[0] = -0.1; p.elR[0] = -0.1; p.spine[0] = 0.5; p.bob = -0.1;
-          blend = 1 - Math.exp(-40 * dt);
-          if (!this.hitDone && this.stateT > 0.06) {
-            this.hitDone = true;
-            if (inArc(this.pos, this.facing, pl.pos, cfg.attackRange + 0.3, 1.6, pl.radius) && pl.altitude() < 1.5 && map.sameLevel(this.pos, pl.pos)) {
-              pl.takeHit(cfg.damage, this.pos.x, this.pos.z, world);
-            }
-          }
-          if (this.stateT > 0.18) { this.setState('recover'); this.rig.visorMat.emissiveIntensity = 1.2; }
-          break;
-        }
-        case 'recover':
-          p.shL = [-0.9, 0, 0.1]; p.shR = [-0.9, 0, -0.1]; p.spine[0] = 0.35;
-          if (this.stateT > cfg.recover) { this.cool = cfg.attackCooldown * (0.7 + Math.random() * 0.6); this.setState('idle'); }
-          break;
-      }
-    }
-    if (this.state !== 'windup' && this.state !== 'strike' && this.rig.visorMat) this.rig.visorMat.emissiveIntensity = this.flash > 0 ? 4 : 1.2;
-    if (this.flash > 0) this.flash -= dt;
-    applyPose(this.rig, p, blend, this.baseHipY);
-    if (this.state !== 'grabbed') this.physics(dt, world, this.state === 'launched' || this.state === 'dying' ? 2 : this.state === 'idle' || this.state === 'thrown' ? 0 : 6);
-    if (!TILTED.has(this.state)) this.root.rotation.x = 0;
-    this.sync();
-  }
-  get attacking() { return this.state === 'windup' || this.state === 'strike'; }
 }
 
 /** Tonua: small, quick, evasive and almost harmless. */

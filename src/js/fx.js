@@ -116,14 +116,14 @@ export function createFx(scene, camera, overlay) {
     rings.push({ m, t: 0, max: 0.35, radius: 1 });
   }
   let ri = 0;
-  function shockwave(at, radius = 4, hex = 0xfff0c0) {
+  function shockwave(at, radius = 4, hex = 0xfff0c0, time = 0.35) {
     const r = rings[ri = (ri + 1) % rings.length];
     r.m.material.color.setHex(hex);
     r.m.material.opacity = 0.9;
     r.m.position.set(at.x, at.y + 0.15, at.z);
     r.m.scale.setScalar(0.3);
     r.m.visible = true;
-    r.t = 0; r.radius = radius;
+    r.t = 0; r.radius = radius; r.max = time;
   }
 
   // ---- punch after-images for MACHINEGUN IMPACT ----

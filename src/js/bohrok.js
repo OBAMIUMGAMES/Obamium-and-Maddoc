@@ -9,6 +9,8 @@
  *   ROLL  -> OPEN  -> WALK            close enough: brake, settle upright, unfold, walk
  *   WALK  -> ATTACK -> RECOVER -> WALK  in range: brace, head thrust (damage on the impact frame)
  *   WALK  -> CLOSE                    the player got far away again (separate enter/leave distances)
+ *   IDLE/WALK -> CAST -> RECOVER      the type's elemental special (bohrokElements.js): face the
+ *                                     player, wind up, release, back into the stance; own cooldown
  *   HIT ('hurt'): flinch (a closed ball just gets knocked); launched: curls up and tumbles;
  *   DEATH ('dying'): collapse, then the shared enemy explosion. grabbed/thrown: held/thrown as a ball.
  *
@@ -21,7 +23,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { measureRig, fullPose, solvePose, applySolved, DRIVEN } from './bohrokRig.js';
-import { BOHROK_CLIPS, ATTACK_KEYS, WALK } from './bohrokAnims.js';
+import { BOHROK_CLIPS, ATTACK_KEYS, CAST_KEYS, WALK } from './bohrokAnims.js';
 import { Enemy, pose as blankPose } from './fighters.js';
 import { disposeInstance } from './characterModel.js';
 import { angleDiff } from './combat.js';
@@ -240,6 +242,11 @@ export class Bohrok extends Enemy {
     this.inst = inst;
     this.knockMul = cfg.knockMul;
     this.cool = cfg.attackCooldown * (0.4 + Math.random() * 0.6);
+    this.special = cfg.special || null; // the element's config (CONFIG.bohrok.elements.<element>)
+    this.elemCool = this.special ? this.special.cooldown * (0.3 + Math.random() * 0.5) : Infinity;
+    this.castId = 0;          // which cast is running (its cone/stream ends with it)
+    this.released = false;    // the special has gone off in this cast
+    this.mouth = new THREE.Vector3(); // head tip, world space, updated on the release frame
     this.weights = Object.fromEntries(CHANNELS.map((n) => [n, n === 'ball' ? 1 : 0]));
     this.closed = 1;          // 1 = ball form, 0 = open (drives which pose the hit states use)
     this.roll = 0;            // roll angle of the ball (rad)
@@ -263,6 +270,7 @@ export class Bohrok extends Enemy {
     const cfg = this.cfg;
     this.stateT += dt;
     this.cool -= dt;
+    this.elemCool -= dt;
     if (this.flash > 0) this.flash -= dt;
     const pl = world.player, map = world.map;
     // route like every enemy (the map's waypoints handle stairs and walls)
@@ -369,6 +377,16 @@ export class Bohrok extends Enemy {
         if (k >= 1) { this.setState('recover'); this.cool = cfg.attackCooldown * (0.8 + Math.random() * 0.4); }
         break;
       }
+      case 'cast': {
+        // the elemental special: face the player while charging, release, hold, back to the stance
+        const sp = this.special;
+        T[sp.clip] = 1; this.closed = 0;
+        this.vel.x *= Math.max(0, 1 - 12 * dt); this.vel.z *= Math.max(0, 1 - 12 * dt);
+        this.inst.actions[sp.clip].time = castClipTime(this.stateT, sp) * BOHROK_CLIPS[sp.clip].duration;
+        if (!this.released) this.turnTowards(Math.atan2(pl.pos.x - this.pos.x, pl.pos.z - this.pos.z), cfg.turnRate * 1.3, dt);
+        if (this.stateT >= sp.windup + (sp.active || 0) + sp.recover) { this.setState('recover'); this.stateT = cfg.recover * 0.5; }
+        break;
+      }
       case 'recover': {
         T.idle = 1; this.closed = 0;
         this.turnTowards(toYaw, cfg.turnRate * 0.5, dt);
@@ -425,6 +443,7 @@ export class Bohrok extends Enemy {
     if (this.state !== 'grabbed' && this.state !== 'thrown') this.root.rotation.x = 0;
     this.sync();
     if (this.state === 'attack') this.resolveAttack(world);
+    if (this.state === 'cast') this.resolveCast(world);
   }
 
   /** Pick the next action from distance to the player (hysteresis: closeAt > openAt). */
@@ -436,7 +455,27 @@ export class Bohrok extends Enemy {
       const face = Math.abs(angleDiff(Math.atan2(world.player.pos.x - this.pos.x, world.player.pos.z - this.pos.z), this.facing));
       if (face < 0.9) { this.setState('attack'); this.hitDone = false; this.vel.set(0, this.vel.y, 0); world.audio.beep(); return; }
     }
+    const sp = this.special;
+    if (sp && world.elements && this.elemCool <= 0 && !routing && plDist >= sp.minRange && plDist <= sp.maxRange
+      && world.player.altitude() < 2 && world.elements.canCast(world)) {
+      this.setState('cast');
+      this.castId = world.elements.nextCastId();
+      this.released = false;
+      world.audio.charge();
+      return;
+    }
     if (this.state === 'idle') this.setState('walk');
+  }
+
+  /** The special goes off on the release frame, from the head tip (after this frame's pose update). */
+  resolveCast(world) {
+    if (this.released || this.stateT < this.special.windup) return;
+    this.released = true;
+    const head = this.inst.bones.head;
+    head.updateWorldMatrix(true, false);
+    this.mouth.copy(this.inst.tpl.headTip).applyMatrix4(head.matrixWorld);
+    this.elemCool = this.special.cooldown * (0.85 + Math.random() * 0.3);
+    if (world.elements) world.elements.cast(this, this.special, world);
   }
 
   /** The head-extension hit: on the impact frame, the head tip must actually reach the player. */
@@ -499,7 +538,20 @@ export class Bohrok extends Enemy {
   }
 }
 
-/** Merge the shared Bohrok settings with one type's block. */
+/**
+ * Clip progress (0..1) of a special at time t of its cast: the wind-up covers the charge and the
+ * snap to the release pose (CAST_KEYS.release), the active time holds it, the recovery returns to
+ * the stance.
+ */
+export function castClipTime(t, sp) {
+  const K = CAST_KEYS, a = sp.active || 0;
+  if (t < sp.windup) return K.release * (t / sp.windup);
+  if (t < sp.windup + a) return K.release + (K.hold - K.release) * ((t - sp.windup) / a);
+  return Math.min(1, K.hold + (1 - K.hold) * ((t - sp.windup - a) / sp.recover));
+}
+
+/** Merge the shared Bohrok settings with one type's block (and its element's special). */
 export function bohrokConfig(all, kind) {
-  return { ...all.common, ...all.types[kind], kind };
+  const type = all.types[kind];
+  return { ...all.common, ...type, kind, special: all.elements && type.element ? all.elements[type.element] : null };
 }

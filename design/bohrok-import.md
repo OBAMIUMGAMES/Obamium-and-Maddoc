@@ -84,6 +84,7 @@ waves: { bohrokTypes: ['lehvak', 'tahnok', ...] },
 const BOHROK_MODELS = { lehvak: lehvakGlb, tahnok: tahnokGlb, ... };
 ```
 
-Different textures, health, damage and speeds are config. A different attack (e.g. Tahnok's fire)
-would be a new clip in `BOHROK_CLIPS` plus a branch in the controller's `attack` state; the rest of
-the state machine is shared.
+Different textures, health, damage and speeds are config. The type's `element` picks its special
+from `bohrok.elements` (`src/js/bohrokElements.js`: projectile, cone, stream or shockwave, played with
+the shared `cast` or `slam` clip); a new element is a config block, plus a branch in that module only
+if it needs a new kind of effect. The rest of the state machine is shared.

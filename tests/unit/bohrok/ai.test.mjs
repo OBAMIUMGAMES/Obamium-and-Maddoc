@@ -29,9 +29,9 @@ function run(b, world, frames, each) {
   return states;
 }
 
-test('Lehvak has 1.75 times the health of a Scrapbot', () => {
+test('a Bohrok takes its health from its type config', () => {
   const { b } = setup(5);
-  assert.equal(b.maxHp, Math.round(CONFIG.drone.maxHp * 1.75));
+  assert.equal(b.maxHp, CONFIG.bohrok.types.lehvak.maxHp);
 });
 
 test('far from the player it bursts out of the ground as a ball and rolls in faster than it walks', () => {

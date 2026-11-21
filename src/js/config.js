@@ -165,19 +165,6 @@ export const CONFIG = {
     fleeDistance: 5,
   },
 
-  drone: {
-    height: 1.5,
-    radius: 0.55,
-    maxHp: 34,
-    moveSpeed: 3.0,
-    damage: 9,
-    attackRange: 1.9,
-    windup: 0.55,
-    recover: 0.6,
-    attackCooldown: 1.4,
-    maxSimultaneousAttackers: 3,
-  },
-
   /**
    * BOHROK - an enemy family (src/js/bohrok.js). 'common' is the behaviour every Bohrok shares;
    * each type adds its own block and model (assets/models/bohrok/<kind>.glb, tools/build-bohrok.mjs).
@@ -185,7 +172,7 @@ export const CONFIG = {
   bohrok: {
     common: {
       radius: 0.62,
-      knockMul: 0.85,           // a little heavier than a Scrapbot
+      knockMul: 0.85,           // heavier than Toaku's punches expect: knocked back a little less
       walkSpeed: 1.9,           // m/s on its legs: slow and deliberate (~4 short steps a second)
       rollSpeed: 8.5,           // m/s as a ball: four times its walk
       rollAccel: 9,
@@ -202,40 +189,85 @@ export const CONFIG = {
       attackCooldown: 1.8,
       recover: 0.35,
       tipRadius: 0.35,          // how close the head tip must come to the player's body to hit
-      maxSimultaneousAttackers: 3, // shared with the Scrapbots
+      maxSimultaneousAttackers: 3, // head thrusts at the same time (specials have their own cap)
       lodDistance: 26,          // farther than this: skeleton updated every 3rd frame
     },
     /**
      * Every type shares the body, rig layout, animations and AI; a type is its model + these values.
      * Same stats for now (the request: differences are the models and colours).
      */
+    /**
+     * Elemental specials (src/js/bohrokElements.js), one per type, on top of the head thrust. Every
+     * one is telegraphed by a wind-up of at least 0.5 s and can be avoided: projectiles fly at
+     * where the player stood (step aside), fire is a cone (get behind or out of range), water is a
+     * narrow stream, the earth shockwave hugs the ground (jump it). Ranges in m, times in s.
+     *   attack: 'cone' | 'stream' | 'projectile' | 'shockwave'; clip: 'cast' (head spits forward)
+     *   or 'slam' (arms up, slam down); windup before the release, active = how long a cone or
+     *   stream lasts, recover = time back into the stance.
+     */
+    elements: {
+      maxCasters: 2,          // Bohrok using a special at the same time
+      maxProjectiles: 8,      // pooled projectile meshes
+      maxPuddles: 4,          // pooled acid puddles
+      fire: {
+        attack: 'cone', clip: 'cast', minRange: 1.5, maxRange: 4.2, cooldown: 6, windup: 0.6, active: 0.6, recover: 0.4,
+        damage: 6, arc: 0.8, burn: { dps: 4, time: 2.5 },             // 6 + up to 10 over time
+        colors: [0xffd23a, 0xff6a1a, 0xd8250a],
+      },
+      water: {
+        attack: 'stream', clip: 'cast', minRange: 2, maxRange: 6, cooldown: 6.5, windup: 0.55, active: 0.45, recover: 0.45,
+        damage: 7, width: 0.45, speed: 18, push: 9,                     // knocks the player back ~3 m
+        colors: [0xd8f4ff, 0x3aa0ff, 0x1660d8],
+      },
+      acid: {
+        attack: 'projectile', clip: 'cast', minRange: 2.5, maxRange: 9, cooldown: 7, windup: 0.55, recover: 0.5,
+        damage: 6, speed: 9, radius: 0.28, gravity: 9,                   // a lob: it lands where the player stood
+        puddle: { radius: 1.25, life: 4.5, dps: 6 },
+        colors: [0xe4ff7a, 0x7dff3a, 0x2f9a12],
+      },
+      stone: {
+        attack: 'projectile', clip: 'cast', minRange: 3, maxRange: 9, cooldown: 7.5, windup: 0.75, recover: 0.55,
+        damage: 15, speed: 7, radius: 0.42, gravity: 5,                  // slow and heavy: hits hard, easy to dodge
+        colors: [0xd8d0c4, 0x77706a, 0x3e3a36],                     // grey granite: reads on the sand
+      },
+      earth: {
+        attack: 'shockwave', clip: 'slam', minRange: 0, maxRange: 3.8, cooldown: 6.5, windup: 0.6, recover: 0.55,
+        damage: 9, ringTime: 0.45, band: 0.8, stagger: { mul: 0.6, time: 0.6 }, // ground wave out to maxRange
+        colors: [0xd8b080, 0x9a6a3a, 0x5a3a1a],
+      },
+      ice: {
+        attack: 'projectile', clip: 'cast', minRange: 2.5, maxRange: 9, cooldown: 7, windup: 0.55, recover: 0.5,
+        damage: 7, speed: 12, radius: 0.26, gravity: 0,                  // fast and straight
+        slow: { mul: 0.5, time: 2.5 },
+        colors: [0xffffff, 0x9fe8ff, 0x4ab4ff],
+      },
+    },
     types: Object.fromEntries([
       ['tahnok', 'fire'], ['gahlok', 'water'], ['lehvak', 'acid'],
       ['pahrak', 'stone'], ['nuhvok', 'earth'], ['kohrak', 'ice'],
     ].map(([kind, element]) => [kind, {
       element,
       height: 1.74,           // Tonua's standing height measured in game (1.72-1.75 m)
-      maxHp: 60,              // 1.75 x a Scrapbot's 34
-      damage: 10,             // Scrapbot: 9
+      maxHp: 60,              // ~6 punches; a grab throw (45) and a punch
+      damage: 10,             // head thrust
       material: { color: 0xffffff, metalness: 0.15, roughness: 0.5, envMapIntensity: 0.55 },
     }])),
   },
 
   waves: {
-    baseDrones: 5,
-    dronesPerWave: 3,
-    bohrokFrom: 2,              // first wave with a Bohrok
-    bohrokEvery: 2,             // one more Bohrok every 2 waves...
-    bohrokMax: 6,               // ...up to this many; each takes a Scrapbot's place in the wave
-    bohrokTypes: ['lehvak', 'tahnok', 'gahlok', 'pahrak', 'nuhvok', 'kohrak'], // mixed, a new mix each wave
-    maxAlive: 12,
-    spawnInterval: 0.9,
+    // every standard enemy is a Bohrok (src/js/combat.js waveComposition)
+    base: 3,                    // wave 1: three Bohrok
+    perWave: 2,                 // two more each wave...
+    max: 14,                    // ...up to this many
+    types: ['lehvak', 'tahnok', 'gahlok', 'pahrak', 'nuhvok', 'kohrak'], // mixed, a new mix each wave
+    maxAlive: 8,                // on the field at once (each can cast a special)
+    spawnInterval: 1.1,
     tonuaEvery: 3, // Tonua shows up on wave 3, 6, 9...
     breakTime: 3.5,
     healBetweenWaves: 60,
   },
 
-  score: { drone: 100, bohrok: 175, tonua: 1000, comboBonus: 10 }, // bohrok: 1.75 x a Scrapbot, like its health
+  score: { bohrok: 175, tonua: 1000, comboBonus: 10 },
 
   feel: {
     hitStop: 0.05,

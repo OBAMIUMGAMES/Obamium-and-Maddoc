@@ -41,12 +41,12 @@ fighters (`src/js/characters.js` — one roster entry plus a fighter class/model
 character). Game over offers FIGHT AGAIN or CHANGE FIGHTER.
 
 ## Characters
-| | Toaku (player) | Tonua (rival) | Scrapbot (horde) | Bohrok Lehvak (horde) |
-|---|---|---|---|---|
-| Height | 3.6 m | 1.75 m | 1.5 m | 1.74 m (Tonua's measured standing height) |
-| HP | 400 | 60 | 34 | 60 (1.75 × Scrapbot) |
-| Damage | 12 / 13 / 14 / 26 punch combo, 32 flying kick, grab 6 + swing 16 + thrown body 30 (crash 45), 30 slam, 5×~42 + 40 special | 2 ("tink") | 9 | 10 (head thrust) |
-| Style | Heavy, aim-assisted combos, kick, grab-and-throw, thrusters | Hops, taunts, darts in, flees | Telegraphed lunges (red visor flare) | Rolls in as a ball, unfolds, walks, head thrust |
+| | Toaku (player) | Tonua (rival) | Bohrok (the horde: six types) |
+|---|---|---|---|
+| Height | 3.6 m | 1.75 m | 1.74 m (Tonua's measured standing height) |
+| HP | 400 | 60 | 60 |
+| Damage | 12 / 13 / 14 / 26 punch combo, 32 flying kick, grab 6 + swing 16 + thrown body 30 (crash 45), 30 slam, 5×~42 + 40 special | 2 ("tink") | 10 head thrust; elemental special 6–15 + effect |
+| Style | Heavy, aim-assisted combos, kick, grab-and-throw, thrusters | Hops, taunts, darts in, flees | Rolls in as a ball, unfolds, walks, head thrust, one elemental special per type |
 
 | | Super Tahu (player) |
 |---|---|
@@ -62,7 +62,7 @@ character). Game over offers FIGHT AGAIN or CHANGE FIGHTER.
 - **Grab, swing & throw** (GRAB) — catches the closest enemy in front (lunging in if needed), holds
   it by the feet and spins two full turns (a giant swing: the swung body knocks away anyone it
   sweeps through), then hurls it along his facing — the stick aims the throw. The thrown body
-  smashes into enemies in its path and crashes down hard (a Scrapbot does not survive it).
+  smashes into enemies in its path and crashes down hard (45 damage: three quarters of a Bohrok).
   Nothing in reach: the grab whiffs and he recovers quickly.
 - **Double jump** — second jump fires the back thrusters.
 - **Thruster slam** — punch in mid-air: hang on the thrusters, dive fist-first into an AoE impact.
@@ -136,10 +136,45 @@ an avenue climbing the ridge to a far monument, peach-pink sunset haze.
 - The chase camera rises over terrace walls instead of clipping into them.
 
 ## Bohrok (enemies): Tahnok, Gahlok, Lehvak, Pahrak, Nuhvok, Kohrak
-Six types — fire, water, acid, stone, earth, ice — that differ only in their model and colours for
-now: same body, rig layout, animations, AI and stats (60 HP, 10 damage, 1.74 m). They come in mixed
-groups: from wave 2 one Bohrok replaces a Scrapbot, one more every 2 waves up to 6 per wave, the
-type mix rotating each wave. The Lehvak notes below apply to all six.
+The only standard enemies (the old Scrapbot drones are gone). Six types share one body, rig
+layout, animation set, AI and stats (60 HP, 10 damage, 1.74 m); each has its own model, colours and
+**elemental special** (below). Waves mix the types, the mix rotating each wave. The Lehvak notes
+below apply to all six.
+
+### Stance
+The classic Bohrok stance (`design/references/bohrok-idle-stance.jpg`): arms out to the sides with
+the elbow plates high, the claws hanging down beside the body, legs barely bent, torso upright, head
+at rest. `STAND` in `src/js/bohrokAnims.js` is that pose; idle adds a small mechanical sway (breathing,
+head scans, a twitch on the head rail, the claws rocking). Every clip starts and ends in it and every
+action keeps the arms spread (the wind-ups, the lunge, the flinch), so the claws never snap from
+"forward" back to the sides. Unit tests check the stance shape and that after the head thrust, a
+flinch, unfolding and the special the skeleton is back in the exact idle pose with no frame jumps.
+
+### Elemental specials
+On top of the head thrust, each type has one special (`src/js/bohrokElements.js`, values in
+`config.js` → `bohrok.elements`). The Bohrok faces the player, winds up (the head rears back and
+charges, or — Nuhvok — the shields rise), releases, holds, and returns to its stance. Each special
+has its own cooldown (6–7.5 s, separate from the thrust's 1.8 s), starts only from standing or
+walking (never while folding, rolling or opening), and is cancelled cleanly if the Bohrok is hit
+during the wind-up. At most 2 Bohrok use a special at the same time.
+
+| Type | Element | Special | Range | Damage + effect | How to avoid it |
+|---|---|---|---|---|---|
+| Tahnok | fire | flame burst from the mouth (orange/red cone, 0.6 s) | 1.5–4.2 m | 6 + burn 4/s for 2.5 s | get out of the cone or out of range |
+| Gahlok | water | pressurised jet (blue stream, splash) | 2–6 m | 7 + knock-back ~3 m | step out of the line |
+| Lehvak | acid | lobbed green blob; leaves an acid puddle (4.5 s) | 2.5–9 m | 6; the puddle burns 6/s while you stand in it | move once it is thrown; leave the puddle |
+| Pahrak | stone | slow heavy rock (fragments, dust, small ring) | 3–9 m | 15 | it is slow (7 m/s): side-step |
+| Nuhvok | earth | slams the ground: a brown ring of dust runs out along it | 0–3.8 m | 9 + stagger (slowed 60% for 0.6 s) | jump over the ring |
+| Kohrak | ice | fast ice shard | 2.5–9 m | 7 + slowed to 50% for 2.5 s, frost on the screen edges | side-step after the throw |
+
+Projectiles fly at where the player stood on the release frame — the Bohrok tracks the player
+through the wind-up, so the dodge is to move once it is thrown (Toaku's run clears every projectile
+from its longest range; unit-tested). Wind-ups are 0.55–0.75 s.
+
+Mobile budget: projectiles (8) and puddles (4) are pooled meshes created at load (unlit
+MeshBasic, except the rock); no dynamic lights; particles go through the shared effect pools with a
+per-frame budget split between all active specials, so six Bohrok casting cost about one; all
+the new shaders are compiled by the load-time warm-up.
 
 The five later models were auto-rigged with different bone numbering (2- or 3-bone heads, 4- or
 5-bone arms and legs, left and right swapped on two of them); `tools/bohrok/automap.mjs` finds the
@@ -149,7 +184,7 @@ own shields are bound from its weights. That also fixed auto-rig errors the weig
 kept (Gahlok's torso bound to the head, Nuhvok's shin to the thigh).
 
 ### Bohrok Lehvak
-A standard horde enemy, sturdier than a Scrapbot. Model: Meshy export rebuilt by
+The first Bohrok built; the others reuse its layout. Model: Meshy export rebuilt by
 `tools/build-bohrok.mjs` (see `design/bohrok-import.md` — the same system will drive Tahnok, Gahlok,
 Kohrak, Nuhvok and Pahrak).
 
@@ -158,7 +193,8 @@ Kohrak, Nuhvok and Pahrak).
 | spawn | bursts out of the sand already curled into its ball, spinning |
 | CLOSE → ROLL | player farther than 11 m: folds up (storyboard order: crouch, head folds forward, legs tuck, shields close) and rolls after them at 8.5 m/s, steering wide, using the map's routing (stairs on the terraces); no attacks while closed |
 | OPEN → WALK | inside 6.5 m: brakes, rolls to its upright side, unfolds (the closing reversed) and walks at 1.9 m/s with short insect steps; the gap between 6.5 and 11 m stops it flip-flopping |
-| ATTACK → RECOVER | within 2.1 m and facing the player (max 3 attackers, shared with the Scrapbots): wind-up crouch (0.32 s, readable — step aside to dodge), the head shoots forward on its rail (~0.6 m), retracts, back to stance; 1.8 s cooldown |
+| ATTACK → RECOVER | within 2.1 m and facing the player (max 3 attackers): wind-up crouch (0.32 s, readable — step aside to dodge), the head shoots forward on its rail (~0.6 m), retracts, back to stance; 1.8 s cooldown |
+| CAST → RECOVER | its elemental special (above), in its range, cooldown ready, at most 2 casting |
 | HIT ('hurt') | open: a flinch; closed: the ball is knocked back spinning |
 | launched / down | knocked into the air it curls up and tumbles, lands as a ball, rolls to a stop |
 | DEATH ('dying') | collapses onto its back, then the shared enemy explosion |
@@ -168,24 +204,24 @@ Kohrak, Nuhvok and Pahrak).
 point on the mesh) is within the player's body (radius + 0.35 m) at that moment.
 
 **Animation:** idle (breathing, head scans), walk (distance-driven: no foot sliding), close/open,
-roll, head thrust, hit and death are built from logical poses (body, head slide, arms, foot
+roll, head thrust, the two special clips (cast, slam), hit and death are built from logical poses (body, head slide, arms, foot
 targets solved by leg IK) and baked into clips once per model. Every frame of every clip keeps the
 lowest point exactly on the ground; the rolling ball's height follows its real silhouette, so it never
 sinks into or floats above the floor. The closed ball is not a perfect sphere — the model's rigid
 pieces only fold so far (roundness 0.76, ~1.1 m across) — so it bobs slightly as it rolls.
 
-**Waves:** Bohrok replace Scrapbots one for one: 1 from wave 2, one more every 2 waves, at most 6
-per wave, mixed types (`waves.bohrok*`). Score 175 (1.75 × a Scrapbot).
+**Waves:** every standard enemy is a Bohrok: 3 in wave 1, two more each wave, at most 14 per
+wave, at most 8 alive at once, mixed types rotating each wave (`waves`). Score 175.
 
 ## Loop
-Waves of Scrapbots and Bohrok burrow out of the sand (5 + 3 per wave, max 12 alive, max 3 attacking at
-once). Tonua drops in every 3rd wave. +60 HP between waves. Score = kills + combo bonus.
+Waves of Bohrok burst out of the sand (3 + 2 per wave, max 8 alive, max 3 head thrusts and 2 specials
+at once). Tonua drops in every 3rd wave. +60 HP between waves. Score = kills + combo bonus.
 
 ## Tech
 Three.js bundled by esbuild into `dist/`, wrapped in a minimal Android WebView app (`android/`).
 Both fighter GLBs are embedded in the bundle (esbuild binary loader), so the game also runs from
-`file://` and inside the APK without a web server. Tonua, the Scrapbots and both arenas are
-procedural. Maps share one interface (ground height, walls, navigation, spawns, camera floor), so
+`file://` and inside the APK without a web server. Tonua and both arenas are
+procedural; the Bohrok are rebuilt Meshy models (`tools/build-bohrok.mjs`). Maps share one interface (ground height, walls, navigation, spawns, camera floor), so
 fighters and enemies work on either. All tuning — moves, clip timings, the fighters' look — lives
 in `src/js/config.js`. Build: `npm install && npm run build:apk` → `builds/toaku-desert-brawl.apk`.
 
