@@ -1,6 +1,9 @@
 /**
- * TOAKU: DESERT BRAWL — entry point. Scene, character select, maps, game loop, waves, HUD.
- * Fighters: TOAKU (desert ruins) and SUPER TAHU (sunset terraces); more slots are ready in the roster.
+ * TOAKU: DESERT BRAWL — entry point. Scene, menus, maps, game loop, waves, HUD.
+ * Flow: MAIN MENU -> CHARACTER SELECT -> the fighter's intro (DREADNOUGHT rises from his throne) ->
+ * SELECT LOCATION -> the fight.
+ * Fighters: TOAKU, SUPER TAHU, DREADNOUGHT; locations: GLATORIAN ARENA (featured), DESERT RUINS,
+ * SUNSET TERRACES (locations.js).
  */
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
@@ -13,11 +16,19 @@ import { createInput } from './input.js';
 import { ToakuClassic, Tonua } from './fighters.js';
 import { Toaku } from './toaku.js';
 import { SuperTahu } from './tahu.js';
+import { Dreadnought } from './dreadnought.js';
+import { buildGlatorian, GLATORIAN_ENV } from './glatorian.js';
+import { buildThrone } from './throne.js';
+import { ThroneIntro } from './throneIntro.js';
+import { LOCATIONS, availableLocations, defaultLocation, stepLocation } from './locations.js';
 import { waveComposition, killScore } from './combat.js';
 import { loadCharacterTemplate, buildCharacterInstance } from './characterModel.js';
 import { ROSTER, nextSelectable, fighterStats } from './characters.js';
 import toakuGlb from '../../assets/models/toaku.glb'; // bundled as bytes (esbuild binary loader)
 import tahuGlb from '../../assets/models/tahu.glb';
+import dreadnoughtGlb from '../../assets/models/dreadnought.glb'; // tools/build-character.mjs (7 Mixamo exports)
+import glatorianGlb from '../../assets/models/glatorian.glb';     // tools/build-arena.mjs
+import glatorianLayout from '../../assets/models/glatorian-layout.json';
 // Bohrok models, built by tools/build-bohrok.mjs (all six share one rig layout and animation set)
 import lehvakGlb from '../../assets/models/bohrok/lehvak.glb';
 import tahnokGlb from '../../assets/models/bohrok/tahnok.glb';
@@ -71,8 +82,14 @@ let encounter = null;   // the running boss encounter (warning, cinematic, fight
 const audio = createAudio();
 const input = createInput(document.body);
 
-/** Reflection environment from a map palette so the fighters' metal picks up its light. */
+/**
+ * Reflection environment from a map palette so the fighters' metal picks up its light. One texture
+ * per palette: every model lit by the same map shares it.
+ */
+const envCache = new Map();
 function makeEnv(p) {
+  const key = JSON.stringify(p);
+  if (envCache.has(key)) return envCache.get(key);
   const envScene = new THREE.Scene();
   const v3 = (a) => `vec3(${a.map((x) => x.toFixed(3)).join(',')})`;
   const mat = new THREE.ShaderMaterial({
@@ -92,6 +109,8 @@ function makeEnv(p) {
   const pmrem = new THREE.PMREMGenerator(renderer);
   const tex = pmrem.fromScene(envScene, 0.02).texture;
   pmrem.dispose();
+  mat.dispose(); envScene.children[0].geometry.dispose();
+  envCache.set(key, tex);
   return tex;
 }
 
@@ -100,9 +119,15 @@ const G = {
   gameCam: new THREE.Vector3(), // the smoothed gameplay camera (scripted shots blend over it)
   bossZoom: 0,
   bossRef: null,
-  mode: 'title', // title | select | playing | paused | over
+  mode: 'title', // title | select | intro | location | playing | paused | over
   charId: 'toaku',
   sel: 0,
+  locSel: 0,          // focused card on SELECT LOCATION (it opens on the featured one)
+  mapId: null,        // the map of the current / last fight (FIGHT AGAIN replays it)
+  showMap: null,      // the map the menus show the fighter on
+  introSeen: false,   // the fighter's intro played on this visit to the menus (not replayed while browsing)
+  camArm: -1,         // the spring-arm length of the gameplay camera (maps with cameraReach)
+  camFrom: null,      // menus: the camera eases from this shot (the end of an intro) into the menu's
   map: null,
   wave: 0, score: 0, kills: 0, bestCombo: 0,
   toSpawn: [], spawnT: 0, breakT: 0, waveActive: false,
@@ -229,8 +254,9 @@ function onKill(e) {
   }
 }
 
-// ---------- models (both embedded, rigged Meshy/Mixamo exports) ----------
-let toakuTpl = null, tahuTpl = null;
+// ---------- models (embedded, rigged Meshy/Mixamo exports) ----------
+let toakuTpl = null, tahuTpl = null, dreadTpl = null;
+let throne = null; // DREADNOUGHT's throne, on the Glatorian Arena's menu spot
 const bohrokTpl = {}; // one template per Bohrok type (shared clips, geometry, textures)
 const BOHROK_MODELS = { lehvak: lehvakGlb, tahnok: tahnokGlb, gahlok: gahlokGlb, pahrak: pahrakGlb, nuhvok: nuhvokGlb, kohrak: kohrakGlb };
 let assetsReady = false;
@@ -243,22 +269,41 @@ const aniso = renderer.capabilities.getMaxAnisotropy();
 Promise.allSettled([
   loadCharacterTemplate(toakuGlb, cfg.toaku, { envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso }).then((t) => { toakuTpl = t; }),
   loadCharacterTemplate(tahuGlb, cfg.tahu, { envMap: makeEnv(maps.terraces.env), maxAnisotropy: aniso }).then((t) => { tahuTpl = t; }),
+  loadCharacterTemplate(dreadnoughtGlb, cfg.dreadnought, { envMap: makeEnv(GLATORIAN_ENV), maxAnisotropy: aniso }).then((t) => { dreadTpl = t; }),
+  loadGlatorian(glatorianGlb),
   ...Object.entries(BOHROK_MODELS).map(([kind, glb]) => loadBohrokTemplate(glb, bohrokConfig(cfg.bohrok, kind), { envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso }).then((t) => { bohrokTpl[kind] = t; })),
   loadSidorakTemplate(sidorakGlb, cfg.sidorak, { envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso, motions: { runFast: sidorakRunFast } }).then((t) => { sidorakTpl = t; }),
   loadRhotuka(rhotukaGlb).then((geo) => { bossFx = createSidorakFx(scene, cfg.sidorak, geo); }),
 ]).then((results) => {
-  const names = ['Toaku', 'Super Tahu', ...Object.keys(BOHROK_MODELS), 'Sidorak', 'Rhotuka'];
+  const names = ['Toaku', 'Super Tahu', 'Dreadnought', 'Glatorian Arena', ...Object.keys(BOHROK_MODELS), 'Sidorak', 'Rhotuka'];
   if (!bossFx) bossFx = createSidorakFx(scene, cfg.sidorak); // a plain disc stands in for the spinner
   results.forEach((r, i) => { if (r.status === 'rejected') console.warn(names[i], 'model failed to load:', r.reason); });
   G.modelLoadMs = Math.round(performance.now() - loadStart);
   setupShowcases();
   warmShaders();
   renderPortraits();
+  renderLocationPreviews();
   buildSelect();
+  buildLocations();
   assetsReady = true;
   startBtn.disabled = false;
   startLabel.textContent = 'INIZIO';
 });
+/** The Glatorian Arena (model, sky, desert) and DREADNOUGHT's throne on its menu spot. */
+async function loadGlatorian(bytes) {
+  const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(buf, '');
+  const m = buildGlatorian(gltf.scene, glatorianLayout, { ...cfg.glatorian, maxAnisotropy: aniso });
+  throne = buildThrone(cfg.throne, { envMap: makeEnv(GLATORIAN_ENV) });
+  // he sits on its seat when his root stands on the menu spot: the seat is behind him, to his right
+  const sc = m.showcase, T = cfg.throne, c = Math.cos(sc.facing), s = Math.sin(sc.facing);
+  throne.position.set(sc.x + T.seat[0] * c + T.seat[1] * s, m.groundHeight(sc.x, sc.z), sc.z - T.seat[0] * s + T.seat[1] * c);
+  throne.rotation.y = sc.facing;
+  throne.visible = false;
+  m.group.add(throne);
+  maps.glatorian = m;
+  scene.add(m.group);
+}
 /** The Rhotuka spinner as a static geometry (unit diameter, flat in XZ), painted. */
 async function loadRhotuka(bytes) {
   const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
@@ -276,10 +321,11 @@ async function loadRhotuka(bytes) {
   return paintRhotuka(geo);
 }
 const rosterOf = (id) => ROSTER.find((c) => c.id === id);
-const available = (c) => !c.locked && (c.id !== 'tahu' || tahuTpl);
+const available = (c) => !c.locked && (c.id !== 'tahu' || tahuTpl) && (c.id !== 'dreadnought' || (dreadTpl && maps.glatorian));
 /** A fresh fighter. Toaku falls back to the procedural classic model if his rig failed to load. */
 function createFighter(id) {
   if (id === 'tahu' && tahuTpl) return new SuperTahu(cfg.tahu, buildCharacterInstance(tahuTpl, 'tahu'));
+  if (id === 'dreadnought' && dreadTpl) return new Dreadnought(cfg.dreadnought, buildCharacterInstance(dreadTpl, 'dreadnought'));
   if (toakuTpl && !G.forceProcedural) return new Toaku(cfg.toaku, buildCharacterInstance(toakuTpl, 'toaku'));
   return new ToakuClassic(cfg.toaku);
 }
@@ -449,7 +495,7 @@ function banner(text, kind) {
   clearTimeout(bannerTimer);
   bannerTimer = setTimeout(() => { el.className = kind; }, 1600);
 }
-const hud = { hp: $('#hp-fill'), hpLag: $('#hp-lag'), meter: $('#meter'), sp: $('#btn-special'), wave: $('#wave'), score: $('#score'), left: $('#left'), boss: $('#boss-fill'), combo: $('#combo') };
+const hud = { hp: $('#hp-fill'), hpLag: $('#hp-lag'), meter: $('#meter'), sp: $('#btn-special'), punch: $('#btn-punch'), wave: $('#wave'), score: $('#score'), left: $('#left'), boss: $('#boss-fill'), combo: $('#combo') };
 let hpLag = 1;
 /** Last values written to the DOM: the HUD only touches an element when its value changes. */
 const shown = {};
@@ -467,6 +513,10 @@ function updateHud(dt) {
     hud.sp.style.setProperty('--fill', v * 360 + 'deg');
   });
   put('ready', mf >= 1, (v) => { hud.meter.classList.toggle('ready', v); hud.sp.classList.toggle('ready', v); });
+  // DREADNOUGHT's hold-PUNCH charge: the ring around PUNCH fills, flashes gold at the threshold
+  const ch = p.charge || 0;
+  put('charge', Math.round(ch * 50) / 50, (v) => { hud.punch.style.setProperty('--charge', v * 360 + 'deg'); hud.punch.classList.toggle('charging', v > 0); });
+  put('charged', ch >= 1, (v) => hud.punch.classList.toggle('charged', v));
   put('specialOn', p.state === 'special', (v) => document.body.classList.toggle('special-on', v));
   put('wave', G.wave, (v) => { hud.wave.textContent = pad2(v); });
   put('score', G.score, (v) => { hud.score.textContent = v.toLocaleString(); });
@@ -486,10 +536,16 @@ function configureHud(c) {
   em.classList.toggle('portrait', !c.emblem);
   if (c.emblem) em.querySelector('use').setAttribute('href', '#' + c.emblem);
   else $('#emblem-img').src = portraits[c.id] || '';
-  document.body.classList.toggle('has-kick', !!c.buttons.kick);
-  document.body.classList.toggle('has-grab', !!c.buttons.grab);
-  $('#btn-jump').innerHTML = `<svg class="ic"><use href="#${c.buttons.jumpIcon}"></use></svg><span>${c.buttons.jump}</span>`;
-  $('#btn-special').innerHTML = `<svg class="ic"><use href="#${c.buttons.specialIcon}"></use></svg><span>${c.buttons.special}</span>`;
+  const B = c.buttons;
+  document.body.classList.toggle('has-kick', !!B.kick);
+  document.body.classList.toggle('has-grab', !!B.grab);
+  document.body.classList.toggle('has-dodge', !!B.dodge);     // its own DODGE button, in the special's slot
+  document.body.classList.toggle('no-special', !B.special);
+  document.body.classList.toggle('has-charge', !!cfg[c.id].uppercut); // hold PUNCH to charge
+  $('#btn-jump').innerHTML = `<svg class="ic"><use href="#${B.jumpIcon}"></use></svg><span>${B.jump}</span>`;
+  if (B.special) $('#btn-special').innerHTML = `<svg class="ic"><use href="#${B.specialIcon}"></use></svg><span>${B.special}</span>`;
+  if (B.dodge) $('#btn-dodge').innerHTML = `<svg class="ic"><use href="#${B.dodgeIcon}"></use></svg><span>${B.dodge}</span>`;
+  hud.punch.classList.remove('charging', 'charged');
 }
 
 // ---------- flow ----------
@@ -506,13 +562,20 @@ function clearWorld() {
   resetBossUi();
   $('#frost').classList.remove('on');
 }
-function newGame(id = G.charId) {
+/**
+ * Start a fight: fighter `id` on map `mapId` (default: his home map). Spawns him on the map's start
+ * spot; the map brings its collision and navigation, the waves start after a short break.
+ */
+function newGame(id = G.charId, mapId) {
   if (!assetsReady) return;
   const c = rosterOf(id);
   if (!c || !available(c)) return;
+  const mid = maps[mapId] ? mapId : c.map;
   clearWorld();
   G.charId = id;
-  setMap(c.map);
+  G.mapId = mid;
+  G.introSeen = false; // a new visit to the menus after this fight plays it again
+  setMap(mid);
   hideShowcases();
   const p = createFighter(id);
   const s = G.map.start;
@@ -526,7 +589,9 @@ function newGame(id = G.charId) {
   G.noWaves = false; G.view = null; G.camLock = false; // test-harness switches never leak into a new game
   G.camYaw = G.camYawTarget = s.facing + Math.PI;
   G.camLift = 0;
-  camera.position.set(p.pos.x + Math.sin(G.camYaw) * cfg.camera.distance, p.pos.y + cfg.camera.height, p.pos.z + Math.cos(G.camYaw) * cfg.camera.distance);
+  G.camArm = -1;
+  const cm = p.cfg.camera || NO_CAM;
+  camera.position.set(p.pos.x + Math.sin(G.camYaw) * cfg.camera.distance * cm.distance, p.pos.y + cfg.camera.height * cm.height, p.pos.z + Math.cos(G.camYaw) * cfg.camera.distance * cm.distance);
   G.gameCam.copy(camera.position);
   G.bossZoom = 0;
   G.tonuaRef = null;
@@ -557,14 +622,19 @@ function pause(on) {
 }
 function toTitle() {
   clearWorld();
+  endIntroUi();
   G.mode = 'title';
+  G.introSeen = false;
   document.body.dataset.fighter = 'menu'; // the main menu has its own neutral (cyan) theme
   setScreen('title');
   showShowcase(G.charId);
 }
 window.__pauseGame = () => pause(true);
+/** Android back: one step back through the menus; in a fight, pause. */
 window.__backPressed = () => {
   if (G.mode === 'select') { toTitle(); return true; }
+  if (G.mode === 'intro') { skipIntro(); return true; }
+  if (G.mode === 'location') { showSelect(); return true; }
   pause(G.mode === 'playing');
   return true;
 };
@@ -580,12 +650,12 @@ function buildSelect() {
     card.dataset.i = i;
     card.innerHTML = c.locked
       ? '<div class="pic"><span>?</span></div><div class="cname">COMING SOON</div>'
-      : `<div class="pic" style="--c:${c.color}">${portraits[c.id] ? `<img alt="" src="${portraits[c.id]}">` : ''}</div><div class="cname">${c.name}</div>`;
+      : `<div class="pic" style="--c:${c.color}">${portraits[c.id] ? `<img alt="" src="${portraits[c.id]}">` : ''}</div><div class="cname${c.name.length > 10 ? ' long' : ''}">${c.name}</div>`;
     card.addEventListener('click', (e) => {
       e.preventDefault();
       audio.unlock();
       if (c.locked || !available(c)) { card.classList.remove('nope'); void card.offsetWidth; card.classList.add('nope'); return; }
-      if (G.sel === i) { newGame(c.id); return; } // tapping the selected card again starts the fight
+      if (G.sel === i) { confirmFighter(c.id); return; } // tapping the selected card again picks him
       select(i);
     });
     row.appendChild(card);
@@ -600,6 +670,7 @@ function select(i) {
   document.querySelectorAll('#sel-cards .card').forEach((el, k) => el.classList.toggle('on', k === i));
   document.body.dataset.fighter = c.id; // the whole screen takes the fighter's colours
   $('#sel-name').textContent = c.name;
+  $('#sel-name').classList.toggle('long', c.name.length > 10);
   $('#sel-title').textContent = c.title || '';
   const plate = $('.sel-plate');
   plate.style.animation = 'none'; void plate.offsetWidth; plate.style.animation = '';
@@ -611,16 +682,165 @@ function select(i) {
   bars.forEach((b, k) => { b.style.transitionDelay = `${k * 0.06}s`; b.style.transform = `scaleX(${stats[k].fill})`; });
   $('#sel-moves').innerHTML = c.moves.map((m) => `<li>${m}</li>`).join('');
   $('#sel-special').innerHTML = `SPECIAL <b>${c.special}</b>`;
-  $('#sel-arena').innerHTML = `ARENA <b>${maps[c.map].name}</b>`;
+  $('#sel-arena').innerHTML = `HOME ARENA <b>${maps[c.map] ? maps[c.map].name : ''}</b>`;
   showShowcase(c.id);
+  seatOnThrone();
   titleT = 0;
 }
 function showSelect() {
   if (!assetsReady) return;
   if (G.player) clearWorld(); // coming from game over: clear the arena for the showcase
+  endIntroUi();
   G.mode = 'select';
   setScreen('select');
   select(G.sel);
+}
+
+// ---------- fighter intro (DREADNOUGHT rises from his throne) ----------
+let intro = null;
+/** On the select screen DREADNOUGHT waits on his throne until his intro has played on this visit. */
+function seatOnThrone() {
+  const f = showcases.dreadnought;
+  if (!f || G.charId !== 'dreadnought') return;
+  const seated = f.state === 'standup' && f.standHold > 0;
+  if (!G.introSeen && !seated) f.playStandUp(cfg.throne.rise[0], cfg.throne.rise[1], Infinity, cfg.throne.riseSpeed);
+  else if (G.introSeen && f.state === 'standup') f.finishStandUp();
+}
+/** SELECT on the character select: the fighter's intro (once per visit to the menus), then the locations. */
+function confirmFighter(id) {
+  const c = rosterOf(id);
+  if (!assetsReady || !c || !available(c) || G.mode !== 'select') return;
+  G.charId = id;
+  if (c.intro && !G.introSeen && showcases[id] && maps.glatorian) startIntro(c);
+  else showLocations();
+}
+function startIntro(c) {
+  const f = showcases[c.id], map = maps.glatorian, sc = map.showcase; // his throne stands in his arena
+  showShowcase(c.id, 'glatorian');
+  G.mode = 'intro';
+  G.introSeen = true;
+  $('#it-name').textContent = c.name;
+  $('#it-title').textContent = c.title || '';
+  setScreen('intro');
+  document.body.classList.add('cine'); // letterbox
+  intro = new ThroneIntro(cfg.throne, {
+    fighter: f, stage: { x: sc.x, y: map.groundHeight(sc.x, sc.z), z: sc.z, facing: sc.facing },
+    ui: { title: (on) => $('#intro-title').classList.toggle('show', on) },
+  });
+  applyShot(intro.start());
+}
+function stepIntro(dt) {
+  const f = showcases[G.charId], map = maps.glatorian;
+  holdOnSpot(f, map, dt, idleInput);
+  applyShot(intro.update(dt));
+  map.update(dt, f.pos);
+  fx.update(dt);
+  if (intro.done) endIntro();
+}
+/** Tap / Enter / Escape / back during the intro: he is standing at once, the cut hidden by a fade. */
+function skipIntro() {
+  if (G.mode !== 'intro' || !intro) return;
+  applyShot(intro.skip());
+  const cut = $('#cut');
+  cut.classList.remove('go'); void cut.offsetWidth; cut.classList.add('go');
+  endIntro();
+}
+function endIntro() {
+  G.camFrom = { pos: camera.position.clone(), look: menuLook.clone(), t: 0 };
+  endIntroUi();
+  showLocations();
+}
+function endIntroUi() {
+  intro = null;
+  document.body.classList.remove('cine');
+  $('#intro-title').classList.remove('show');
+}
+/** Point the camera at a scripted shot ({pos, look}, world space). */
+function applyShot(shot) {
+  camera.position.set(shot.pos.x, shot.pos.y, shot.pos.z);
+  menuLook.set(shot.look.x, shot.look.y, shot.look.z);
+  camera.lookAt(menuLook);
+}
+
+// ---------- SELECT LOCATION ----------
+let locs = [];             // the selectable locations (maps that loaded), menu order
+const locPreviews = {};    // location id -> preview image (data URL, rendered at start-up)
+/** The cards of the location menu (built once the maps are in). */
+function buildLocations() {
+  locs = availableLocations(LOCATIONS, (m) => !!maps[m]);
+  const row = $('#loc-chips');
+  row.innerHTML = '';
+  locs.forEach((l, i) => {
+    const chip = document.createElement('button');
+    chip.className = 'loc-chip';
+    chip.innerHTML = `<i style="background-image:url(${locPreviews[l.id] || ''})"></i><span>${l.name}</span>`;
+    chip.addEventListener('click', (e) => {
+      e.preventDefault(); audio.unlock();
+      if (G.locSel === i) fightAt(i); else focusLocation(i);
+    });
+    row.appendChild(chip);
+  });
+  document.body.classList.toggle('one-location', locs.length < 2);
+}
+function showLocations() {
+  if (!assetsReady || !locs.length) { newGame(G.charId); return; }
+  const f = showcases[G.charId];
+  if (f && f.state === 'standup') f.finishStandUp(); // standing from here on
+  G.mode = 'location';
+  document.body.dataset.fighter = G.charId;
+  setScreen('location');
+  focusLocation(defaultLocation(locs)); // opens on the featured arena (where an intro ends, too)
+}
+/** Focus location card i: the big card shows it, the fighter is shown standing in it behind the menu. */
+function focusLocation(i) {
+  const l = locs[i];
+  if (!l) return;
+  G.locSel = i;
+  document.querySelectorAll('#loc-chips .loc-chip').forEach((el, k) => el.classList.toggle('on', k === i));
+  $('#loc-img').src = locPreviews[l.id] || '';
+  $('#loc-tag').textContent = l.tag;
+  $('#loc-name').textContent = l.name;
+  $('#loc-blurb').textContent = l.blurb;
+  const card = $('#loc-card');
+  card.style.animation = 'none'; void card.offsetWidth; card.style.animation = '';
+  // another map behind the menu: a cut (an intro's camera only eases into the menu on its own map)
+  if (G.showMap !== l.map) { showShowcase(G.charId, l.map); G.camFrom = null; titleT = 0; }
+}
+/** FIGHT: into the focused location. */
+function fightAt(i) {
+  if (G.mode !== 'location' || !locs[i]) return;
+  newGame(G.charId, locs[i].map);
+}
+
+/** Pre-render a 16:9 preview image of every location for its card (empty arena, no fighters). */
+function renderLocationPreviews() {
+  const w = 480, h = 270;
+  const cam = new THREE.PerspectiveCamera(50, w / h, 0.5, 1400);
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  const ctx = out.getContext('2d');
+  const start = G.map.id;
+  const shown = [...Object.values(showcases).map((f) => f.root), showTonua && showTonua.root, throne].filter(Boolean);
+  const vis = shown.map((o) => o.visible);
+  for (const o of shown) o.visible = false;
+  const pr = renderer.getPixelRatio();
+  const cw = renderer.domElement.width, ch = renderer.domElement.height;
+  const vw = Math.min(cw, Math.floor(ch * w / h)), vh = Math.floor(vw * h / w);
+  for (const l of LOCATIONS) {
+    const map = maps[l.map];
+    if (!map) continue;
+    setMap(l.map);
+    map.update(0, { x: 0, y: 0, z: 0 });
+    cam.position.set(...l.preview.pos);
+    cam.lookAt(...l.preview.look);
+    renderer.setViewport(0, 0, vw / pr, vh / pr);
+    renderer.render(scene, cam);
+    ctx.drawImage(renderer.domElement, 0, ch - vh, vw, vh, 0, 0, w, h);
+    locPreviews[l.id] = out.toDataURL('image/jpeg', 0.86);
+  }
+  renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+  shown.forEach((o, k) => { o.visible = vis[k]; });
+  setMap(start);
 }
 
 /** Render a head-and-shoulders portrait of each fighter for the cards. */
@@ -632,7 +852,7 @@ function renderPortraits() {
   key.position.set(2, 4, 5);
   pScene.add(key);
   const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
-  const shots = [['toaku', 3.15, 0x1b3a24], ['tahu', 2.45, 0x4a2410]]; // [id, head height, backdrop]
+  const shots = [['toaku', 3.15, 0x1b3a24], ['tahu', 2.45, 0x4a2410], ['dreadnought', 3.75, 0x24123a]]; // [id, head height, backdrop]
   const prevFog = scene.fog;
   const out = document.createElement('canvas');
   out.width = out.height = size;
@@ -685,21 +905,38 @@ function setupShowcases() {
   scene.add(showTonua.root);
   showShowcase(G.charId);
 }
-function showShowcase(id) {
+/**
+ * Show fighter `id` on the menu spot of map `mapId` (default: his home map). On his home map a Tonua
+ * spars with him where the map has a spot for one; DREADNOUGHT's throne stands on the arena's spot.
+ */
+function showShowcase(id, mapId) {
   const c = rosterOf(id);
-  if (!c) return;
-  setMap(c.map);
+  const mid = mapId || (c && c.map);
+  const map = maps[mid];
+  if (!c || !map) return;
+  setMap(mid);
+  G.showMap = mid;
   for (const [k, f] of Object.entries(showcases)) f.root.visible = k === id;
-  if (showTonua) {
-    const t = maps[c.map].showcase.tonua;
-    showTonua.pos.set(t.x, maps[c.map].groundHeight(t.x, t.z), t.z);
-    showTonua.facing = t.facing;
-    showTonua.root.visible = true;
+  const f = showcases[id];
+  if (f) {
+    const sc = map.showcase;
+    f.pos.set(sc.x, map.groundHeight(sc.x, sc.z), sc.z);
+    f.groundY = f.pos.y;
+    f.vel.set(0, 0, 0);
+    f.facing = sc.facing;
+    f.sync();
   }
+  const t = mid === c.map && map.showcase.tonua;
+  if (showTonua) {
+    showTonua.root.visible = !!t;
+    if (t) { showTonua.pos.set(t.x, map.groundHeight(t.x, t.z), t.z); showTonua.facing = t.facing; }
+  }
+  if (throne) throne.visible = id === 'dreadnought' && mid === 'glatorian';
 }
 function hideShowcases() {
   for (const f of Object.values(showcases)) f.root.visible = false;
   if (showTonua) showTonua.root.visible = false;
+  if (throne) throne.visible = false;
 }
 
 const tap = (sel, fn) => {
@@ -707,11 +944,16 @@ const tap = (sel, fn) => {
   el.addEventListener('click', (e) => { e.preventDefault(); audio.unlock(); fn(); });
 };
 tap('#btn-start', showSelect);
-tap('#btn-go', () => newGame(ROSTER[G.sel].id));
+tap('#btn-go', () => confirmFighter(ROSTER[G.sel].id));
 tap('#btn-back', toTitle);
+tap('#intro', skipIntro);
+tap('#loc-back', showSelect);
+tap('#btn-fight', () => fightAt(G.locSel));
+tap('#loc-prev', () => focusLocation(stepLocation(locs, G.locSel, -1)));
+tap('#loc-next', () => focusLocation(stepLocation(locs, G.locSel, 1)));
 tap('#sel-prev', () => select(nextSelectable(ROSTER.map((c) => ({ locked: !available(c) })), G.sel, -1)));
 tap('#sel-next', () => select(nextSelectable(ROSTER.map((c) => ({ locked: !available(c) })), G.sel, 1)));
-tap('#btn-retry', () => newGame(G.charId));
+tap('#btn-retry', () => newGame(G.charId, G.mapId)); // same fighter, same arena
 tap('#btn-change', showSelect);
 tap('#btn-pause', () => pause(true));
 tap('#btn-resume', () => pause(false));
@@ -720,41 +962,64 @@ tap('#btn-mute', () => { $('#btn-mute').textContent = audio.toggleMute() ? 'SOUN
 document.addEventListener('touchstart', () => audio.unlock(), { passive: true });
 window.addEventListener('keydown', (e) => {
   audio.unlock();
-  if (e.code === 'Escape' || e.code === 'KeyP') { if (G.mode === 'select') toTitle(); else pause(G.mode === 'playing'); }
-  if (e.code === 'Enter') {
+  if (e.repeat) return;
+  if (e.code === 'Escape' || e.code === 'KeyP') {
+    if (G.mode === 'select') toTitle();
+    else if (G.mode === 'intro') skipIntro();
+    else if (G.mode === 'location') showSelect();
+    else pause(G.mode === 'playing');
+    return;
+  }
+  if (e.code === 'Enter' || (e.code === 'Space' && G.mode === 'intro')) {
     if (G.mode === 'title') showSelect();
-    else if (G.mode === 'select') newGame(ROSTER[G.sel].id);
-    else if (G.mode === 'over') newGame(G.charId);
+    else if (G.mode === 'select') confirmFighter(ROSTER[G.sel].id);
+    else if (G.mode === 'intro') skipIntro();
+    else if (G.mode === 'location') fightAt(G.locSel);
+    else if (G.mode === 'over') newGame(G.charId, G.mapId);
+    return;
   }
-  if (G.mode === 'select' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) {
-    select(nextSelectable(ROSTER.map((c) => ({ locked: !available(c) })), G.sel, e.code === 'ArrowLeft' ? -1 : 1));
-  }
+  const dir = e.code === 'ArrowLeft' ? -1 : e.code === 'ArrowRight' ? 1 : 0;
+  if (dir && G.mode === 'select') select(nextSelectable(ROSTER.map((c) => ({ locked: !available(c) })), G.sel, dir));
+  if (dir && G.mode === 'location') focusLocation(stepLocation(locs, G.locSel, dir));
 });
 
 // ---------- loop ----------
 const clock = new THREE.Clock();
-const camPos = new THREE.Vector3(), look = new THREE.Vector3(), camScript = new THREE.Vector3();
-const idleInput = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, special: false };
+const camPos = new THREE.Vector3(), look = new THREE.Vector3(), camScript = new THREE.Vector3(), menuLook = new THREE.Vector3();
+const idleInput = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, dodge: false, special: false, punchHeld: false };
+const NO_CAM = { distance: 1, height: 1, look: 1 }; // fighters without their own camera framing
 let titleT = 0;
 
-/** Title / select: the chosen fighter idles in their arena and shows off a few moves. */
-function stepTitle(dt) {
+/** The world as the menus' fighters see it: no enemies, no sound, no shake. */
+const menuWorlds = {};
+function menuWorld(map) {
+  return menuWorlds[map.id] || (menuWorlds[map.id] = { ...world, map, enemies: [], audio: silentAudio, shake() {}, hitStop() {}, onCombo() {}, onSpecial() {}, onSpecialImpact() {} });
+}
+/** Update a menu fighter and keep him on the map's menu spot. */
+function holdOnSpot(f, map, dt, inp) {
+  const sc = map.showcase;
+  f.update(dt, inp, 0, menuWorld(map));
+  f.pos.set(sc.x, map.groundHeight(sc.x, sc.z), sc.z);
+  f.facing = sc.facing;
+  f.sync();
+}
+
+/**
+ * Select / location menus: the chosen fighter idles on the shown map's menu spot under a slowly
+ * sweeping camera; on the character select he also shows off a few moves (`moves`).
+ */
+function stepShowcase(dt, moves) {
   titleT += dt;
-  const c = rosterOf(G.charId);
-  const map = maps[c.map];
+  const map = maps[G.showMap] || G.map;
   const sc = map.showcase;
   const f = showcases[G.charId];
-  const tw = { ...world, map, enemies: [], audio: silentAudio, shake() {}, hitStop() {}, onCombo() {}, onSpecial() {}, onSpecialImpact() {} };
+  const tw = menuWorld(map);
   if (f) {
     const cyc = titleT % 7;
-    const press = (at) => cyc >= at && cyc - dt < at;
-    const inp = { ...idleInput, punch: press(2.6) || press(2.9) || press(3.2) || press(3.5), kick: press(5.0) };
-    f.update(dt, inp, 0, tw);
-    f.pos.set(sc.x, map.groundHeight(sc.x, sc.z), sc.z);
-    f.facing = sc.facing;
-    f.sync();
+    const press = (at) => moves && cyc >= at && cyc - dt < at;
+    holdOnSpot(f, map, dt, { ...idleInput, punch: press(2.6) || press(2.9) || press(3.2) || press(3.5), kick: press(5.0) });
   }
-  if (showTonua) {
+  if (showTonua && showTonua.root.visible) {
     showTonua.stateT = (showTonua.stateT + dt) % 1;
     showTonua.state = 'taunt';
     showTonua.update(dt, { ...tw, player: f || { pos: new THREE.Vector3(sc.x, 0, sc.z), alive: true, altitude: () => 0 } });
@@ -765,7 +1030,17 @@ function stepTitle(dt) {
   const cm = sc.cam;
   const a = cm.base + (cm.sweep ? Math.sin(titleT * 0.25) * cm.sweep : titleT * 0.15);
   camera.position.set(cm.cx + Math.sin(a) * cm.r, map.groundHeight(cm.cx, cm.cz) + cm.h, cm.cz + Math.cos(a) * cm.r);
-  camera.lookAt(cm.look.x, map.groundHeight(cm.look.x, cm.look.z) + cm.look.y, cm.look.z);
+  menuLook.set(cm.look.x, map.groundHeight(cm.look.x, cm.look.z) + cm.look.y, cm.look.z);
+  if (G.camFrom) {
+    // out of an intro: ease from where its shot ended into the menu's camera
+    const F = G.camFrom;
+    F.t += dt;
+    const k = Math.min(1, F.t / cfg.throne.menuBlend), e = k * k * (3 - 2 * k);
+    camera.position.lerpVectors(F.pos, camera.position, e);
+    menuLook.lerpVectors(F.look, menuLook, e);
+    if (k >= 1) G.camFrom = null;
+  }
+  camera.lookAt(menuLook);
   map.update(dt, f ? f.pos : camPos.set(cm.cx, 0, cm.cz));
   fx.update(dt);
   fire.update(dt);
@@ -849,14 +1124,31 @@ function stepGame(dt, inp) {
   const camOverride = encounter && encounter.active ? encounter.update(dt, world) : null;
 
   // camera: chase cam that rises over terrace walls instead of clipping into them; it pulls back a
-  // little during a boss fight (his charge and projectiles cover ground)
+  // little during a boss fight (his charge and projectiles cover ground). A bigger fighter is framed
+  // from further back (his cfg.camera multipliers).
   G.specialCam = Math.max(0, G.specialCam - dt);
   G.bossZoom += ((G.bossRef && G.bossRef.alive ? 1 : 0) - G.bossZoom) * Math.min(1, dt * 1.5);
+  const cm = p.cfg.camera || NO_CAM;
   const zoom = (G.specialCam > 0 ? 0.72 : 1) * (1 + cfg.camera.bossPull * G.bossZoom);
-  const dist = cfg.camera.distance * zoom;
+  let dist = cfg.camera.distance * cm.distance * zoom, rise = 0;
+  if (G.map.cameraReach) {
+    // spring arm (the Glatorian Arena): the arm shortens so the camera stays over the floor, never in
+    // the podium wall or the stands; it shortens fast, lengthens slowly, and the camera rises by part
+    // of the length it lost, looking down over the fighter. Backed against the wall with the camera on
+    // the wall side, the camera also swings round toward open floor (unless it is being dragged).
+    const C = cfg.camera, px = p.pos.x, pz = p.pos.z;
+    const reach = G.map.cameraReach(px, pz, G.camYaw, dist);
+    if (reach < dist * 0.6 && Math.abs(inp.camDX) < 1 && !G.camLock) {
+      const l = G.map.cameraReach(px, pz, G.camYaw - 0.6, dist), r = G.map.cameraReach(px, pz, G.camYaw + 0.6, dist);
+      G.camYawTarget += (Math.abs(r - l) > 0.3 ? Math.sign(r - l) : 1) * C.wallTurn * (1 - reach / dist) * dt;
+    }
+    const arm = Math.max(C.minArm, reach);
+    G.camArm = G.camArm < 0 ? arm : G.camArm + (arm - G.camArm) * Math.min(1, dt * (arm < G.camArm ? 14 : 2.5));
+    if (G.camArm < dist) { rise = Math.min(C.maxRise, (dist - G.camArm) * C.armRise); dist = G.camArm; }
+  }
   const tx = p.pos.x + Math.sin(G.camYaw) * dist;
   const tz = p.pos.z + Math.cos(G.camYaw) * dist;
-  let ty = p.pos.y + Math.max(0, p.altitude()) * -0.4 + cfg.camera.height * (G.specialCam > 0 ? 0.8 : 1) * (1 + cfg.camera.bossLift * G.bossZoom);
+  let ty = p.pos.y + rise + Math.max(0, p.altitude()) * -0.4 + cfg.camera.height * cm.height * (G.specialCam > 0 ? 0.8 : 1) * (1 + cfg.camera.bossLift * G.bossZoom);
   const floor = Math.max(G.map.cameraFloor(tx, tz), G.map.cameraFloor((tx + p.pos.x) / 2, (tz + p.pos.z) / 2));
   G.camLift += (Math.max(0, floor - ty) - G.camLift) * Math.min(1, dt * 5);
   ty += G.camLift;
@@ -864,7 +1156,7 @@ function stepGame(dt, inp) {
   // the gameplay camera is smoothed on its own; a scripted shot is blended over it (no snaps in or out)
   G.gameCam.lerp(camPos, Math.min(1, dt * cfg.camera.followLerp + (dt === 0 ? 0 : 0.02)));
   camera.position.copy(G.gameCam);
-  look.set(p.pos.x, p.pos.y + Math.max(0, p.altitude()) * 0.3 + cfg.camera.lookHeight + cfg.camera.bossLook * G.bossZoom, p.pos.z);
+  look.set(p.pos.x, p.pos.y + Math.max(0, p.altitude()) * 0.3 + cfg.camera.lookHeight * cm.look + cfg.camera.bossLook * G.bossZoom, p.pos.z);
   if (camOverride) {
     camera.position.lerp(camScript.set(camOverride.pos.x, camOverride.pos.y, camOverride.pos.z), camOverride.w);
     look.lerp(camScript.set(camOverride.look.x, camOverride.look.y, camOverride.look.z), camOverride.w);
@@ -890,14 +1182,21 @@ function stepGame(dt, inp) {
   updateHud(dt);
 }
 
+/** One tick of whatever the current mode runs. */
+function stepMode(dt, inp) {
+  if (G.mode === 'select') stepShowcase(dt, true);
+  else if (G.mode === 'location') stepShowcase(dt, false);
+  else if (G.mode === 'intro') stepIntro(dt);
+  else stepGame(dt, inp);
+}
+
 function frame() {
   requestAnimationFrame(frame);
   if (window.__game && window.__game.manual) return; // a test harness is stepping the game
   const dt = Math.min(clock.getDelta(), 1 / 20);
   const inp = input.poll();
   if (G.mode === 'title') { input.consume(); return; } // the opaque main menu hides the 3D scene: skip it
-  if (G.mode === 'select') stepTitle(dt);
-  else stepGame(dt, inp);
+  stepMode(dt, inp);
   renderer.render(scene, camera);
   input.consume();
 }
@@ -906,7 +1205,12 @@ frame();
 
 // ---------- automated smoke tests / animation capture ----------
 window.__game = {
-  G, world, CONFIG, ROSTER, spawnTonua, spawnBohrok, elements, newGame, showSelect, select, fire,
+  G, world, CONFIG, ROSTER, LOCATIONS, spawnTonua, spawnBohrok, elements, newGame, showSelect, select, fire,
+  confirmFighter, skipIntro, showLocations, focusLocation, fightAt, maps,
+  get intro() { return intro; },
+  get showcases() { return showcases; },
+  get throne() { return throne; },
+  get locationPreviews() { return locPreviews; },
   get encounter() { return encounter; },
   get bossFx() { return bossFx; },
   get sidorakTemplate() { return sidorakTpl; },
@@ -923,15 +1227,16 @@ window.__game = {
   programs() { return (renderer.info.programs || []).map((q) => `${q.name}#${q.id} x${q.usedTimes} ${q.cacheKey.replace(/\s+/g, "")}`); },
   get skinned() { return !!toakuTpl; },
   get tahuLoaded() { return !!tahuTpl; },
+  get dreadnoughtLoaded() { return !!dreadTpl; },
   /** The shared material of a fighter's model (for look-dev captures). */
-  charMaterial(id) { const t = id === 'tahu' ? tahuTpl : toakuTpl; let m = null; if (t) t.scene.traverse((o) => { if (o.isMesh && !m) m = o.material; }); return m; },
+  charMaterial(id) { const t = id === 'tahu' ? tahuTpl : id === 'dreadnought' ? dreadTpl : toakuTpl; let m = null; if (t) t.scene.traverse((o) => { if (o.isMesh && !m) m = o.material; }); return m; },
   /** Step `frames` fixed ticks with the given input (edge-triggered actions fire on the first tick), then render. */
   step(frames = 1, inp = {}, fps = 60) {
     for (let i = 0; i < frames; i++) {
       const tickInput = { ...idleInput, ...inp };
-      if (i > 0) { tickInput.punch = false; tickInput.kick = false; tickInput.grab = false; tickInput.jump = false; tickInput.special = false; }
-      if (G.mode === 'title' || G.mode === 'select') stepTitle(1 / fps);
-      else stepGame(1 / fps, tickInput);
+      if (i > 0) { tickInput.punch = false; tickInput.kick = false; tickInput.grab = false; tickInput.jump = false; tickInput.dodge = false; tickInput.special = false; }
+      if (G.mode === 'title') stepShowcase(1 / fps, true);
+      else stepMode(1 / fps, tickInput);
     }
     const t0 = performance.now();
     renderer.render(scene, camera);

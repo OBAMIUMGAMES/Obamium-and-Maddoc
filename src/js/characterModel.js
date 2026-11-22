@@ -1,13 +1,15 @@
 /**
  * Loads a Meshy/Mixamo fighter built by tools/build-character.mjs and clones animatable instances.
  * The model's clips are renamed to the game's action names (cfg.clips) and extra clips are baked
- * from them (cfg.idle, cfg.poses, cfg.loops); root motion is stripped from cfg.rootMotion clips.
+ * from them (cfg.idle, cfg.poses, cfg.loops, cfg.breathLoops); root motion is stripped from
+ * cfg.rootMotion clips.
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { extractRootMotion, bakeSubclip, bakePose } from './clipUtils.js';
+import { bakeEditedLoop, bakeEditedPose, recentreHips } from './clipPose.js';
 
 /**
  * Parse the GLB once and prepare its clips.
@@ -29,10 +31,21 @@ export async function loadCharacterTemplate(bytes, cfg, opts = {}) {
   // root motion first, so poses baked from these clips stay centred on the fighter
   const rootMotion = {};
   for (const a of cfg.rootMotion || []) rootMotion[a] = extractRootMotion(clips[a]);
+  // clips that end where the fighter stands (e.g. rising from a seat behind him): hips recentred there
+  for (const [a, t] of Object.entries(cfg.recentre || {})) recentreHips(clips[a], t);
   const I = cfg.idle;
-  clips.Idle = bakeSubclip(clips[I.clip], 'Idle', I.from, I.to);
-  for (const [name, [src, t]] of Object.entries(cfg.poses || {})) clips[name] = bakePose(clips[src], name, t);
+  clips.Idle = I.at !== undefined
+    // one edited frame + breathing, looped (no clip of its own in the export)
+    ? bakeEditedLoop(gltf.scene, clips[I.clip], 'Idle', { at: I.at, edits: I.edits, hips: { x: 0, z: 0 }, period: I.period, breathe: I.breathe })
+    : bakeSubclip(clips[I.clip], 'Idle', I.from, I.to);
+  for (const [name, [src, t, edits]] of Object.entries(cfg.poses || {})) {
+    clips[name] = edits ? bakeEditedPose(gltf.scene, clips[src], name, t, edits, { x: 0, z: 0 }) : bakePose(clips[src], name, t);
+  }
   for (const [name, [src, from, to]] of Object.entries(cfg.loops || {})) clips[name] = bakeSubclip(clips[src], name, from, to);
+  // one frame of a clip, breathing (e.g. Dreadnought seated on his throne): hips left where they are
+  for (const [name, L] of Object.entries(cfg.breathLoops || {})) {
+    clips[name] = bakeEditedLoop(gltf.scene, clips[L.clip], name, { at: L.at, edits: L.edits, period: L.period, breathe: L.breathe });
+  }
   gltf.scene.traverse((o) => {
     if (!o.isMesh) return;
     o.castShadow = true;

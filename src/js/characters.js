@@ -31,7 +31,20 @@ export const ROSTER = [
     color: '#ff7a1a',
     buttons: { jump: 'DODGE', jumpIcon: 'i-dodge', special: 'INFERNO<br>SLAM', specialIcon: 'i-fire', kick: true, grab: false },
   },
-  { id: 'locked-1', locked: true },
+  {
+    id: 'dreadnought',
+    name: 'DREADNOUGHT',
+    title: 'THE WARLORD',
+    map: 'glatorian',
+    special: 'HEAVY UPPERCUT',
+    meterLabel: 'HEAVY CHARGE', // his bar is the hold-PUNCH charge (he has no meter special)
+    emblem: 'mask-dreadnought',
+    stats: { defense: 5 },
+    moves: ['Hook + uppercut combo', 'Hold PUNCH: heavy uppercut', 'One-hand crushing grab', 'Spartan kick', 'Dive-roll dodge'],
+    color: '#a64dff',
+    intro: true, // rises from his throne when chosen
+    buttons: { jump: 'JUMP', jumpIcon: 'i-jump', special: null, dodge: 'DODGE', dodgeIcon: 'i-dodge', kick: true, grab: true },
+  },
   { id: 'locked-2', locked: true },
 ];
 
@@ -39,25 +52,30 @@ export const ROSTER = [
  * Top of each select-screen bar: a stat equal to the cap fills its bar. The values themselves come
  * from the fighter's gameplay config, so the screen always shows what the fighter really does.
  */
-export const STAT_CAPS = { health: 500, attack: 80, defense: 5, speed: 8, energy: 10 };
+export const STAT_CAPS = { health: 700, attack: 32, defense: 5, speed: 8, energy: 10, power: 60 };
 
 /**
  * The five select-screen stats of a fighter, read from its gameplay config.
- *  HEALTH  = max HP · ATTACK = damage of the full 4-punch combo · DEFENSE = designer rating /5
- *  SPEED   = run speed (m/s) · ENERGY = special-meter charge per landed hit
+ *  HEALTH  = max HP · ATTACK = average damage of his regular punches (combos differ in length)
+ *  DEFENSE = designer rating /5 · SPEED = run speed (m/s)
+ *  ENERGY  = special-meter charge per landed hit; a fighter without a meter special shows POWER
+ *            instead: the damage of his heavy (charged) blow
  * @param {object} c roster entry
  * @param {object} f the fighter's config block (CONFIG.toaku, CONFIG.tahu, ...)
  * @returns {{key:string, label:string, value:string, fill:number, max:boolean}[]}
  */
 export function fighterStats(c, f) {
   const hits = (f.punch && f.punch.hits) || f.combo || [];
+  const perHit = hits.length ? Math.round(hits.reduce((s, h) => s + h.damage, 0) / hits.length) : 0;
   const raw = {
     health: [f.maxHp, `${f.maxHp} HP`],
-    attack: [hits.reduce((s, h) => s + h.damage, 0), `${hits.reduce((s, h) => s + h.damage, 0)} / COMBO`],
+    attack: [perHit, `${perHit} / HIT`],
     defense: [c.stats.defense, `${c.stats.defense} / 5`],
     speed: [f.moveSpeed, `${f.moveSpeed} M/S`],
-    energy: [f.special.meterPerHit, `+${f.special.meterPerHit} / HIT`],
   };
+  if (f.special && f.special.meterPerHit) raw.energy = [f.special.meterPerHit, `+${f.special.meterPerHit} / HIT`];
+  else if (f.uppercut) raw.power = [f.uppercut.damage, `${f.uppercut.damage} / HEAVY`];
+  else raw.energy = [0, '-'];
   return Object.entries(raw).map(([key, [v, label]]) => (c.maxStats
     ? { key, label: key.toUpperCase(), value: 'MAX', fill: 1, max: true }
     : { key, label: key.toUpperCase(), value: label, fill: Math.max(0, Math.min(1, v / STAT_CAPS[key])), max: false }));

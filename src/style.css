@@ -45,6 +45,17 @@ body[data-fighter="tahu"] {
   --acc-3: #8a3606; --panel-soft: rgba(40, 6, 5, .62);
   --ink: #fff4e4;
 }
+/* DREADNOUGHT — THE WARLORD: deep purple, metallic gold, black and gunmetal, violet glow */
+body[data-fighter="dreadnought"] {
+  --acc: #b45cff; --acc-rgb: 180, 92, 255; --acc2: #ffe3a3;
+  --panel: rgba(13, 8, 20, .9); --panel-2: rgba(38, 22, 58, .92);
+  --frame-1: #ffeab0; --frame-2: #c9952c; --frame-3: #231c2a;
+  --hp-1: #e4bdff; --hp-2: #9a3cf0; --hp-3: #4a0f86; --en-1: #fff4c8; --en-2: #ffc53d; --en-3: #8a5806;
+  --acc-3: #5a1fa0; --panel-soft: rgba(13, 8, 20, .62);
+  --ink: #f5eeff;
+}
+body[data-fighter="dreadnought"] .cta { color: #1c0832; }
+body[data-fighter="dreadnought"] #hp-fill::after { background: rgba(255, 224, 150, .65); } /* a gold sheen on the violet */
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1016; font-family: var(--text); color: var(--ink); touch-action: none; }
@@ -190,11 +201,33 @@ body.has-kick #btn-jump { right: 120px; bottom: 98px; width: 76px; height: 76px;
 body.has-grab #buttons { width: 290px; }
 body.has-grab #btn-grab { display: flex; right: 112px; bottom: 96px; width: 78px; height: 78px; }
 body.has-grab #btn-jump { right: 210px; bottom: 14px; }
+/* DODGE as its own button (DREADNOUGHT): it takes the special's slot; no special, no special button */
+#btn-dodge { display: none; --btn-rgb: 255, 214, 120; --btn-ic: #fff6dc; }
+body.has-dodge #btn-dodge { display: flex; right: 18px; bottom: 122px; width: 86px; height: 86px; }
+body.no-special #btn-special { display: none; }
 /* per-theme tints for the secondary buttons */
 body[data-fighter="toaku"] #btn-kick { --btn-rgb: 140, 150, 160; }
 body[data-fighter="toaku"] #btn-jump { --btn-rgb: 120, 200, 255; }
 body[data-fighter="tahu"] #btn-kick { --btn-rgb: 255, 196, 80; }
 body[data-fighter="tahu"] #btn-jump { --btn-rgb: 255, 90, 60; }
+body[data-fighter="dreadnought"] #btn-kick { --btn-rgb: 255, 196, 84; }
+body[data-fighter="dreadnought"] #btn-jump { --btn-rgb: 140, 110, 255; }
+body[data-fighter="dreadnought"] #btn-grab { --btn-rgb: 196, 110, 255; }
+
+/* DREADNOUGHT holds PUNCH to charge his heavy uppercut: a ring around the button fills violet, then
+   flashes gold with a small HEAVY tag when the charge is full and the blow comes out */
+#btn-punch::before { content: ''; position: absolute; inset: -7px; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .1s;
+  background: conic-gradient(#c47dff var(--charge, 0deg), rgba(255, 255, 255, .1) var(--charge, 0deg));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4.5px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4.5px)); }
+#btn-punch::after { content: 'HEAVY'; position: absolute; left: 50%; top: -22px; opacity: 0; pointer-events: none; transform: translate(-50%, 6px) scale(.6);
+  font-family: var(--display); font-weight: 800; font-style: italic; font-size: 12px; letter-spacing: 2px; color: #ffe08a;
+  text-shadow: 0 1px 0 #1a0630, 0 0 8px rgba(190, 100, 255, 1), 0 0 2px #fff; }
+body.has-charge #btn-punch.charging::before { opacity: 1; }
+body.has-charge #btn-punch.charged::before { opacity: 1; background: conic-gradient(#ffd86a 0 360deg); animation: charge-flash .32s ease-out; }
+body.has-charge #btn-punch.charged::after { animation: heavy-tag .55s ease-out both; }
+@keyframes charge-flash { from { transform: scale(1.2); } to { transform: none; } }
+@keyframes heavy-tag { 0% { opacity: 0; transform: translate(-50%, 6px) scale(.6); } 30% { opacity: 1; transform: translate(-50%, 0) scale(1.15); } 100% { opacity: 1; transform: translate(-50%, -2px) scale(1); } }
 
 /* special: the ring fills with the energy meter (cooldown / ready indicator) */
 #btn-special { right: 14px; bottom: 120px; width: 92px; height: 92px; --fill: 0deg; --btn-rgb: var(--acc-rgb);
@@ -215,6 +248,9 @@ body[data-fighter="tahu"] #btn-jump { --btn-rgb: 255, 90, 60; }
 #flash.fire { background: radial-gradient(circle, rgba(255,220,150,.85), rgba(255,90,0,.35) 45%, rgba(255,60,0,0) 75%); }
 #hurt { position: fixed; inset: 0; box-shadow: inset 0 0 120px rgba(255,40,20,.85); opacity: 0; pointer-events: none; z-index: 2; }
 #hurt.go { animation: flash .35s ease-out; }
+/* a cut (skipping an intro): from black */
+#cut { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 7; }
+#cut.go { animation: flash .45s ease-out; }
 /* ======================= BOSS ENCOUNTER ======================= */
 /* cinematic: letterbox bars slide in, the combat HUD and controls step aside */
 #cine-bars i { position: fixed; left: 0; right: 0; height: 11vh; background: #000; z-index: 4; transform: scaleY(0); transition: transform .6s ease; pointer-events: none; }
@@ -337,6 +373,7 @@ body.cine #sidorak-bar { opacity: 0; }
   background: linear-gradient(100deg, var(--panel-2), var(--panel)) padding-box, linear-gradient(135deg, var(--frame-1), var(--frame-2) 40%, var(--frame-3) 62%, var(--frame-1)) border-box; }
 #sel-name { white-space: nowrap; font-family: var(--display); font-weight: 800; font-style: italic; font-size: clamp(26px, 4.6vw, 48px); line-height: 1; letter-spacing: 2px;
   background: linear-gradient(180deg, #fff 10%, var(--acc2) 45%, var(--acc) 90%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 2px 0 rgba(0,0,0,.8)); }
+#sel-name.long { font-size: clamp(22px, 3.7vw, 40px); letter-spacing: 1px; }
 #sel-title { font-family: var(--display); font-weight: 600; font-size: 12px; letter-spacing: 6px; color: var(--acc); margin-top: 3px; }
 #sel-title:empty { display: none; }
 @keyframes plate-in { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
@@ -364,6 +401,7 @@ body.cine #sidorak-bar { opacity: 0; }
 .card .cname { font-family: var(--display); font-weight: 800; font-size: 8.5px; letter-spacing: .5px; padding: 3px 2px; text-align: center; line-height: 1.1; background: rgba(0,0,0,.65); }
 .card.on { transform: translateY(-6px) scale(1.08); background: linear-gradient(#0b0e12, #0b0e12) padding-box, linear-gradient(160deg, var(--frame-1), var(--acc) 45%, var(--frame-3)) border-box; filter: drop-shadow(0 0 8px rgba(var(--acc-rgb), .9)); }
 .card.on .cname { background: var(--acc); color: #060a06; }
+.card .cname.long { font-size: 7.4px; letter-spacing: 0; }
 .card.locked { opacity: .5; }
 .card.nope { animation: nope .3s; }
 @keyframes nope { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
@@ -372,6 +410,57 @@ body.cine #sidorak-bar { opacity: 0; }
 /* SELECT sits on the right above the roster strip, so the two never collide on narrow phones */
 #select #btn-go { position: absolute; right: calc(4vw + var(--safe-r)); bottom: calc(122px + var(--safe-b)); }
 @media (max-height: 420px) { #select #btn-go { bottom: calc(110px + var(--safe-b)); } }
+
+/* ---------- fighter intro (DREADNOUGHT rises from his throne) ---------- */
+#intro { padding: 0; }
+/* the name card: left of him as the shot ends (he stands right of centre) */
+#intro-title { position: absolute; left: calc(5vw + var(--safe-l)); bottom: calc(17vh + var(--safe-b)); text-align: left; pointer-events: none; opacity: 0; transition: opacity .5s; }
+#intro-title.show { opacity: 1; transition: opacity .25s; }
+.it-name { font-family: var(--display); font-weight: 800; font-size: clamp(28px, 5.6vw, 66px); letter-spacing: .12em; line-height: .95;
+  background: linear-gradient(180deg, #fff 0%, #ffe9b0 26%, #e0a93a 50%, #9a48e8 76%, #3a0c70 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 4px 0 #12051f) drop-shadow(0 0 20px rgba(170, 80, 255, .75)); }
+.it-sub { display: flex; align-items: center; gap: .8em; margin-top: 6px; font-family: var(--display); font-weight: 600; font-size: clamp(11px, 1.9vw, 20px); letter-spacing: .5em; color: #f3dcff; text-shadow: 0 2px 0 #000, 0 0 12px rgba(180, 90, 255, .9); }
+.it-sub i { display: block; width: clamp(24px, 5vw, 60px); height: 2px; background: linear-gradient(90deg, transparent, #ffcf5a); }
+.it-sub i:first-child { display: none; }
+.it-sub i:last-child { transform: scaleX(-1); }
+#intro-title.show .it-name { animation: bt-slam .55s cubic-bezier(.2, 1.4, .4, 1) both; }
+#intro-title.show .it-sub { animation: bt-sub .6s .3s ease-out both; }
+/* inside the lower letterbox bar */
+.intro-skip { position: absolute; right: calc(18px + var(--safe-r)); bottom: calc(5.5vh - 8px + var(--safe-b)); font-family: var(--display); font-weight: 600; font-size: 11px; letter-spacing: 3px; color: rgba(255, 255, 255, .75); animation: skip-pulse 1.1s ease-in-out infinite alternate; }
+.intro-skip b { color: #ffcf5a; letter-spacing: -1px; }
+@keyframes skip-pulse { to { opacity: .4; } }
+
+/* ---------- select location ---------- */
+#location { padding: 0; }
+#location .loc-shade { position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(90deg, var(--panel) 0%, var(--panel-soft) 36%, transparent 60%), linear-gradient(0deg, rgba(3, 4, 6, .85) 0%, transparent 30%), linear-gradient(180deg, rgba(3, 4, 6, .6) 0%, transparent 18%); }
+#loc-back { position: absolute; top: calc(10px + var(--safe-t)); left: calc(12px + var(--safe-l)); }
+#loc-card { position: absolute; left: calc(14px + var(--safe-l)); top: calc(54px + var(--safe-t)); width: min(42vw, 420px, calc((100vh - 232px) * 2)); text-align: left; animation: plate-in .35s ease-out both; }
+.loc-pic { position: relative; aspect-ratio: 2 / 1; overflow: hidden; clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
+  border: 2px solid transparent; background: linear-gradient(#0b0e12, #0b0e12) padding-box, linear-gradient(135deg, var(--frame-1), var(--frame-2) 40%, var(--frame-3) 62%, var(--frame-1)) border-box; }
+.loc-pic img { display: block; width: 100%; height: 100%; object-fit: cover; animation: loc-drift 9s ease-in-out infinite alternate; }
+.loc-sheen { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, .2) 48%, transparent 60%); transform: translateX(-100%); animation: loc-sheen 3.4s ease-in-out infinite; }
+.loc-badge { position: absolute; left: 8px; top: 8px; padding: 2px 10px; font-family: var(--display); font-weight: 800; font-size: 8px; letter-spacing: 2px; color: #0a0610; background: var(--acc); clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); }
+@keyframes loc-drift { from { transform: scale(1.02); } to { transform: scale(1.1) translateX(-2%); } }
+@keyframes loc-sheen { 0%, 55% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+.loc-plate { margin-top: -2px; padding: 5px 14px 7px; clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%);
+  border: 2px solid transparent; background: linear-gradient(100deg, var(--panel-2), var(--panel)) padding-box, linear-gradient(135deg, var(--frame-1), var(--frame-2) 40%, var(--frame-3) 62%, var(--frame-1)) border-box; }
+#loc-tag { font-family: var(--display); font-weight: 600; font-size: 9px; letter-spacing: 4px; color: var(--acc); }
+#loc-name { white-space: nowrap; font-family: var(--display); font-weight: 800; font-style: italic; font-size: clamp(16px, 2.6vw, 30px); line-height: 1.05; letter-spacing: 1px;
+  background: linear-gradient(180deg, #fff 10%, var(--acc2) 45%, var(--acc) 90%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, .8)); }
+#loc-blurb { margin-top: 2px; font-family: var(--text); font-weight: 600; font-size: 12.5px; line-height: 1.25; color: #e8eef0; text-shadow: 0 1px 2px #000; }
+#loc-row { position: absolute; left: calc(14px + var(--safe-l)); bottom: calc(12px + var(--safe-b)); display: flex; align-items: center; gap: 8px; }
+body.one-location #loc-row .arrow { display: none; }
+#loc-chips { display: flex; gap: 8px; }
+.loc-chip { position: relative; width: 96px; height: 60px; padding: 0; display: flex; flex-direction: column; overflow: hidden; color: #fff; transition: transform .15s, filter .15s; clip-path: polygon(0 0, 100% 0, 100% 78%, 88% 100%, 0 100%);
+  border: 2px solid transparent; background: linear-gradient(#0b0e12, #0b0e12) padding-box, linear-gradient(160deg, #9aa2ab, #3a3f46 50%, #15181c) border-box; }
+.loc-chip i { flex: 1; background-size: cover; background-position: center; }
+.loc-chip span { font-family: var(--display); font-weight: 800; font-size: 7.5px; letter-spacing: .5px; padding: 2px; white-space: nowrap; background: rgba(0, 0, 0, .7); }
+.loc-chip.on { transform: translateY(-4px) scale(1.06); filter: drop-shadow(0 0 8px rgba(var(--acc-rgb), .9));
+  background: linear-gradient(#0b0e12, #0b0e12) padding-box, linear-gradient(160deg, var(--frame-1), var(--acc) 45%, var(--frame-3)) border-box; }
+.loc-chip.on span { background: var(--acc); color: #0a0610; }
+#location #btn-fight { position: absolute; right: calc(4vw + var(--safe-r)); bottom: calc(22px + var(--safe-b)); }
+#location #btn-fight .cta-text { font-size: 26px; padding: 12px 52px 13px; letter-spacing: 8px; }
 
 /* ---------- pause / defeat ---------- */
 #pause, #over { background: radial-gradient(ellipse at center, rgba(4, 6, 9, .55), rgba(4, 6, 9, .88)); }
@@ -396,6 +485,8 @@ body.cine #sidorak-bar { opacity: 0; }
 @media (max-height: 420px) { #sidorak-bar { top: calc(64px + var(--safe-t)); } } /* below the player's energy bar */
 @media (max-height: 360px) {
   #sel-moves { display: none; }
+  #loc-blurb { display: none; }
+  .loc-chip { width: 84px; height: 52px; }
   #player-panel .emblem { width: 48px; height: 48px; }
   #player-panel .emblem .mask { width: 40px; height: 40px; }
 }

@@ -153,6 +153,129 @@ export const CONFIG = {
     hurtTime: 0.3,
   },
 
+  /**
+   * DREADNOUGHT — Meshy model + Mixamo clips (assets/models/dreadnought.glb, tools/build-character.mjs).
+   * Baseline TOAKU: health 150%, regular punch damage 140%, heavy uppercut 220% of his regular punch,
+   * grab 170%, speed 90%, longer reach, harder knockback. Clip times are in the clips' own seconds,
+   * measured from the bone trajectories (fist / foot speed peaks, hand grip and release, hips travel).
+   */
+  dreadnought: {
+    height: 4.3,              // a head taller than Toaku (3.6 m upright, 3.3 m in his stance)
+    sourceHeight: 1.88,       // the rigged export stands 1.88 m tall
+    radius: 1.1,
+    maxHp: 600,
+    moveSpeed: 5.6,
+    turnRate: 10,
+    runClipSpeed: 5.47,       // ground speed of run_fast_10_inplace at his size (planted foot: 2.39 source m/s)
+    blendRate: 13,            // idle <-> run cross-fade
+    inputBuffer: 0.35,
+    airControl: 4,
+    clips: { Run: 'run_fast_10_inplace', Punch: 'Punch_Combo', Uppercut: 'Charged_Upward_Slash', Kick: 'Spartan_Kick',
+      Grab: 'Grip_and_Throw_Down', Dodge: 'Roll_Behind_Cover', StandUp: 'Sit_to_Stand_Transition_M' },
+    rootMotion: ['Dodge'],     // the dive roll carries him ~3 source m forward: gameplay moves him instead
+    recentre: { StandUp: 5.5 }, // he rises from a seat behind him: recentred where he ends up standing
+    // idle: the upright frame the stand-up ends on (arms down at his sides, feet planted), squared up
+    // for a fight, breathing. Edits are [pitch, yaw, roll] in his own frame (see clipPose.js).
+    idle: {
+      clip: 'StandUp', at: 4.4, period: 3.6, speed: 1,
+      edits: {
+        Spine2: [-0.03, 0, 0], Head: [0.04, 0, 0],                                  // chest up, eyes level
+        LeftUpLeg: [-0.06, 0, 0.05], RightUpLeg: [-0.06, 0, -0.05],                 // feet a little wider, knees soft
+        LeftLeg: [0.12, 0, 0], RightLeg: [0.12, 0, 0],
+        LeftFoot: [-0.06, 0, -0.05], RightFoot: [-0.06, 0, 0.05],                   // soles flat on the ground
+        LeftArm: [0, 0, 0.07], RightArm: [0, 0, -0.07],                             // arms clear of the thighs
+        LeftForeArm: [-0.22, 0, 0], RightForeArm: [-0.22, 0, 0],                    // elbows bent, hands ready
+      },
+      breathe: {
+        Hips: { lift: 0.004 },
+        Spine1: { amp: [-0.008, 0, 0] }, Spine2: { amp: [-0.014, 0, 0] },
+        LeftShoulder: { amp: [0, 0, 0.016] }, RightShoulder: { amp: [0, 0, -0.016] },
+        LeftArm: { amp: [0.01, 0, -0.008] }, RightArm: { amp: [0.01, 0, 0.008] },
+        Neck: { amp: [0.012, 0, 0] }, Head: { amp: [0, 0.03, 0], phase: 1.2 },
+      },
+    },
+    // seated on his throne while the character select shows him: the stand-up's first frame, breathing
+    breathLoops: {
+      Seated: {
+        clip: 'StandUp', at: 0.2, period: 3.6,
+        breathe: {
+          Spine1: { amp: [-0.01, 0, 0] }, Spine2: { amp: [-0.016, 0, 0] },
+          LeftShoulder: { amp: [0, 0, 0.018] }, RightShoulder: { amp: [0, 0, -0.018] },
+          Neck: { amp: [0.012, 0, 0] }, Head: { amp: [0, 0.035, 0], phase: 1.2 },
+        },
+      },
+    },
+    // key poses for the jump (no clip of its own): the crouch he passes through standing up, and
+    // the idle frame with the knees drawn up
+    poses: {
+      PoseCrouch: ['StandUp', 2.3, {}],
+      PoseAir: ['StandUp', 4.4, {
+        LeftUpLeg: [-0.75, 0, 0.08], RightUpLeg: [-0.55, 0, -0.08], LeftLeg: [0.95, 0, 0], RightLeg: [0.8, 0, 0],
+        LeftArm: [-0.25, 0, 0.35], RightArm: [-0.25, 0, -0.35], LeftForeArm: [-0.5, 0, 0], RightForeArm: [-0.5, 0, 0],
+        Spine2: [0.08, 0, 0],
+      }],
+    },
+    material: { metalness: 0.55, roughness: 0.5, envMapIntensity: 0.75 },
+    // regular punches: the 2 strikes of Punch_Combo (a left hook, then a right uppercut finisher)
+    punch: {
+      start: 0.25, speed: 1.25, window: 0.4,
+      hits: [
+        { end: 0.84, impact: 0.62, damage: 20, reach: 4.2, arc: 1.5, knockback: 5, lift: 0 },     // left hook
+        { end: 2.0, impact: 1.27, damage: 36, reach: 4.4, arc: 1.7, knockback: 14, lift: 8 },     // right uppercut
+      ],
+    },
+    // hold PUNCH: Charged_Upward_Slash. Under `tap` s it is a regular punch on release; the wind-up
+    // shows from `windFrom` s of holding and reaches clip time `windTo` at `hold` s, then he strikes.
+    uppercut: {
+      windFrom: 0.15, hold: 0.5, windTo: 0.55, speed: 1.25,
+      impact: 1.03, end: 2.35, damage: 44, reach: 4.6, arc: 1.6, knockback: 12, lift: 15,
+    },
+    kick: { start: 0.1, end: 1.38, speed: 1.3, impact: 0.6, damage: 45, reach: 4.8, arc: 1.4, knockback: 23, lift: 5 },
+    // one-handed crushing grab: Grip_and_Throw_Down. His RIGHT hand reaches out to his right side
+    // (reachYaw from his facing), grips at catchAt, lifts the enemy, squeezes it three times, then
+    // slams it into the ground at releaseAt.
+    grab: {
+      speed: 1.45, reachYaw: 1.39, catchAt: 0.88, whiffEnd: 1.25, crush: [1.6, 2.25, 2.9], releaseAt: 3.42, end: 4.3,
+      range: 4.4, cone: 2.4, lungeSpeed: 5, catchDist: 2.6,
+      crushDamage: 12, throwDown: 14, throwOut: 4,
+      landDamage: 51, // the slam into the ground (crush 3 x 12 + 51 = 87: Toaku's 51 x 1.7)
+      impactDamage: 30, impactKnock: 14, impactLift: 6, // anyone the slammed body lands on
+    },
+    dodge: { start: 0.05, end: 1.62, speed: 1.45, invuln: [0.3, 1.45], cancelAfter: 1.5, cooldown: 0.5 },
+    jump: { velocity: 9.5, squat: 0.1, land: 0.18 },
+    // the HUD's energy bar is his uppercut charge (he has no meter special)
+    special: { name: '', meterMax: 100, meterPerHit: 0, meterPerHurt: 0, meterPassive: 0 },
+    camera: { distance: 1.18, height: 1.15, look: 1.25 }, // multipliers of CONFIG.camera for his size
+    hurtInvuln: 0.5,
+    hurtTime: 0.3,
+  },
+
+  // DREADNOUGHT's throne and his character-select cinematic (rising from it). The throne stands on
+  // the Glatorian Arena's showcase spot (CONFIG.glatorian.showcase), where he is shown and rises.
+  throne: {
+    seatTop: 1.16, seatWidth: 2.0, seatDepth: 1.15, backHeight: 6.0, // m
+    seat: [-0.3, -0.86],       // seat centre from the seated fighter's root (his right, behind him), m
+    // seconds: the seated hold, then StandUp's clip times rising (`rise`), then the stance and the name
+    hold: 0.8, rise: [0.4, 3.7], riseSpeed: 1.0, end: 4.6, title: 3.0,
+    // front view, slightly low: pushes in by `push` m over the shot; camera height h -> hTo and the
+    // look height look -> lookTo follow him as he rises (m above the floor); from `title` the view
+    // pans `side` m to his right so he ends right of centre, his name card on the left
+    cam: { dist: 8.2, push: 0.9, h: 2.0, hTo: 2.5, look: 2.2, lookTo: 2.6, side: 2.3 },
+    menuBlend: 0.9,            // s: the camera eases from the end of the shot to the location menu's
+  },
+
+  glatorian: {
+    wallMargin: 0.3,     // m kept between a body and the podium wall
+    cameraMargin: 1.5,   // m the gameplay camera keeps inside the floor
+    spawnMargin: 4,      // enemies appear at least this far from the wall
+    spawnDist: [14, 26], // m from the player
+    outerGround: -9.7,   // the desert outside the colosseum, below its floor
+    start: { x: 0, z: 0, facing: Math.PI },
+    // the menus' spot (DREADNOUGHT's throne stands here): toward the south stands, facing the centre;
+    // the camera sweeps in front, framing the fighter right of the menus' panels
+    showcase: { x: 0, z: -30, facing: 0, tonua: null, cam: { cx: 0, cz: -30, r: 10.5, h: 3.3, sweep: 0.3, base: 0.32, look: { x: -1.6, y: 2.9, z: -28.5 } } },
+  },
+
   tonua: {
     height: 1.75,
     radius: 0.45,
@@ -322,5 +445,9 @@ export const CONFIG = {
   },
 
   camera: { distance: 9.5, height: 4.6, lookHeight: 2.2, dragSensitivity: 0.006, followLerp: 6,
-    bossPull: 0.12, bossLift: 0.06, bossLook: 0.2 }, // during a boss fight: a little further back and higher
+    bossPull: 0.12, bossLift: 0.06, bossLook: 0.2, // during a boss fight: a little further back and higher
+    // maps with a spring arm (map.cameraReach, the Glatorian Arena): the arm shortens to stay over the
+    // floor, never shorter than minArm m, and the camera rises by armRise x the length it lost (at most
+    // maxRise m); with less than 60% of the arm free it swings toward open floor at up to wallTurn rad/s
+    minArm: 1.6, armRise: 0.35, maxRise: 2.6, wallTurn: 1.8 },
 };

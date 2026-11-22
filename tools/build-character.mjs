@@ -4,12 +4,14 @@
 //     bone name; the build FAILS if a file's skeleton differs (names or rest pose) or its mesh
 //     differs (vertex count), so a clip can never be played on a rig it was not authored for
 //   - textures -> WebP (resized to --size, default 1024); tracks resampled; meshopt-compressed
+//   - Draco-compressed exports are read too (decoded at build time; the game only needs meshopt)
 // usage: node tools/build-character.mjs <out.glb> [--size 2048] <base.glb> [clip.glb ...]
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, EXTTextureWebP } from '@gltf-transform/extensions';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import { resample, prune, dedup, meshopt, textureCompress } from '@gltf-transform/functions';
 import sharp from 'sharp';
+import draco3d from 'draco3dgltf';
 
 const args = process.argv.slice(2);
 let size = 1024;
@@ -24,7 +26,7 @@ await MeshoptDecoder.ready;
 await MeshoptEncoder.ready;
 const io = new NodeIO()
   .registerExtensions(ALL_EXTENSIONS)
-  .registerDependencies({ 'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder });
+  .registerDependencies({ 'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder, 'draco3d.decoder': await draco3d.createDecoderModule() });
 
 const doc = await io.read(base);
 const root = doc.getRoot();
@@ -69,6 +71,23 @@ for (const file of clips) {
   }
 }
 
+// translation / scale channels that only ever hold the bone's rest value are dropped (lossless: the
+// bone keeps its rest transform; it halves the clip data and the mixer's per-frame work)
+let dropped = 0;
+for (const anim of root.listAnimations()) {
+  for (const ch of anim.listChannels()) {
+    const path = ch.getTargetPath(), node = ch.getTargetNode();
+    if (path !== 'translation' && path !== 'scale') continue;
+    const rest = path === 'scale' ? node.getScale() : node.getTranslation();
+    const out = ch.getSampler().getOutput(), n = out.getCount(), v = [];
+    let constant = true;
+    for (let i = 0; i < n && constant; i++) constant = near(out.getElement(i, v), rest, 1e-5);
+    if (constant) { const sm = ch.getSampler(); ch.dispose(); sm.dispose(); dropped++; }
+  }
+}
+console.log(`  dropped ${dropped} channels that hold the rest pose`);
+// decoded on read: the output is meshopt-compressed instead
+for (const e of root.listExtensionsUsed()) if (e.extensionName === 'KHR_draco_mesh_compression') e.dispose();
 doc.createExtension(EXTTextureWebP).setRequired(true);
 await doc.transform(
   textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [size, size], quality: 82 }),

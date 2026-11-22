@@ -9,7 +9,8 @@ function rng(seed) {
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 }
 
-function noiseTexture(size, base, variance, ripples, seed) {
+/** Tileable sandy noise texture (optionally with wind ripples), deterministic per seed. */
+export function noiseTexture(size, base, variance, ripples, seed) {
   const c = document.createElement('canvas');
   c.width = c.height = size;
   const g = c.getContext('2d');

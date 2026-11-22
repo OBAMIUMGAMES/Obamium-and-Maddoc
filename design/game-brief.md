@@ -1,9 +1,15 @@
 # Game Brief — BIONICLE ITALIA: BRAWLERS
 
 **Genre:** 3D arena brawler (mobile, landscape, Android APK)
-**Pitch:** Pick your fighter and hold the arena against endless robot hordes and the pint-sized
-rival TONUA. TOAKU, a towering gunmetal-and-cream war machine with a green core, fights in a desert
-of ancient ruins; SUPER TAHU, the Toa of fire, fights on the sunset terraces of a hilltop memorial.
+**Pitch:** Pick your fighter, pick your arena, and hold it against endless robot hordes and the
+pint-sized rival TONUA. TOAKU, a towering gunmetal-and-cream war machine with a green core; SUPER TAHU,
+the Toa of fire; DREADNOUGHT, the horned purple-and-gold warlord who rises from his throne. The
+featured location is the GLATORIAN ARENA, a sandstone colosseum; the desert ruins and the sunset
+terraces of a hilltop memorial are still selectable.
+
+**Flow:** MAIN MENU → CHARACTER SELECT → the fighter's intro (DREADNOUGHT rises from his throne; the
+others have none) → SELECT LOCATION → the fight. Game over: FIGHT AGAIN (same fighter, same arena)
+or CHANGE FIGHTER.
 
 ## Interface
 One visual language: angular metal frames, Oxanium display type, Rajdhani text (both SIL OFL,
@@ -13,22 +19,29 @@ One visual language: angular metal frames, Oxanium display type, Rajdhani text (
 | Screen | Content |
 |---|---|
 | Main menu | the key art (`assets/branding/key-art.jpg`) at its own proportions, as tall as the screen allows, over a pre-blurred copy of itself; large **INIZIO** button (glow + shine); controls hint. The 3D scene is not rendered behind it. |
-| Character select | name plate, subtitle (Toaku: THE BUILDER; Super Tahu: none), five animated stat bars, special, moves, arena, roster strip with 3D-rendered portraits, **SELECT**, ◀ MENU; the fighter idles live in their arena |
-| Combat HUD | emblem (Toaku: his mask, Super Tahu: his portrait), name, health bar, thinner/shorter energy bar under it (Toaku: ENERGY OVERFLOW, Super Tahu: INFERNO ENERGY), WAVE 0N panel, separate red enemies-left chip, score, pause |
+| Character select | name plate, subtitle (Toaku: THE BUILDER; Super Tahu: none; Dreadnought: THE WARLORD), five animated stat bars, special, moves, home arena, roster strip with 3D-rendered portraits, **SELECT**, ◀ MENU; the fighter idles live in their home arena (Dreadnought sits on his throne) |
+| Fighter intro | DREADNOUGHT only: letterbox, front camera, he rises from his throne into his idle stance, name card **DREADNOUGHT / THE WARLORD**; TAP TO SKIP (also Enter, Esc, Android back) |
+| Select location | **SELECT LOCATION** heading, a large card (pre-rendered arena preview, tag, name, one-line description), a strip of location cards with ◀ ▶, **FIGHT**, ◀ FIGHTER; the chosen fighter idles live in the focused arena behind the menu |
+| Combat HUD | emblem (Toaku: his mask, Super Tahu: his portrait, Dreadnought: his horned mask), name, health bar, thinner/shorter energy bar under it (Toaku: ENERGY OVERFLOW, Super Tahu: INFERNO ENERGY, Dreadnought: HEAVY CHARGE, his hold-PUNCH charge), WAVE 0N panel, separate red enemies-left chip, score, pause |
 | Effects | wave announcement sweep, combo counter, banners, damage numbers (pop-in; heavy hits bigger and gold, 30+ largest with a red-orange glow), special-ready ring around the special button |
 | Pause / defeat | framed panels; defeat lists wave, robots scrapped, best combo, score, personal best |
 
 Themes: **Toaku** dark gunmetal, neon green, metallic gray, black/silver. **Super Tahu** metallic gold,
-deep red, fiery orange (red health bar in a gold frame).
+deep red, fiery orange (red health bar in a gold frame). **Dreadnought** deep purple, metallic gold,
+black/gunmetal, violet glow (violet health bar with a gold sheen in a gold frame).
 
 **Select-screen stats** come from the gameplay config (`fighterStats()` in `src/js/characters.js`):
-HEALTH = max HP, ATTACK = damage of the full 4-punch combo, DEFENSE = the designer rating /5 (the
-game has no numeric defence), SPEED = run speed, ENERGY = special meter per landed hit; each bar is
-the value over a fixed cap (500 HP, 80 dmg, 5, 8 m/s, 10). Super Tahu is shown at MAX in every stat
-by design — note his real HP (340) is lower than Toaku's (400); the display does not change gameplay.
+HEALTH = max HP, ATTACK = average damage of one regular punch (the combos differ in length: 4 punches
+for Toaku and Tahu, 2 for Dreadnought), DEFENSE = the designer rating /5 (the game has no numeric
+defence), SPEED = run speed, ENERGY = special meter per landed hit — or, for a fighter without a meter
+special (Dreadnought), POWER = the damage of his heavy blow. Each bar is the value over a fixed cap
+(700 HP, 32 per hit, 5, 8 m/s, 10 energy, 60 power). Super Tahu is shown at MAX in every stat by
+design — note his real HP (340) is lower than Toaku's (400); the display does not change gameplay.
 
 **Touch controls:** the button and stick positions/sizes (their touch areas) are pixel-identical to
 v0.4 — verified by measuring every control in both builds at 915×412, 740×360 and 1024×768.
+Dreadnought has no special: his **DODGE** button takes the special button's place; PUNCH, KICK,
+GRAB and JUMP are where Toaku has them.
 
 **App icon:** Toaku + logo artwork (`assets/branding/app-icon-source.jpg`), built by
 `tools/build-icons.mjs` into an adaptive icon (artwork in the 66 dp safe zone, blurred artwork
@@ -36,9 +49,29 @@ behind, so a circle mask keeps the whole logo) plus legacy and round PNGs for An
 App name: BIONICLE ITALIA: BRAWLERS (package id unchanged, so it installs over older builds).
 
 ## Character select
-INIZIO on the main menu opens CHOOSE YOUR FIGHTER. Two locked COMING SOON slots are ready for new
-fighters (`src/js/characters.js` — one roster entry plus a fighter class/model and a theme block per
-character). Game over offers FIGHT AGAIN or CHANGE FIGHTER.
+INIZIO on the main menu opens CHOOSE YOUR FIGHTER. One locked COMING SOON slot is ready for a new
+fighter (`src/js/characters.js` — one roster entry plus a fighter class/model and a theme block per
+character). SELECT plays the fighter's intro if it has one, then opens SELECT LOCATION. The intro
+plays once per visit to the menus: going BACK from SELECT LOCATION and picking Dreadnought again
+goes straight on (he stays standing before his throne); it plays again after a fight or a return to
+the main menu. Game over offers FIGHT AGAIN or CHANGE FIGHTER.
+
+## SELECT LOCATION
+`src/js/locations.js` lists the locations; adding one = an entry there plus its map in `main.js`
+`maps` (its card preview is rendered from the entry's `preview` camera at start-up).
+
+| Location | Map | Notes |
+|---|---|---|
+| **GLATORIAN ARENA** (featured, the default for every fighter) | `src/js/glatorian.js` | the sandstone colosseum below |
+| DESERT RUINS | `src/js/arena.js` | Toaku's original arena (ruins, pillars) |
+| SUNSET TERRACES | `src/js/terraces.js` | Super Tahu's multi-level arena |
+
+The brief for this update named the Glatorian Arena as the one selectable map; the two earlier maps
+were kept as extra cards so nothing that was playable before is lost (remove their entries from
+`LOCATIONS` to offer the arena alone — the menu hides its arrows when one location is left).
+FIGHT starts the wave fight there: the fighter spawns on the map's start spot (the arena's centre),
+its collision, navigation and spawns are the map's, waves begin after a short break. All models are
+loaded at start-up (behind the main menu's LOADING), so FIGHT needs no loading screen.
 
 ## Characters
 | | Toaku (player) | Tonua (rival) | Bohrok (the horde: six types) |
@@ -55,6 +88,17 @@ character). Game over offers FIGHT AGAIN or CHANGE FIGHTER.
 | Speed | 7.4 m/s (Toaku 6.2) |
 | Damage | 11 / 11 / 12 / 18 punch combo, 28 Spartan kick, INFERNO SLAM kills every enemy on the map |
 | Style | Fast; 4-punch combo, a launching push-kick, an invulnerable jump-and-roll dodge |
+
+| | Dreadnought (player) | vs Toaku |
+|---|---|---|
+| Height | 4.3 m (radius 1.1 m) | taller, wider |
+| HP | 600 | 150 % |
+| Speed | 5.6 m/s | 90 % |
+| Regular damage | hook 20, uppercut finisher 36; Spartan kick 45 | 140 % (jab 14 → 20, power straight 26 → 36, kick 32 → 45) |
+| Heavy uppercut | 44, launches (lift 15, knockback 12) | 220 % of his standard punch (20) |
+| Grab | 3 squeezes × 12 + slam 51 = 87 | 170 % of Toaku's grab and throw (6 + 45 = 51) |
+| Reach / knockback | 4.2–4.8 m reach (Toaku 3.2–3.7); finisher knockback 14 (11), kick 23 (18) | more |
+| Style | Heavy, slow, armoured through his uppercut, kick and grab; dive-roll dodge | |
 
 ## Moves (Toaku)
 - **Punch combo** (PUNCH ×4) — jab, cross, jab, power straight (launches).
@@ -134,6 +178,91 @@ an avenue climbing the ridge to a far monument, peach-pink sunset haze.
 - Enemies spawn mostly on your terrace (30 % one level away) and route around their ring to the
   stairs, up or down, then to you. Attacks never reach between levels.
 - The chase camera rises over terrace walls instead of clipping into them.
+
+## DREADNOUGHT model & animation
+`assets/models/dreadnought.glb` is built by `tools/build-character.mjs` from Meshy's seven Mixamo
+exports of the character (run_fast_10_inplace, Punch_Combo, Charged_Upward_Slash, Spartan_Kick,
+Grip_and_Throw_Down, Roll_Behind_Cover, Sit_to_Stand_Transition_M). They are Draco-compressed; the
+build decodes them and, as for the other fighters, **refuses to build if any skeleton differs** —
+all seven share one 66-joint Mixamo rig and one 42 k-vertex mesh. Constant translation/scale channels
+are dropped (67 channels per clip remain: every joint's rotation plus the hips). 7 × 17 MB of exports
+→ 1.85 MB (three 1024² WebP textures). The rig is not changed; the game scales him to 4.3 m.
+
+**Idle.** None of the exports is an idle and there is no static model, so the idle is baked at load
+(`src/js/clipPose.js`, `dreadnought.idle` in `config.js`): the upright frame his stand-up ends on
+(4.4 s) — arms down at his sides, feet planted — with small bone edits in his own frame (chest up,
+feet a little wider with soft knees and flat soles, arms clear of the thighs, elbows slightly bent),
+hips centred over his root and the feet kept on the floor, plus a 3.6 s breathing loop (chest, spine,
+shoulders, arms, neck, a slight head turn, a 4 mm rise) whose first and last keys are identical.
+No T-pose, no fists-up guard. The jump's crouch and tuck are baked the same way, and so is his seated
+breathing on the throne (the stand-up's first frame).
+
+| Move (button) | Clip use |
+|---|---|
+| Idle | baked (above), looping |
+| Run (stick) | run_fast_10_inplace at 5.6 m/s, playback matched to ground speed (5.47 m/s per clip cycle) |
+| Punch (PUNCH tap) | Punch_Combo has two strikes: a left hook (impact 0.62 s) and a right uppercut finisher (1.27 s); a tap within 0.4 s chains the second |
+| Heavy uppercut (hold PUNCH 0.5 s) | Charged_Upward_Slash: the wind-up shows from 0.15 s of holding and reaches the clip's 0.55 s at the threshold, then the blow (impact 1.03 s) |
+| Kick (KICK) | Spartan_Kick, impact 0.6 s |
+| Crushing grab (GRAB) | Grip_and_Throw_Down: the right hand grips at 0.88 s, squeezes at 1.6 / 2.25 / 2.9 s, throws down at 3.42 s |
+| Dodge (DODGE) | Roll_Behind_Cover from the dive: its hip root motion is stripped and replayed as movement (the wall stops it) |
+| Jump (JUMP) | baked crouch → tucked air pose → landing squash |
+| Throne intro | Sit_to_Stand_Transition_M (hips recentred on where he ends up standing) |
+
+**Blending.** Every move fades in from the idle and back out to it: the idle ↔ run and every return
+to the idle reach 95 % in 0.23 s; punch, uppercut and kick fade in over 0.17 s, the dodge 0.19 s,
+the grab 0.2 s, the uppercut's wind-up 0.21 s (unit-tested). Weights always total 1, so the bind pose
+never leaks in; a skipped intro is hidden by a cut from black.
+
+**PUNCH tap vs hold.** A regular punch is thrown when the button comes back up, so holding never
+throws one first. Holding for 0.5 s unleashes the heavy uppercut (armoured): the enemy is launched up
+and back, falls under the normal physics and gets up if it survives; a violet shockwave, gold and
+violet sparks, a hit-stop and a camera shake mark the impact. While he charges, violet fire gathers in
+his right fist, the ring around PUNCH fills violet and the HEAVY CHARGE bar fills; at the threshold the
+ring flashes gold with a small HEAVY tag. A quick tap (released within 0.15 s) shows none of it.
+
+**Crushing grab.** He turns his right side to the closest enemy in reach, steps in and grips it in his
+right hand (it is attached to his hand bone every frame and its AI is suspended, `grabbed` state);
+lifts it, squeezes it three times (12 each, never lethal — the slam finishes it), then hurls it down
+at his side (`thrown`: 51 on the crash, 30 to anyone it lands on). Survivors get up and fight on.
+Bosses are too heavy to lift (the grab whiffs). If he is knocked out mid-grab the enemy is let go.
+
+**Dodge.** A dive roll in the stick's direction (his facing without input), invulnerable 0.3–1.45 s of
+the clip, 0.5 s cooldown, cancellable into movement at the end.
+
+## Dreadnought's throne & intro
+`src/js/throne.js` builds the throne from ~60 blocks merged into three meshes (one per material: black
+gunmetal, gold, emissive deep purple — 3 draw calls): a stepped dais, a seat with a purple cushion, a
+6 m backrest with a pointed crown, horns, side pillars and a purple panel with a gold mask, and heavy
+angular armrests with gold caps and claws. It stands on the Glatorian Arena's menu spot and is
+visible only in the menus while Dreadnought is shown. `src/js/throneIntro.js` times the 4.6 s shot:
+seated (breathing) 0.8 s → the stand-up 3.3 s → his idle; front camera pushing in and rising with
+him, panning so he ends right of centre as **DREADNOUGHT / THE WARLORD** shows on the left; then the
+camera eases into the location menu's view.
+
+## Glatorian Arena
+The Meshy model (1.02 M triangles, 554 k vertices, 2048² texture) is rebuilt by
+`tools/build-arena.mjs`: measured from a top-down height raster (floor = the median height at the
+centre, the podium edge in 144 directions), centred on the floor and scaled uniformly so the floor
+is 88 m across (≥ 20 × the tallest fighter: 86 m for Dreadnought's 4.3 m; the fighters are not
+scaled), decimated to 90 k triangles (meshopt simplifier), one single-sided matte material,
+2048² WebP: 5.9 MB → 1.5 MB. The layout file holds the floor edge per direction (44–47 m), the podium
+height (3.8 m) and a 1 m height grid of the stands.
+
+- **Collision:** the sand floor is flat (y = 0); the podium wall is the boundary — every body (fighters,
+  enemies, thrown and launched bodies, rolls) is kept inside it by its radius + 0.3 m. No mesh
+  collision runs at runtime; the stands and towers are scenery.
+- **Navigation:** the floor is open, so enemies chase directly and slide along the wall.
+- **Spawns:** the fight starts at the centre; enemies appear 14–26 m from the player and at least 4 m
+  inside the wall (else across the floor toward the centre). Sidorak lands in front of the player, on
+  the floor.
+- **Camera:** a spring arm keeps the gameplay camera ≥ 1.5 m inside the floor: the arm shortens
+  (never below 1.6 m) and the camera rises by part of the lost length; with less than 60 % of the arm
+  free it swings toward open floor (unless the player is dragging it). Scripted shots use the height
+  grid to stay above the stands.
+- **Look:** a pale desert sky dome, fog, sun + sky light; the arena receives the fighters' shadows
+  (1024² shadow map that follows the fight) but casts none; a sand plain with mesas outside, drifting
+  dust. 1 mesh, 1 material.
 
 ## Bohrok (enemies): Tahnok, Gahlok, Lehvak, Pahrak, Nuhvok, Kohrak
 The only standard enemies (the old Scrapbot drones are gone). Six types share one body, rig
@@ -287,13 +416,14 @@ Bohrok wave follows; his body sinks into the ground as it starts.
 
 ## Loop
 Waves of Bohrok burst out of the sand (3 + 2 per wave, max 8 alive, max 3 head thrusts and 2 specials
-at once). Tonua drops in every 3rd wave; Sidorak comes alone on wave 5 and every 5th wave after. +60 HP between waves. Score = kills + combo bonus.
+at once) — in whichever location was chosen. Tonua drops in every 3rd wave; Sidorak comes alone on wave 5 and every 5th wave after. +60 HP between waves. Score = kills + combo bonus.
 
 ## Tech
 Three.js bundled by esbuild into `dist/`, wrapped in a minimal Android WebView app (`android/`).
-Both fighter GLBs are embedded in the bundle (esbuild binary loader), so the game also runs from
-`file://` and inside the APK without a web server. Tonua and both arenas are
-procedural; the Bohrok are rebuilt Meshy models (`tools/build-bohrok.mjs`). Maps share one interface (ground height, walls, navigation, spawns, camera floor), so
+Every model (the three fighters, the Bohrok, Sidorak, the Glatorian Arena and its layout) is embedded
+in the bundle (esbuild binary / JSON loaders), so the game also runs from `file://` and inside the APK
+without a web server. Tonua, the desert ruins and the terraces are procedural; the Bohrok are rebuilt
+Meshy models (`tools/build-bohrok.mjs`), the Glatorian Arena too (`tools/build-arena.mjs`). Maps share one interface (ground height, walls, navigation, spawns, camera floor), so
 fighters and enemies work on either. All tuning — moves, clip timings, the fighters' look — lives
 in `src/js/config.js`. Build: `npm install && npm run build:apk` → `builds/toaku-desert-brawl.apk`.
 

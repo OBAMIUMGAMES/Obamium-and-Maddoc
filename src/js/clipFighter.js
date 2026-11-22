@@ -44,11 +44,12 @@ export class ClipFighter extends Fighter {
     this.buffer = {};
     this.weights = Object.fromEntries(channels.map((n) => [n, n === 'Idle' ? 1 : 0]));
     const A = inst.actions;
+    const loops = new Set(['Run', ...Object.keys(cfg.breathLoops || {})]); // play on their own, looping
     for (const n of channels) {
       const a = A[n];
       if (!a) throw new Error(`${kind}: no action "${n}"`);
-      if (n === 'Idle') { a.setLoop(THREE.LoopPingPong, Infinity); a.timeScale = cfg.idle.speed; }
-      else if (n === 'Run') a.setLoop(THREE.LoopRepeat, Infinity);
+      if (n === 'Idle') { a.setLoop(cfg.idle.at !== undefined ? THREE.LoopRepeat : THREE.LoopPingPong, Infinity); a.timeScale = cfg.idle.speed; }
+      else if (loops.has(n)) a.setLoop(THREE.LoopRepeat, Infinity);
       else { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; a.timeScale = 0; } // driven by .time
     }
     this.applyWeights();
