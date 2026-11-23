@@ -68,22 +68,28 @@ test('no fixed outcome: in mirror matches either slot wins; in Dreadnought vs To
 });
 
 test('only legal moves at legal times: attacks in range, Dreadnought never jumps, reactions take time, no spam', () => {
-  for (const seed of [4, 5]) {
+  // attack decisions per fighter over the matches (a combo is one decision, however many presses it
+  // takes); the variety check needs a sample: a short match can hold only a handful of attacks
+  const counts = [{}, {}], presses = [0, 0];
+  for (const seed of [4, 5, 6]) {
     const { D, rec } = fight(['dreadnought', 'toaku'], seed);
     for (const i of [0, 1]) {
       const id = D.ids[i], r = rec[i];
       assert.equal(r.outOfRange, 0, `${id}: no attacks thrown far out of range`);
       assert.equal(r.dodgeEarly, 0, `${id}: no dodge before its reaction time`);
-      // attack decisions (a combo is one decision, however many presses it takes)
-      const st = D.ctrls[i].ai.stats, counts = {};
-      for (const k of ['punch', 'heavy', 'kick', 'grab', 'slam', 'special']) if (st[k]) counts[k] = st[k];
-      const total = Object.values(counts).reduce((a, b) => a + b, 0);
-      assert.ok(total > 5 && r.presses.length >= 3, `${id} attacked (${total} decisions, ${r.presses.length} presses)`);
-      assert.ok(Object.keys(counts).length >= 2, `${id} uses more than one move: ${JSON.stringify(counts)}`);
-      assert.ok(Math.max(...Object.values(counts)) / total < 0.8, `${id} does not spam one move: ${JSON.stringify(counts)}`);
+      const st = D.ctrls[i].ai.stats;
+      for (const k of ['punch', 'heavy', 'kick', 'grab', 'slam', 'special']) if (st[k]) counts[i][k] = (counts[i][k] || 0) + st[k];
+      presses[i] += r.presses.length;
     }
     assert.equal(rec[0].jumps, 0, 'Dreadnought cannot jump: the CPU never tries');
     assert.ok(!movesOf(D.fighters[0], rosterOf('dreadnought').buttons).jump);
+  }
+  for (const i of [0, 1]) {
+    const id = ['dreadnought', 'toaku'][i], c = counts[i];
+    const total = Object.values(c).reduce((a, b) => a + b, 0);
+    assert.ok(total > 10 && presses[i] >= 10, `${id} attacked (${total} decisions, ${presses[i]} presses)`);
+    assert.ok(Object.keys(c).length >= 3, `${id} uses several moves: ${JSON.stringify(c)}`);
+    assert.ok(Math.max(...Object.values(c)) / total < 0.8, `${id} does not spam one move: ${JSON.stringify(c)}`);
   }
 });
 
@@ -146,4 +152,53 @@ test('a CPU against the wall works its way off it instead of sticking there', ()
   let room = 0, n = 0;
   for (let k = 0; k < secs(10); k++) { D.step(1); if (k > secs(2)) { room += 53 - Math.hypot(T.pos.x, T.pos.z); n++; } }
   assert.ok(room / n > 3, `on average ${(room / n).toFixed(1)} m from the wall`);
+});
+
+test('Toaku against a longer reach waits at its edge and punishes whiffed blows (counters, not just circling)', () => {
+  // the opponent's blows land out to their reach plus TOAKU's radius: that is where he waits, not
+  // further out (regression: the opponent's radius was used, which kept him ~1.3 m out of punishing range)
+  const D0 = duel(['toaku', 'dreadnought'], { type: 'cvc', seed: 1 });
+  const ai = D0.ctrls[0].ai, T0 = D0.fighters[0];
+  const edge = ai.foeReach + T0.radius;
+  assert.ok(ai.outReached, 'Dreadnought out-reaches him');
+  const pref = ai.prefDist(false, 0);
+  assert.ok(pref > edge && pref <= edge + 0.6 + 1e-9, `waits at ${pref.toFixed(2)} m, Dreadnought's blows reach ${edge.toFixed(2)} m`);
+  // a Dreadnought who just keeps throwing an uppercut at him every 2.5 s: every miss is an opening
+  let total = 0;
+  const each = [];
+  for (const seed of [1, 2, 3, 4, 5]) {
+    const D = duel(['toaku', 'dreadnought'], { type: 'cvc', seed, scripted: [false, true] });
+    const [T, W] = D.fighters;
+    D.place(0, 0, -6, 0).place(1, 0, 6, Math.PI);
+    let t = 0, next = 2.5;
+    while (t < 30 && D.flow.fighting) {
+      W.facing = Math.atan2(T.pos.x - W.pos.x, T.pos.z - W.pos.z);
+      if (t >= next && W.state === 'idle') { next = t + 2.5; D.step(21, [{}, { punch: true }], [{}, { punchHeld: true }]); t += 21 * dt; continue; }
+      D.step(1); t += dt;
+    }
+    const dealt = D.log.hits.filter((h) => h.from === 0).reduce((s, h) => s + h.dmg, 0);
+    each.push(Math.round(dealt)); total += dealt;
+  }
+  assert.ok(Math.min(...each) >= 120 && total >= 1000, `damage Toaku dealt in 30 s per match: ${each}`);
+});
+
+test('an attack decided with the opponent behind is carried out after the turn, not re-decided midway', () => {
+  // regression: the face-first turn was overwritten by the next routine decision (Toaku re-thinks every
+  // ~0.12 s), so attacks were dropped half-turned
+  for (const [ids, button, state] of [[['toaku', 'dreadnought'], 'punch', 'punch'], [['dreadnought', 'toaku'], 'grab', 'grab'], [['toaku', 'toaku'], 'kick', 'kick']]) {
+    const D = duel(ids, { type: 'cvc', seed: 3, scripted: [false, true] });
+    const [S, F] = D.fighters, ai = D.ctrls[0].ai;
+    D.place(0, 0, 0, 0).place(1, 0, -(S.radius + F.radius + 1.0), 0); // right behind him, in reach
+    for (let k = 0; k < 30; k++) { ai.t += dt; ai.perceive(); } // he has seen it (reaction delay)
+    let decisions = 0;
+    const decide = ai.decide.bind(ai);
+    ai.decide = (seen) => { decisions++; return decide(seen); };
+    ai.start(button === 'punch' ? 'punch' : button, ai.seen, 1.0, 1.0);
+    assert.equal(ai.intent.kind, 'face', `${ids[0]} turns first`);
+    ai.thinkT = 0.05; // a routine decision falls due during the turn
+    let t = 0;
+    while (S.state !== state && t < 0.8) { D.step(1); t += dt; }
+    assert.equal(S.state, state, `${ids[0]}: the ${button} was thrown (after ${t.toFixed(2)} s)`);
+    assert.equal(decisions, 0, `${ids[0]}: no new decision replaced it during the turn`);
+  }
 });

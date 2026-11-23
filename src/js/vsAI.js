@@ -59,6 +59,12 @@ export function isAttacking(f) {
   if (f.state === 'charge') return true;
   return true;
 }
+/** How fast fighter f is moving toward fighter g (m/s; negative: away). */
+export function closingSpeed(f, g) {
+  const dx = g.pos.x - f.pos.x, dz = g.pos.z - f.pos.z, d = Math.hypot(dx, dz) || 1;
+  return (f.vel.x * dx + f.vel.z * dz) / d;
+}
+
 /** Whether fighter f is in a recovery a counterattack can punish. */
 export function isRecovering(f) {
   if (STRIKES.has(f.state) && f.hitDone) return true;
@@ -153,7 +159,11 @@ export class CombatAI {
     this.react(seen, free);
     this.execute(seen);
     this.thinkT -= dt;
-    if (free && this.thinkT <= 0 && this.intent.kind !== 'evade') {
+    // an evade or a turn toward the opponent before an attack runs to its end (the turn takes at most
+    // ~0.45 s), and a button pressed this frame is not overruled before it acts: routine re-thinking
+    // does not replace them
+    const pressed = inp.punch || inp.kick || inp.grab || inp.special || inp.jump || inp.dodge;
+    if (free && !pressed && this.thinkT <= 0 && this.intent.kind !== 'evade' && this.intent.kind !== 'face') {
       this.thinkT = this.p.think * (0.75 + 0.5 * this.rng());
       this.decide(seen);
     }
@@ -177,6 +187,7 @@ export class CombatAI {
     this.mem.push({
       t: this.t, x: F.pos.x, z: F.pos.z, state: F.state, attacking, recovering: isRecovering(F),
       attackId: this.foeAttackId, airborne: !F.onGround, invuln: F.invuln > 0, hp: F.hp / F.maxHp,
+      closing: closingSpeed(F, this.self),
     });
     const want = this.t - this.p.reaction;
     while (this.mem.length > 2 && this.mem[1].t <= want) this.mem.shift();
@@ -197,7 +208,8 @@ export class CombatAI {
   prefDist(opening, pressure) {
     const own = this.p.range * (this.moves.punch.reach + this.foe.radius);
     const spacing = this.outReached ? (this.p.spacing || 0) * (1 - pressure * 0.8) : 0;
-    const out = this.foeReach + this.foe.radius + this.self.radius + 0.6;
+    // the opponent's blows land on this fighter out to their reach plus this fighter's own radius
+    const out = this.foeReach + this.self.radius + 0.6;
     if (opening || spacing <= 0 || out <= own) return own;
     return own + (out - own) * spacing;
   }
@@ -213,7 +225,7 @@ export class CombatAI {
     if (!seen.attacking || seen.attackId === this.reactedTo) return;
     this.reactedTo = seen.attackId;
     const S = this.self, P = this.p;
-    if (this.seenDist(seen) > this.foeReach + this.foe.radius + 1.2) return;
+    if (this.seenDist(seen) > this.foeReach + S.radius + 1.2) return;
     const hpS = S.hp / S.maxHp;
     if (this.rng() >= P.dodge * (1 + (1 - hpS) * 0.4)) return;
     if (!free) return; // committed to its own move: nothing cancels it
@@ -243,7 +255,7 @@ export class CombatAI {
     const R = M.punch.reach + F.radius;
     const hpS = S.hp / S.maxHp, hpF = seen.hp;
     const pressure = Math.min(1, this.calm * C.pressureRamp);
-    const threat = seen.attacking && dist < this.foeReach + F.radius + 0.6;
+    const threat = seen.attacking && dist < this.foeReach + S.radius + 0.6;
     const opening = seen.recovering;
     const pref = this.prefDist(opening, pressure);
     const canHit = !seen.invuln && !seen.airborne;
@@ -253,6 +265,9 @@ export class CombatAI {
     // movement
     U.approach = dist > pref + 0.4 ? agg * clamp01((dist - pref) / 5) + 0.12 + pressure * 0.3 : 0;
     U.retreat = (dist < pref * 0.7 ? P.retreat * 0.9 : P.retreat * 0.15) + (threat ? P.defense * 0.8 * (1.25 - hpS) : 0) - pressure * 0.4;
+    // a hit-and-run fighter keeps the gap: an advancing opponent is met by backing off (footsies), not
+    // by drifting sideways inside his reach
+    if (this.hitAndRun() && !opening && seen.closing > 1) U.retreat += P.spacing * 0.75 * clamp01((pref - dist + 1.5) / 1.5) * (1 - pressure);
     U.circle = P.moveFreq * (Math.abs(dist - pref) < 3 ? 0.55 : 0.2) * (1 - pressure * 0.7);
     U.wait = 0.06 + (1 - P.aggression) * 0.12 - pressure * 0.3;
     // attacks (only in range, never at an opponent that cannot be hit right now)
@@ -395,7 +410,8 @@ export class CombatAI {
     const walk = S.cfg.locomotion ? 0.55 : 0.7; // an analog-gait fighter walks under 75% stick
     let yaw, mag;
     switch (I.kind) {
-      case 'approach': yaw = toFoe; mag = dist - pref > 5 ? 1 : walk; break;
+      // an opening is a sprint in, before it closes
+      case 'approach': yaw = toFoe; mag = dist - pref > 5 || seen.recovering ? 1 : walk; break;
       case 'retreat': yaw = toFoe + Math.PI + this.circleDir * 0.45; mag = 0.85; break;
       case 'circle': yaw = toFoe + this.circleDir * (Math.PI / 2 - 0.3 * Math.sign(dist - pref)); mag = walk; break;
       case 'evade': yaw = I.dir; mag = 1; break;
