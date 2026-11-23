@@ -21,7 +21,7 @@ import { buildGlatorian, GLATORIAN_ENV } from './glatorian.js';
 import { buildThrone } from './throne.js';
 import { ThroneIntro } from './throneIntro.js';
 import { LOCATIONS, availableLocations, defaultLocation, stepLocation } from './locations.js';
-import { waveComposition, killScore } from './combat.js';
+import { waveComposition, killScore, waveClearHp } from './combat.js';
 import { loadCharacterTemplate, buildCharacterInstance } from './characterModel.js';
 import { ROSTER, nextSelectable, fighterStats } from './characters.js';
 import toakuGlb from '../../assets/models/toaku.glb'; // bundled as bytes (esbuild binary loader)
@@ -159,6 +159,8 @@ const world = {
   get enemies() { return G.enemies; },
   shake(a) { G.shake = Math.min(1.2, Math.max(G.shake, a)); },
   hitStop(t) { G.hitStop = Math.max(G.hitStop, t); },
+  /** A scripted sequence holds the fight (boss warning, cinematic, defeat focus): the player cannot act. */
+  cinematic() { return !!(encounter && encounter.active && encounter.lockInput); },
   attackersActive() { let n = 0; for (const e of G.enemies) if (e.alive && e.attacking) n++; return n; },
   hitEnemy(e, dmg, dx, dz, knock, lift, stun, heavy, rapid = false) {
     const c = e.center(hitPos);
@@ -167,6 +169,7 @@ const world = {
     // a boss shows what it really took (one hit is capped)
     const dealt = e.boss ? e.lastHitDamage : dmg;
     fx.damageNumber(c.setY(c.y + 0.6), dealt >= 999 ? 'BURN' : dealt, heavy ? 'big' : rapid ? 'small' : '');
+    if (G.player && G.player.onDealtDamage) G.player.onDealtDamage(Math.min(dealt, 999)); // DREADNOUGHT's WARLORD RAGE meter
     if (!rapid) {
       audio.hit(heavy);
       world.hitStop(heavy ? cfg.feel.hitStopHeavy : cfg.feel.hitStop);
@@ -226,6 +229,19 @@ const world = {
   },
   /** Kohrak's ice: frost around the screen edge while the player is slowed. */
   onFrozen(on) { $('#frost').classList.toggle('on', on); },
+  /** DREADNOUGHT's WARLORD RAGE starts / ends (HUD look, banner, screen-edge glow). */
+  onRage(on) {
+    document.body.classList.toggle('raging', on);
+    if (on) { banner('WARLORD RAGE!!', 'rage'); world.hitStop(0.1); }
+  },
+  /** Health given back (WARLORD RAGE kills): the bar flashes and the amount pops beside it. */
+  onPlayerHeal(amount) {
+    if (!(amount > 0)) return;
+    hud.hp.classList.remove('heal'); void hud.hp.offsetWidth; hud.hp.classList.add('heal');
+    const pop = $('#heal-pop');
+    pop.textContent = `+${Math.round(amount)}`;
+    pop.classList.remove('go'); void pop.offsetWidth; pop.classList.add('go');
+  },
   onPlayerHurt() {
     $('#hurt').classList.remove('go'); void $('#hurt').offsetWidth; $('#hurt').classList.add('go');
     if (navigator.vibrate) navigator.vibrate(30);
@@ -239,6 +255,7 @@ const world = {
 function onKill(e) {
   G.kills++;
   const p = G.player;
+  if (p.onKill) p.onKill(e, world); // DREADNOUGHT: WARLORD RAGE meter bonus / healing
   if (e.kind === 'sidorak') {
     G.score += killScore(cfg.score.sidorak, p.combo, cfg.score.comboBonus);
     banner('SIDORAK DEFEATED!', 'win');
@@ -495,7 +512,7 @@ function banner(text, kind) {
   clearTimeout(bannerTimer);
   bannerTimer = setTimeout(() => { el.className = kind; }, 1600);
 }
-const hud = { hp: $('#hp-fill'), hpLag: $('#hp-lag'), meter: $('#meter'), sp: $('#btn-special'), punch: $('#btn-punch'), wave: $('#wave'), score: $('#score'), left: $('#left'), boss: $('#boss-fill'), combo: $('#combo') };
+const hud = { hp: $('#hp-fill'), hpLag: $('#hp-lag'), meter: $('#meter'), meterLabel: $('#meter-label'), sp: $('#btn-special'), punch: $('#btn-punch'), wave: $('#wave'), score: $('#score'), left: $('#left'), boss: $('#boss-fill'), combo: $('#combo') };
 let hpLag = 1;
 /** Last values written to the DOM: the HUD only touches an element when its value changes. */
 const shown = {};
@@ -507,12 +524,18 @@ function updateHud(dt) {
   // bars scale on the compositor (transform) instead of re-laying out a width every frame
   put('hp', Math.round(hpf * 400) / 400, (v) => { hud.hp.style.transform = `scaleX(${v})`; hud.hp.classList.toggle('low', v < 0.3); });
   put('lag', Math.round(hpLag * 400) / 400, (v) => { hud.hpLag.style.transform = `scaleX(${v})`; });
-  const mf = Math.min(1, p.meter / p.cfg.special.meterMax);
+  // the bar under the health: the special meter (DREADNOUGHT: WARLORD RAGE, or its time left while raging)
+  const mf = p.hudMeter !== undefined ? p.hudMeter : Math.min(1, p.meter / p.cfg.special.meterMax);
   put('meter', Math.round(mf * 200) / 200, (v) => {
     hud.meter.style.transform = `scaleX(${v})`;
     hud.sp.style.setProperty('--fill', v * 360 + 'deg');
   });
-  put('ready', mf >= 1, (v) => { hud.meter.classList.toggle('ready', v); hud.sp.classList.toggle('ready', v); });
+  const ready = p.specialReady !== undefined ? p.specialReady : mf >= 1;
+  put('ready', ready, (v) => { hud.meter.classList.toggle('ready', v); hud.sp.classList.toggle('ready', v); });
+  if (p.rageT !== undefined) {
+    put('raging', p.rageT > 0, (v) => { hud.meter.classList.toggle('raging', v); hud.sp.classList.toggle('raging', v); });
+    put('rageSecs', p.rageT > 0 ? Math.ceil(p.rageT) : 0, (v) => { hud.meterLabel.textContent = v ? `${rosterOf(G.charId).meterLabel} · ${v}s` : rosterOf(G.charId).meterLabel; });
+  }
   // DREADNOUGHT's hold-PUNCH charge: the ring around PUNCH fills, flashes gold at the threshold
   const ch = p.charge || 0;
   put('charge', Math.round(ch * 50) / 50, (v) => { hud.punch.style.setProperty('--charge', v * 360 + 'deg'); hud.punch.classList.toggle('charging', v > 0); });
@@ -539,10 +562,13 @@ function configureHud(c) {
   const B = c.buttons;
   document.body.classList.toggle('has-kick', !!B.kick);
   document.body.classList.toggle('has-grab', !!B.grab);
-  document.body.classList.toggle('has-dodge', !!B.dodge);     // its own DODGE button, in the special's slot
+  document.body.classList.toggle('has-dodge', !!B.dodge);     // its own DODGE button (the JUMP slot when he cannot jump)
   document.body.classList.toggle('no-special', !B.special);
+  document.body.classList.toggle('no-jump', !B.jump);         // DREADNOUGHT: a grounded heavyweight
   document.body.classList.toggle('has-charge', !!cfg[c.id].uppercut); // hold PUNCH to charge
-  $('#btn-jump').innerHTML = `<svg class="ic"><use href="#${B.jumpIcon}"></use></svg><span>${B.jump}</span>`;
+  document.body.classList.remove('raging');
+  hud.meter.classList.remove('raging'); hud.sp.classList.remove('raging');
+  if (B.jump) $('#btn-jump').innerHTML = `<svg class="ic"><use href="#${B.jumpIcon}"></use></svg><span>${B.jump}</span>`;
   if (B.special) $('#btn-special').innerHTML = `<svg class="ic"><use href="#${B.specialIcon}"></use></svg><span>${B.special}</span>`;
   if (B.dodge) $('#btn-dodge').innerHTML = `<svg class="ic"><use href="#${B.dodgeIcon}"></use></svg><span>${B.dodge}</span>`;
   hud.punch.classList.remove('charging', 'charged');
@@ -561,6 +587,7 @@ function clearWorld() {
   encounter = null; G.bossRef = null;
   resetBossUi();
   $('#frost').classList.remove('on');
+  document.body.classList.remove('raging');
 }
 /**
  * Start a fight: fighter `id` on map `mapId` (default: his home map). Spawns him on the map's start
@@ -852,7 +879,7 @@ function renderPortraits() {
   key.position.set(2, 4, 5);
   pScene.add(key);
   const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
-  const shots = [['toaku', 3.15, 0x1b3a24], ['tahu', 2.45, 0x4a2410], ['dreadnought', 3.75, 0x24123a]]; // [id, head height, backdrop]
+  const shots = [['toaku', 3.15, 0x1b3a24], ['tahu', 2.45, 0x4a2410], ['dreadnought', 4.6, 0x24123a]]; // [id, head height, backdrop]
   const prevFog = scene.fog;
   const out = document.createElement('canvas');
   out.width = out.height = size;
@@ -1111,7 +1138,7 @@ function stepGame(dt, inp) {
         G.breakT = cfg.waves.breakTime;
         if (G.wave > 0) {
           banner('WAVE CLEAR!', 'win');
-          p.hp = Math.min(p.maxHp, p.hp + cfg.waves.healBetweenWaves);
+          p.hp = waveClearHp(p.hp, p.maxHp, cfg.waves.healBetweenWaves, p.cfg.noWaveHeal); // not DREADNOUGHT: his health carries over
         }
       }
     } else {

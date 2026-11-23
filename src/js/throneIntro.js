@@ -1,7 +1,7 @@
 /**
  * DREADNOUGHT's character intro (played once he is confirmed on the character select): seated on his
  * throne he holds still for a beat, rises (his stand-up clip), and settles into his idle stance while
- * a front camera pushes in slightly; his name card shows near the end. About 4.6 s, skippable.
+ * a front camera pushes in slightly; his name card shows near the end. About 4 s (CONFIG.throne.end), skippable.
  *
  * The controller only times the shot. The fighter is updated by the caller every frame (his own
  * blending makes every step smooth: seated breathing -> rising -> a ~0.2 s cross-fade into the idle),

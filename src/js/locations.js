@@ -12,7 +12,7 @@ export const LOCATIONS = [
     id: 'glatorian', map: 'glatorian', name: 'GLATORIAN ARENA', tag: 'SANDSTONE COLOSSEUM', featured: true,
     blurb: 'A vast sand floor ringed by towering stands. Nowhere to hide, nowhere to run.',
     // preview render: a high shot across the floor toward the stands (metres, map frame)
-    preview: { pos: [0, 15, 34], look: [0, 4, -16] },
+    preview: { pos: [0, 18, 41], look: [0, 5, -19] },
   },
   {
     id: 'desert', map: 'desert', name: 'DESERT RUINS', tag: 'ANCIENT RUINS',

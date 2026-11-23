@@ -14,11 +14,11 @@ const at = (r, a) => ({ x: Math.sin(a) * r, z: Math.cos(a) * r });
 /** Deterministic random source (Park-Miller). */
 const seeded = (seed) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 
-test('the floor is at least 20 fighter heights across (60 m for a 3 m fighter), fighters unscaled', () => {
+test('the floor is at least 20 fighter heights across (60 m for a 3 m fighter), for the tallest fighter', () => {
   const tallest = Math.max(CONFIG.toaku.height, CONFIG.tahu.height, CONFIG.dreadnought.height);
   assert.ok(2 * L.minEdge >= 20 * tallest, `floor ${2 * L.minEdge} m vs ${20 * tallest} m`);
   assert.ok(2 * L.minEdge >= 60);
-  assert.equal(CONFIG.dreadnought.height, 4.3, 'fighter sizes are not inflated to fit the arena');
+  assert.ok(CONFIG.dreadnought.height / CONFIG.toaku.height <= 1.5, 'the arena is sized to the fighters, not the other way round');
 });
 
 test('the floor is flat at y = 0 and the stands rise beyond the podium wall', () => {

@@ -1,22 +1,28 @@
 # BIONICLE ITALIA: BRAWLERS
 
 - **Play in a browser:** `npm install && npm run build:web`, open `dist/index.html`.
-  Keys: WASD move, J punch (hold: Dreadnought's heavy uppercut), K kick, G grab, Space jump, Shift dodge, L special, Q/R camera,
+  Keys: WASD move (Dreadnought: a light push walks, a full one runs), J punch (hold: Dreadnought's heavy uppercut), K kick, G grab,
+  Space jump (not Dreadnought), Shift dodge, L special (Dreadnought: WARLORD RAGE when the meter is full), Q/R camera,
   Enter confirm (start / select / skip the intro / fight), ←/→ browse fighters and locations, Esc back / pause.
 - **Build the APK:** `npm run build:apk` (needs `apt-get install aapt apksigner zipalign dalvik-exchange` + JDK). Output: `builds/toaku-desert-brawl.apk` (debug-signed).
 - **Tests:** `npm test`
 - **Bohrok enemies:** `for k in lehvak tahnok gahlok pahrak nuhvok kohrak; do node tools/build-bohrok.mjs $k assets/source/bohrok/$k.meshy.glb; done` rebuilds the six models (rig fix + optimisation; build Lehvak first, the others reuse its layout). Details: `design/bohrok-import.md`.
 - **Sidorak (first boss, wave 5):** `node tools/build-sidorak.mjs` recompresses `assets/source/sidorak/` (the rig is kept exactly as delivered) and extracts the motion of the RunFast capture (`runfast.meshy.glb` → `assets/models/sidorak-runfast.json`) that his charge runs with. Code: `src/js/sidorak.js`, animations `src/js/sidorakAnims.js`, the capture's retarget onto his rig `src/js/sidorakMocap.js`, encounter `src/js/bossEncounter.js`. Design: `design/game-brief.md` → Sidorak.
-- **Dreadnought (third fighter):** built from Meshy's seven Mixamo exports (Draco-compressed; the build decodes them):
+- **Dreadnought (third fighter):** built from Meshy's Mixamo exports of his overhauled model (Draco-compressed; the build
+  decodes them and refuses to build if any skeleton differs). The kick was not re-exported, so the previous model's
+  Spartan_Kick is first retargeted onto the new rig (the first file supplies the motion, the second the rig):
   ```
-  node tools/build-character.mjs assets/models/dreadnought.glb run_fast_10_inplace.glb Punch_Combo.glb Charged_Upward_Slash.glb Spartan_Kick.glb Grip_and_Throw_Down.glb Roll_Behind_Cover.glb Sit_to_Stand_Transition_M.glb
+  node tools/retarget-clip.mjs old/Spartan_Kick.glb walking_2.glb Spartan_Kick.glb
+  node tools/build-character.mjs assets/models/dreadnought.glb walking_2.glb Run_03.glb Punch_Combo.glb Charged_Upward_Slash.glb Grip_and_Throw_Down.glb Roll_Dodge_2.glb Sit_to_standTransition_Female_2.glb Spartan_Kick.glb Skill_01.glb
   ```
-  He has no idle clip: `config.js` (`dreadnought.idle`) bakes one from the upright frame his stand-up ends on, with bone
-  edits and a breathing loop (`src/js/clipPose.js`). Code: `src/js/dreadnought.js`; his throne `src/js/throne.js` and the
-  select-screen intro `src/js/throneIntro.js`. Design: `design/game-brief.md` → Dreadnought.
+  He has no idle clip: `config.js` (`dreadnought.idle`) bakes one from the upright frame his stand-up reaches, with bone
+  edits and a breathing loop (`src/js/clipPose.js`). Code: `src/js/dreadnought.js` (analog walk/run, palm grab, attack
+  tracking, WARLORD RAGE), the rage aura `src/js/rageAura.js`; his throne `src/js/throne.js` and the select-screen intro
+  `src/js/throneIntro.js`. Design: `design/game-brief.md` → Dreadnought.
 - **Glatorian Arena (default location):** `node tools/build-arena.mjs [source.glb]` decimates and rescales the Meshy model
-  (`assets/source/glatorian/arena.meshy.glb`, 1.0 M triangles) into `assets/models/glatorian.glb` (90 k) and writes the
-  gameplay layout `assets/models/glatorian-layout.json` (floor edge, podium height, height grid). Code: `src/js/glatorian.js`;
+  (`assets/source/glatorian/arena.meshy.glb`, 1.0 M triangles) into `assets/models/glatorian.glb` (90 k; the floor is
+  106 m across, 20 × Dreadnought's height) and writes the gameplay layout `assets/models/glatorian-layout.json` (floor edge,
+  podium height, height grid). Code: `src/js/glatorian.js`;
   the SELECT LOCATION list is `src/js/locations.js`.
 - **App icon:** `node tools/build-icons.mjs` rebuilds `android/res/mipmap-*` from `assets/branding/app-icon-source.jpg`.
 - **Interface:** `src/index.html` + `src/style.css` (per-fighter themes = `body[data-fighter]` blocks); fonts in `assets/fonts/` are inlined at build, the main-menu art comes from `assets/branding/key-art.jpg`.

@@ -44,7 +44,7 @@ export class ClipFighter extends Fighter {
     this.buffer = {};
     this.weights = Object.fromEntries(channels.map((n) => [n, n === 'Idle' ? 1 : 0]));
     const A = inst.actions;
-    const loops = new Set(['Run', ...Object.keys(cfg.breathLoops || {})]); // play on their own, looping
+    const loops = new Set(['Run', 'Walk', ...Object.keys(cfg.breathLoops || {})]); // play on their own, looping
     for (const n of channels) {
       const a = A[n];
       if (!a) throw new Error(`${kind}: no action "${n}"`);

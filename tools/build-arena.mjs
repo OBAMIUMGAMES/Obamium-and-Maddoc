@@ -19,7 +19,7 @@ import { writeFileSync } from 'node:fs';
 const SRC = process.argv[2] || 'assets/source/glatorian/arena.meshy.glb';
 const OUT = 'assets/models/glatorian.glb', LAYOUT = 'assets/models/glatorian-layout.json';
 // 20:1 floor-to-fighter ratio for the tallest playable fighter (Dreadnought, 4.3 m) with room to spare
-const FLOOR_DIAMETER = 88;
+const FLOOR_DIAMETER = 106;
 const TARGET_TRIS = 90000;   // whole arena on screen at once on a phone
 const GRID_CELL = 1.0;       // m, height grid resolution (the stands' tiers are wider than this)
 const TEXTURE = 2048;        // the one texture of the arena (floor, stands, walls): kept sharp

@@ -253,6 +253,9 @@ function segDist(p, a, b) {
   return Math.hypot(a.x + abx * t - p.x, a.y + aby * t - p.y, a.z + abz * t - p.z);
 }
 
+/** States in which DREADNOUGHT cannot take hold of him (cinematics, defeat, already held). */
+const NOT_GRABBABLE = new Set(['intro', 'point', 'defeated', 'grabbed', 'thrown']);
+
 /** Sidorak, King of the Visorak: the first boss. One phase. */
 export class Sidorak extends Enemy {
   /**
@@ -266,7 +269,7 @@ export class Sidorak extends Enemy {
     this.kind = 'sidorak';
     this.family = 'boss';
     this.boss = true;
-    this.heavy = true;           // cannot be grabbed, thrown or launched; shoves the player aside
+    this.heavy = true;           // cannot be launched; shoves the player aside; only DREADNOUGHT can grab him (canBeGrabbed)
     this.inst = inst;
     this.knockMul = 0;
     this.rng = cfg.rng || Math.random;
@@ -300,6 +303,61 @@ export class Sidorak extends Enemy {
     super.setState(s);
   }
 
+  /**
+   * DREADNOUGHT's crushing grab can take him, but only while the fight is on: never during the
+   * warning, the intro cinematic or his defeat, and not while already held or thrown.
+   */
+  canBeGrabbed() {
+    return this.ai && this.alive && this.targetable && !NOT_GRABBABLE.has(this.state);
+  }
+
+  /** Let go without a throw (the holder was knocked out): he drops to the ground and recovers. */
+  release() {
+    this.holder = null;
+    this.targetable = true;
+    this.root.rotation.x = 0;
+    this.vel.set(0, 0, 0);
+    this.throwCfg = null;
+    this.setState('thrown');
+  }
+
+  /**
+   * Held (the holder places him every frame: no AI, no physics, no attacks) or thrown (falls under
+   * gravity, crashes, then stumbles back up and resumes the fight). Returns true if it took the frame.
+   */
+  updateCarried(dt, world, T, timeOf) {
+    if (this.state === 'grabbed') {
+      T.stagger = 1; timeOf('stagger', 0.3); // braced against the grip
+      if (world.bossFx) world.bossFx.chargeAt(null, 0); // an attack he was charging is gone
+      if (!this.holder || this.holder.held !== this || !this.holder.alive) this.release();
+      this.animate(dt, T);
+      this.sync();
+      return true;
+    }
+    if (this.state !== 'thrown') return false;
+    T.stumble = 1; timeOf('stumble', Math.min(0.2, this.stateT));
+    this.physics(dt, world, 0);
+    if (this.onGround && this.stateT > 0.05) {
+      // the crash: the slam's damage by his own rules (capped, no stagger mid-fall), then he gets up
+      this.root.rotation.x = 0;
+      world.fx.dust(this.pos, 18, this.cfg.height * 1.1, this.cfg.height * 0.4);
+      world.fx.shockwave(this.pos, this.cfg.height * 1.2, 0xfff0c0, 0.5);
+      world.shake(0.5);
+      const C = this.throwCfg, thrower = this.thrower;
+      this.throwCfg = null; this.thrower = null;
+      this.targetable = true;
+      if (C) {
+        const l = Math.hypot(this.vel.x, this.vel.z) || 1;
+        world.hitEnemy(this, C.landDamage, this.vel.x / l, this.vel.z / l, 3, 3, 0.8, true);
+        if (thrower && thrower.registerHits) thrower.registerHits(1, world);
+      }
+      if (this.alive) { this.setState('stumble'); this.stateT = 0.35 * SIDORAK_CLIPS.stumble.duration; }
+    }
+    this.animate(dt, T);
+    this.sync();
+    return true;
+  }
+
   /** The intro gesture: points the right claw at the player (cinematic). */
   playIntro() { this.setState('point'); }
   /** Cinematic over: the fight starts. */
@@ -326,6 +384,7 @@ export class Sidorak extends Enemy {
     const u = (clip) => this.stateT / SIDORAK_CLIPS[clip].duration;
     const timeOf = (clip, v) => { this.inst.actions[clip].time = Math.min(1, v) * SIDORAK_CLIPS[clip].duration; };
     this.vulnerable = false;
+    if (this.updateCarried(dt, world, T, timeOf)) return;
 
     switch (this.state) {
       case 'intro': T.idle = 1; break;
@@ -582,7 +641,10 @@ export class Sidorak extends Enemy {
    * (poise), stagger him - then he cannot be staggered again for a while (no stun-lock either way).
    */
   receiveHit(dmg, dirX, dirZ, knock, lift, stun, world) {
-    if (!this.alive || !this.targetable) return false;
+    // held in DREADNOUGHT's fist or crashing down he is out of everyone's reach, but the grip's
+    // crushes and the slam itself still hurt
+    const carried = this.state === 'grabbed' || this.state === 'thrown';
+    if (!this.alive || (!this.targetable && !carried)) return false;
     const cfg = this.cfg;
     const heavy = knock >= cfg.poise.heavyKnock || lift >= cfg.poise.heavyKnock || dmg >= cfg.poise.heavyDamage;
     let d = Math.min(dmg, cfg.maxDamagePerHit) * (this.vulnerable ? cfg.vulnerableMul : 1);
@@ -594,6 +656,7 @@ export class Sidorak extends Enemy {
     this.recoil = Math.min(1, this.recoil + (heavy ? 0.7 : 0.35));
     if (d >= cfg.bigHit) this.bigHit = 0.25;
     if (r.killed) { this.defeat(world); return true; }
+    if (this.state === 'grabbed' || this.state === 'thrown') return false; // no stagger in a grip or mid-fall
     if (this.poiseImmune <= 0 && this.ai) {
       this.poise += d * (heavy ? cfg.poise.heavyMul : 1);
       this.poiseT = cfg.poise.decayDelay;
@@ -612,6 +675,8 @@ export class Sidorak extends Enemy {
   /** HP gone: the AI stops, any attack in progress is cancelled, he can no longer be hurt, he falls. */
   defeat(world) {
     this.alive = false;
+    this.holder = null;
+    this.root.rotation.x = 0;
     this.ai = false;
     this.targetable = false;
     this.vel.set(0, this.vel.y, 0);

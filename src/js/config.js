@@ -154,37 +154,65 @@ export const CONFIG = {
   },
 
   /**
-   * DREADNOUGHT — Meshy model + Mixamo clips (assets/models/dreadnought.glb, tools/build-character.mjs).
-   * Baseline TOAKU: health 150%, regular punch damage 140%, heavy uppercut 220% of his regular punch,
-   * grab 170%, speed 90%, longer reach, harder knockback. Clip times are in the clips' own seconds,
-   * measured from the bone trajectories (fist / foot speed peaks, hand grip and release, hips travel).
+   * DREADNOUGHT — Meshy model + Mixamo clips (assets/models/dreadnought.glb, tools/build-character.mjs;
+   * his kick retargeted from his previous model by tools/retarget-clip.mjs). Baseline TOAKU: about
+   * 1.45 x his height, health 150%, regular punch damage 140%, heavy uppercut 220% of his regular
+   * punch, grab 170%, top speed 90%, longer reach, harder knockback. Clip times are in the clips'
+   * own seconds, measured from the bone trajectories (fist / foot peaks, hand grip and release,
+   * hips travel, the planted foot's speed).
    */
   dreadnought: {
-    height: 4.3,              // a head taller than Toaku (3.6 m upright, 3.3 m in his stance)
-    sourceHeight: 1.88,       // the rigged export stands 1.88 m tall
-    radius: 1.1,
+    height: 5.2,              // ~1.45 x Toaku's 3.6 m: a towering warlord
+    sourceHeight: 1.89,       // the rigged export stands 1.89 m tall (bind pose)
+    radius: 1.35,
     maxHp: 600,
-    moveSpeed: 5.6,
-    turnRate: 10,
-    runClipSpeed: 5.47,       // ground speed of run_fast_10_inplace at his size (planted foot: 2.39 source m/s)
-    blendRate: 13,            // idle <-> run cross-fade
+    moveSpeed: 5.6,           // top running speed (90% of Toaku's)
+    turnRate: 7,              // rad/s: a heavy body turns deliberately
+    blendRate: 13,            // cross-fades back to the idle stance (95% in 0.23 s)
     inputBuffer: 0.35,
     airControl: 4,
-    clips: { Run: 'run_fast_10_inplace', Punch: 'Punch_Combo', Uppercut: 'Charged_Upward_Slash', Kick: 'Spartan_Kick',
-      Grab: 'Grip_and_Throw_Down', Dodge: 'Roll_Behind_Cover', StandUp: 'Sit_to_Stand_Transition_M' },
-    rootMotion: ['Dodge'],     // the dive roll carries him ~3 source m forward: gameplay moves him instead
-    recentre: { StandUp: 5.5 }, // he rises from a seat behind him: recentred where he ends up standing
-    // idle: the upright frame the stand-up ends on (arms down at his sides, feet planted), squared up
-    // for a fight, breathing. Edits are [pitch, yaw, roll] in his own frame (see clipPose.js).
+    noWaveHeal: true,         // no health back between waves: it carries over (WARLORD RAGE kills heal him)
+    clips: {
+      Walk: 'walking_2', Run: 'Run_03', Punch: 'Punch_Combo', Uppercut: 'Charged_Upward_Slash', Kick: 'Spartan_Kick',
+      Grab: 'Grip_and_Throw_Down', Dodge: 'Roll_Dodge_2', StandUp: 'Sit_to_standTransition_Female_2', Scream: 'Skill_01',
+    },
+    rootMotion: ['Dodge', 'Walk'], // played in place: gameplay moves him along their hips travel (walls stop him)
+    recentre: { StandUp: 2.2 },    // he rises from a seat behind him: recentred where he ends up standing
+    // analog movement from the virtual joystick: idle under deadZone, walking up to walkTop (speed
+    // follows the stick), running from runEnter (back to walking under runExit: hysteresis) up to
+    // moveSpeed at full stick. Both clips play at the rate the ground moves under the planted foot
+    // (clip speeds: m/s covered at 1x playback at his size), so his feet do not slide.
+    locomotion: {
+      deadZone: 0.15, walkTop: 0.75, runEnter: 0.78, runExit: 0.7,
+      walkSpeed: [0.9, 2.6], runSpeed: [4.3, 5.6], // m/s
+      accel: 7, decel: 10,          // m/s^2: a heavy body gets going and stops over a stride or two
+      walkClipSpeed: 3.22,          // walking_2: 1.17 source m/s of hips travel x 5.2 / 1.89
+      runClipSpeed: 13.2,           // Run_03 (in place): the planted foot moves 4.8 source m/s
+      // Run_03 is a sprint: matched exactly to his 5.6 m/s it would play at 0.42x, slower than his
+      // walk's cadence (slow motion). It plays this much faster: ~1.5 s per stride at top speed, the
+      // planted foot slipping back ~20% on the sand (never skating forward)
+      runOverspeed: 1.25,
+      gaitBlend: 9,                 // walk <-> run cross-fade rate
+      // heel strikes: [clip s, foot] per cycle (measured on the clips). Each thuds and kicks up sand
+      // at that foot; running near top speed also nudges the camera by `shake`
+      footfalls: {
+        Walk: [[0.02, 'RightFoot'], [0.62, 'LeftFoot']],
+        Run: [[0.06, 'RightFoot'], [0.46, 'LeftFoot']],
+        shake: 0.1,
+      },
+    },
+    // idle: the upright frame the stand-up ends on (arms down at his sides, elbows a little bent,
+    // facing forward), feet set a little wider, breathing. Edits are [pitch, yaw, roll] in his own
+    // frame (see clipPose.js).
     idle: {
-      clip: 'StandUp', at: 4.4, period: 3.6, speed: 1,
+      clip: 'StandUp', at: 2.2, period: 3.6, speed: 1,
       edits: {
-        Spine2: [-0.03, 0, 0], Head: [0.04, 0, 0],                                  // chest up, eyes level
-        LeftUpLeg: [-0.06, 0, 0.05], RightUpLeg: [-0.06, 0, -0.05],                 // feet a little wider, knees soft
-        LeftLeg: [0.12, 0, 0], RightLeg: [0.12, 0, 0],
-        LeftFoot: [-0.06, 0, -0.05], RightFoot: [-0.06, 0, 0.05],                   // soles flat on the ground
-        LeftArm: [0, 0, 0.07], RightArm: [0, 0, -0.07],                             // arms clear of the thighs
-        LeftForeArm: [-0.22, 0, 0], RightForeArm: [-0.22, 0, 0],                    // elbows bent, hands ready
+        Spine2: [-0.03, 0, 0], Head: [0.03, 0, 0],                                  // chest up, eyes level
+        LeftUpLeg: [-0.03, 0, 0.06], RightUpLeg: [-0.03, 0, -0.06],                 // feet a little wider, knees soft
+        LeftLeg: [0.07, 0, 0], RightLeg: [0.07, 0, 0],
+        LeftFoot: [-0.04, 0, -0.06], RightFoot: [-0.04, 0, 0.06],                   // soles flat on the ground
+        LeftArm: [0, 0, 0.06], RightArm: [0, 0, -0.06],                             // arms clear of the thighs
+        LeftForeArm: [-0.12, 0, 0], RightForeArm: [-0.12, 0, 0],                    // elbows a little bent
       },
       breathe: {
         Hips: { lift: 0.004 },
@@ -197,7 +225,7 @@ export const CONFIG = {
     // seated on his throne while the character select shows him: the stand-up's first frame, breathing
     breathLoops: {
       Seated: {
-        clip: 'StandUp', at: 0.2, period: 3.6,
+        clip: 'StandUp', at: 0.15, period: 3.6,
         breathe: {
           Spine1: { amp: [-0.01, 0, 0] }, Spine2: { amp: [-0.016, 0, 0] },
           LeftShoulder: { amp: [0, 0, 0.018] }, RightShoulder: { amp: [0, 0, -0.018] },
@@ -205,49 +233,55 @@ export const CONFIG = {
         },
       },
     },
-    // key poses for the jump (no clip of its own): the crouch he passes through standing up, and
-    // the idle frame with the knees drawn up
-    poses: {
-      PoseCrouch: ['StandUp', 2.3, {}],
-      PoseAir: ['StandUp', 4.4, {
-        LeftUpLeg: [-0.75, 0, 0.08], RightUpLeg: [-0.55, 0, -0.08], LeftLeg: [0.95, 0, 0], RightLeg: [0.8, 0, 0],
-        LeftArm: [-0.25, 0, 0.35], RightArm: [-0.25, 0, -0.35], LeftForeArm: [-0.5, 0, 0], RightForeArm: [-0.5, 0, 0],
-        Spine2: [0.08, 0, 0],
-      }],
-    },
     material: { metalness: 0.55, roughness: 0.5, envMapIntensity: 0.75 },
+    // attack tracking: when a melee move starts, the nearest enemy within its reach (+ lunge) in a
+    // forward cone, with no wall between, is tracked: he turns toward it during the wind-up and a
+    // short, capped lunge closes a small gap. Hit volumes run from the ground up to `top` x his height.
+    track: { cone: 2.2, turnRate: 9, lunge: 1.6, lungeSpeed: 3.2 },
     // regular punches: the 2 strikes of Punch_Combo (a left hook, then a right uppercut finisher)
     punch: {
       start: 0.25, speed: 1.25, window: 0.4,
       hits: [
-        { end: 0.84, impact: 0.62, damage: 20, reach: 4.2, arc: 1.5, knockback: 5, lift: 0 },     // left hook
-        { end: 2.0, impact: 1.27, damage: 36, reach: 4.4, arc: 1.7, knockback: 14, lift: 8 },     // right uppercut
+        { end: 0.84, impact: 0.62, damage: 20, reach: 5.1, arc: 1.5, knockback: 5, lift: 0, top: 1.0, hand: 'LeftHand' },   // left hook
+        { end: 2.0, impact: 1.27, damage: 36, reach: 5.3, arc: 1.7, knockback: 14, lift: 8, top: 1.1, hand: 'RightHand' }, // right uppercut
       ],
     },
-    // hold PUNCH: Charged_Upward_Slash. Under `tap` s it is a regular punch on release; the wind-up
-    // shows from `windFrom` s of holding and reaches clip time `windTo` at `hold` s, then he strikes.
+    // hold PUNCH: Charged_Upward_Slash. A tap is a regular punch on release; the wind-up shows from
+    // `windFrom` s of holding and reaches clip time `windTo` at `hold` s, then he strikes. Its hit
+    // volume reaches far up (airborne enemies) and launches up and back.
     uppercut: {
       windFrom: 0.15, hold: 0.5, windTo: 0.55, speed: 1.25,
-      impact: 1.03, end: 2.35, damage: 44, reach: 4.6, arc: 1.6, knockback: 12, lift: 15,
+      impact: 1.03, end: 2.35, damage: 44, reach: 5.6, arc: 1.7, knockback: 12, lift: 15, top: 1.6, hand: 'RightHand',
     },
-    kick: { start: 0.1, end: 1.38, speed: 1.3, impact: 0.6, damage: 45, reach: 4.8, arc: 1.4, knockback: 23, lift: 5 },
+    kick: { start: 0.1, end: 1.38, speed: 1.3, impact: 0.6, damage: 45, reach: 5.8, arc: 1.4, knockback: 23, lift: 5, top: 0.8, hand: 'RightFoot' },
     // one-handed crushing grab: Grip_and_Throw_Down. His RIGHT hand reaches out to his right side
     // (reachYaw from his facing), grips at catchAt, lifts the enemy, squeezes it three times, then
-    // slams it into the ground at releaseAt.
+    // slams it into the ground at releaseAt. The enemy is held at his palm (the knuckles' centre),
+    // by its upper body (`hold` x its height), and turns with his hand. Sidorak can be grabbed too.
     grab: {
-      speed: 1.45, reachYaw: 1.39, catchAt: 0.88, whiffEnd: 1.25, crush: [1.6, 2.25, 2.9], releaseAt: 3.42, end: 4.3,
-      range: 4.4, cone: 2.4, lungeSpeed: 5, catchDist: 2.6,
+      speed: 1.45, reachYaw: 1.34, catchAt: 0.88, whiffEnd: 1.25, crush: [1.6, 2.25, 2.9], releaseAt: 3.42, end: 4.3,
+      range: 5.4, cone: 2.4, lungeSpeed: 5, catchDist: 3.2, hold: 0.72, bossHold: 0.78,
       crushDamage: 12, throwDown: 14, throwOut: 4,
       landDamage: 51, // the slam into the ground (crush 3 x 12 + 51 = 87: Toaku's 51 x 1.7)
       impactDamage: 30, impactKnock: 14, impactLift: 6, // anyone the slammed body lands on
     },
-    dodge: { start: 0.05, end: 1.62, speed: 1.45, invuln: [0.3, 1.45], cancelAfter: 1.5, cooldown: 0.5 },
-    jump: { velocity: 9.5, squat: 0.1, land: 0.18 },
-    // the HUD's energy bar is his uppercut charge (he has no meter special)
-    special: { name: '', meterMax: 100, meterPerHit: 0, meterPerHurt: 0, meterPassive: 0 },
-    // multipliers of CONFIG.camera for his size: further back and higher (1.7 m above his head where
-    // Toaku's is 1 m) so enemies at mid range and a boss stay visible over his shoulders
-    camera: { distance: 1.2, height: 1.3, look: 1.2 },
+    // DODGE: Roll_Dodge_2 is a dive roll that travels diagonally (left-forward, ~46 deg) while he keeps
+    // facing ahead; he is turned so that it travels toward the stick (his facing without input)
+    dodge: { start: 0.05, end: 1.95, speed: 1.3, invuln: [0.35, 1.45], cancelAfter: 1.75, cooldown: 0.5 },
+    // WARLORD RAGE: the meter fills with the damage he deals and his kills (never by itself, never while
+    // raging); RAGE at 100%: the Skill_01 scream, a purple aura, +50% damage, 8% of his health back per
+    // kill, for 30 s of play
+    rage: {
+      max: 100, perDamage: 0.1, perKill: 2.5,  // ~12 Bohrok, or a good stretch of the Sidorak fight
+      duration: 30, damageMul: 1.5, healPerKill: 0.08, queue: 1.5, // s a press waits for a free moment
+      scream: { speed: 0.9, roarAt: 0.45, end: 1.06, hold: 0.6 },   // clip times; then the roar pose is held
+      aura: { color: 0x9b3dff, rim: 0xffd27a, inflate: 0.04, opacity: 0.85, fadeIn: 0.5, fadeOut: 0.8 },
+    },
+    // no meter special of the usual kind: the HUD's bar is WARLORD RAGE (managed by Dreadnought)
+    special: { name: 'WARLORD RAGE', meterMax: 100, meterPerHit: 0, meterPerHurt: 0, meterPassive: 0 },
+    // multipliers of CONFIG.camera for his size: further back and higher (about 1.9 m above his head,
+    // where Toaku's is 1 m) so enemies at mid range and a boss stay visible over his shoulders
+    camera: { distance: 1.42, height: 1.55, look: 1.45 },
     hurtInvuln: 0.5,
     hurtTime: 0.3,
   },
@@ -255,14 +289,14 @@ export const CONFIG = {
   // DREADNOUGHT's throne and his character-select cinematic (rising from it). The throne stands on
   // the Glatorian Arena's showcase spot (CONFIG.glatorian.showcase), where he is shown and rises.
   throne: {
-    seatTop: 1.16, seatWidth: 2.0, seatDepth: 1.15, backHeight: 6.0, // m
-    seat: [-0.3, -0.86],       // seat centre from the seated fighter's root (his right, behind him), m
+    seatTop: 1.4, seatWidth: 2.4, seatDepth: 1.2, backHeight: 7.3, // m (for his 5.2 m)
+    seat: [0, -0.95],          // seat centre from the seated fighter's root (behind him), m
     // seconds: the seated hold, then StandUp's clip times rising (`rise`), then the stance and the name
-    hold: 0.8, rise: [0.4, 3.7], riseSpeed: 1.0, end: 4.6, title: 3.0,
+    hold: 0.8, rise: [0.3, 2.1], riseSpeed: 0.85, end: 4.1, title: 2.7,
     // front view, slightly low: pushes in by `push` m over the shot; camera height h -> hTo and the
     // look height look -> lookTo follow him as he rises (m above the floor); from `title` the view
     // pans `side` m to his right so he ends right of centre, his name card on the left
-    cam: { dist: 8.2, push: 0.9, h: 2.0, hTo: 2.5, look: 2.2, lookTo: 2.6, side: 2.3 },
+    cam: { dist: 9.9, push: 1.1, h: 2.4, hTo: 3.0, look: 2.6, lookTo: 3.1, side: 2.8 },
     menuBlend: 0.9,            // s: the camera eases from the end of the shot to the location menu's
   },
 
@@ -271,11 +305,11 @@ export const CONFIG = {
     cameraMargin: 1.5,   // m the gameplay camera keeps inside the floor
     spawnMargin: 4,      // enemies appear at least this far from the wall
     spawnDist: [14, 26], // m from the player
-    outerGround: -9.7,   // the desert outside the colosseum, below its floor
+    outerGround: -11.7,  // the desert outside the colosseum, below its floor
     start: { x: 0, z: 0, facing: Math.PI },
     // the menus' spot (DREADNOUGHT's throne stands here): toward the south stands, facing the centre;
     // the camera sweeps in front, framing the fighter right of the menus' panels
-    showcase: { x: 0, z: -30, facing: 0, tonua: null, cam: { cx: 0, cz: -30, r: 10.5, h: 3.3, sweep: 0.3, base: 0.32, look: { x: -1.6, y: 2.9, z: -28.5 } } },
+    showcase: { x: 0, z: -30, facing: 0, tonua: null, cam: { cx: 0, cz: -30, r: 12.6, h: 3.9, sweep: 0.3, base: 0.32, look: { x: -1.9, y: 3.5, z: -28.2 } } },
   },
 
   tonua: {

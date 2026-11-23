@@ -50,7 +50,7 @@ body[data-fighter="dreadnought"] {
   --acc: #b45cff; --acc-rgb: 180, 92, 255; --acc2: #ffe3a3;
   --panel: rgba(13, 8, 20, .9); --panel-2: rgba(38, 22, 58, .92);
   --frame-1: #ffeab0; --frame-2: #c9952c; --frame-3: #231c2a;
-  --hp-1: #e4bdff; --hp-2: #9a3cf0; --hp-3: #4a0f86; --en-1: #fff4c8; --en-2: #ffc53d; --en-3: #8a5806;
+  --hp-1: #e4bdff; --hp-2: #9a3cf0; --hp-3: #4a0f86; --en-1: #f2d6ff; --en-2: #a63dff; --en-3: #3d0b72;
   --acc-3: #5a1fa0; --panel-soft: rgba(13, 8, 20, .62);
   --ink: #f5eeff;
 }
@@ -96,7 +96,14 @@ body.in-game #hud { display: block; animation: hud-in .35s ease-out; }
 #player-panel .emblem img { display: none; width: 100%; height: 100%; object-fit: cover; }
 #player-panel .emblem.portrait .mask { display: none; }
 #player-panel .emblem.portrait img { display: block; }
-#player-panel .bars { flex: 1; min-width: 0; padding-top: 1px; }
+#player-panel .bars { position: relative; flex: 1; min-width: 0; padding-top: 1px; }
+/* health given back (WARLORD RAGE kills): the bar flashes, the amount pops beside it */
+#hp-fill.heal { animation: hp-heal .6s ease-out; }
+@keyframes hp-heal { 0% { filter: brightness(2.2) saturate(1.4); } 100% { filter: none; } }
+#heal-pop { position: absolute; right: 6px; top: 10px; opacity: 0; pointer-events: none; font-family: var(--display); font-weight: 800; font-style: italic; font-size: 14px; color: #c8ffd4;
+  text-shadow: 0 1px 0 #000, 0 0 8px rgba(120, 255, 160, .9); }
+#heal-pop.go { animation: heal-pop 1s ease-out both; }
+@keyframes heal-pop { 0% { opacity: 0; transform: translateY(6px) scale(.7); } 20% { opacity: 1; transform: translateY(0) scale(1.15); } 100% { opacity: 0; transform: translateY(-14px) scale(1); } }
 .name { font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: 3px; line-height: 1; margin: 0 0 4px 6px; color: #fff; text-shadow: 0 2px 0 #000, 0 0 10px rgba(var(--acc-rgb), .55); }
 
 .bar { position: relative; height: 18px; transform: skewX(-20deg); overflow: hidden;
@@ -205,14 +212,40 @@ body.has-grab #btn-jump { right: 210px; bottom: 14px; }
 #btn-dodge { display: none; --btn-rgb: 255, 214, 120; --btn-ic: #fff6dc; }
 body.has-dodge #btn-dodge { display: flex; right: 18px; bottom: 122px; width: 86px; height: 86px; }
 body.no-special #btn-special { display: none; }
+/* no jump (DREADNOUGHT): DODGE takes the JUMP button's place, RAGE the special's */
+body.no-jump #btn-jump { display: none; }
+body.no-jump.has-dodge #btn-dodge { right: 210px; bottom: 14px; width: 76px; height: 76px; }
 /* per-theme tints for the secondary buttons */
 body[data-fighter="toaku"] #btn-kick { --btn-rgb: 140, 150, 160; }
 body[data-fighter="toaku"] #btn-jump { --btn-rgb: 120, 200, 255; }
 body[data-fighter="tahu"] #btn-kick { --btn-rgb: 255, 196, 80; }
 body[data-fighter="tahu"] #btn-jump { --btn-rgb: 255, 90, 60; }
 body[data-fighter="dreadnought"] #btn-kick { --btn-rgb: 255, 196, 84; }
-body[data-fighter="dreadnought"] #btn-jump { --btn-rgb: 140, 110, 255; }
 body[data-fighter="dreadnought"] #btn-grab { --btn-rgb: 196, 110, 255; }
+
+/* RAGE (WARLORD RAGE): a deep purple face in a gold ring that fills with the meter; full: it pulses
+   violet; raging: the ring burns down with the time left */
+body[data-fighter="dreadnought"] #btn-special {
+  background: radial-gradient(circle at 50% 38%, #4a1580 0, #1d0733 52%, rgba(8, 3, 14, .9) 59%, transparent 60%) padding-box,
+              conic-gradient(#ffcf5a var(--fill), rgba(255, 255, 255, .08) var(--fill)) padding-box,
+              conic-gradient(from 200deg, #fff0b8, #b47a1c, #2a1638, #fff0b8) border-box; }
+body[data-fighter="dreadnought"] #btn-special .ic { width: 40%; height: 40%; color: rgba(214, 170, 255, .55); }
+body[data-fighter="dreadnought"] #btn-special span { font-size: 11px; letter-spacing: 2px; color: rgba(255, 230, 160, .7); }
+body[data-fighter="dreadnought"] #btn-special.ready .ic { color: #f0d4ff; filter: drop-shadow(0 0 7px #b45cff); }
+body[data-fighter="dreadnought"] #btn-special.ready span { color: #ffe08a; }
+body[data-fighter="dreadnought"] #btn-special.ready::after { border-color: #c47dff; }
+#btn-special.raging { background: radial-gradient(circle at 50% 38%, #8a35ff 0, #3a0c70 52%, rgba(8, 3, 14, .9) 59%, transparent 60%) padding-box,
+  conic-gradient(#c47dff var(--fill), rgba(255, 255, 255, .06) var(--fill)) padding-box,
+  conic-gradient(from 200deg, #fff0b8, #b47a1c, #2a1638, #fff0b8) border-box !important;
+  box-shadow: 0 0 22px rgba(166, 77, 255, .9), 0 4px 0 rgba(0, 0, 0, .4); }
+#btn-special.raging .ic { color: #fff !important; filter: drop-shadow(0 0 8px #ffcf5a) !important; }
+#btn-special.raging span { color: #fff !important; }
+/* the WARLORD RAGE bar while raging: the time left, in burning purple and gold */
+#meter.raging { background: linear-gradient(90deg, #5a12a8, #b45cff 45%, #ffd36a 70%, #b45cff 85%, #5a12a8); background-size: 200% 100%; animation: shimmer .9s linear infinite; }
+/* the screen edges glow violet while he rages */
+body.raging #hud::before { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 70px rgba(150, 60, 255, .38); animation: rage-edge 1.2s ease-in-out infinite alternate; }
+@keyframes rage-edge { from { opacity: .55; } to { opacity: 1; } }
+#banner.rage { top: 13%; color: #f3dcff; -webkit-text-stroke-color: #1a0533; font-size: clamp(24px, 5.4vw, 52px); text-shadow: 0 4px 0 #12051f, 0 0 26px rgba(166, 77, 255, 1); --acc: #ffcf5a; --acc-rgb: 255, 207, 90; }
 
 /* DREADNOUGHT holds PUNCH to charge his heavy uppercut: a ring around the button fills violet, then
    flashes gold with a small HEAVY tag when the charge is full and the blow comes out */

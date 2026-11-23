@@ -22,8 +22,8 @@ One visual language: angular metal frames, Oxanium display type, Rajdhani text (
 | Character select | name plate, subtitle (Toaku: THE BUILDER; Super Tahu: none; Dreadnought: THE WARLORD), five animated stat bars, special, moves, home arena, roster strip with 3D-rendered portraits, **SELECT**, ◀ MENU; the fighter idles live in their home arena (Dreadnought sits on his throne) |
 | Fighter intro | DREADNOUGHT only: letterbox, front camera, he rises from his throne into his idle stance, name card **DREADNOUGHT / THE WARLORD**; TAP TO SKIP (also Enter, Esc, Android back) |
 | Select location | **SELECT LOCATION** heading, a large card (pre-rendered arena preview, tag, name, one-line description), a strip of location cards with ◀ ▶, **FIGHT**, ◀ FIGHTER; the chosen fighter idles live in the focused arena behind the menu |
-| Combat HUD | emblem (Toaku: his mask, Super Tahu: his portrait, Dreadnought: his horned mask), name, health bar, thinner/shorter energy bar under it (Toaku: ENERGY OVERFLOW, Super Tahu: INFERNO ENERGY, Dreadnought: HEAVY CHARGE, his hold-PUNCH charge), WAVE 0N panel, separate red enemies-left chip, score, pause |
-| Effects | wave announcement sweep, combo counter, banners, damage numbers (pop-in; heavy hits bigger and gold, 30+ largest with a red-orange glow), special-ready ring around the special button |
+| Combat HUD | emblem (Toaku: his mask, Super Tahu: his portrait, Dreadnought: his horned mask), name, health bar, thinner/shorter energy bar under it (Toaku: ENERGY OVERFLOW, Super Tahu: INFERNO ENERGY, Dreadnought: WARLORD RAGE — fills with his damage and kills, then counts down his 30 s of rage with the seconds left), WAVE 0N panel, separate red enemies-left chip, score, pause |
+| Effects | wave announcement sweep, combo counter, banners, damage numbers (pop-in; heavy hits bigger and gold, 30+ largest with a red-orange glow), special-ready ring around the special button; Dreadnought's rage: **WARLORD RAGE!!** banner, a violet vignette while it lasts, a green **+N** pop and flash on his health bar for each healing kill |
 | Pause / defeat | framed panels; defeat lists wave, robots scrapped, best combo, score, personal best |
 
 Themes: **Toaku** dark gunmetal, neon green, metallic gray, black/silver. **Super Tahu** metallic gold,
@@ -40,8 +40,9 @@ design — note his real HP (340) is lower than Toaku's (400); the display does 
 
 **Touch controls:** the button and stick positions/sizes (their touch areas) are pixel-identical to
 v0.4 — verified by measuring every control in both builds at 915×412, 740×360 and 1024×768.
-Dreadnought has no special: his **DODGE** button takes the special button's place; PUNCH, KICK,
-GRAB and JUMP are where Toaku has them.
+Dreadnought cannot jump: he has no JUMP button, his **DODGE** button takes the jump button's place,
+and **RAGE** (purple and gold, lit with a gold ring when his meter is full) the special button's;
+PUNCH, KICK and GRAB are where Toaku has them. Toaku and Super Tahu keep their JUMP.
 
 **App icon:** Toaku + logo artwork (`assets/branding/app-icon-source.jpg`), built by
 `tools/build-icons.mjs` into an adaptive icon (artwork in the 66 dp safe zone, blurred artwork
@@ -91,14 +92,15 @@ loaded at start-up (behind the main menu's LOADING), so FIGHT needs no loading s
 
 | | Dreadnought (player) | vs Toaku |
 |---|---|---|
-| Height | 4.3 m (radius 1.1 m) | taller, wider |
-| HP | 600 | 150 % |
-| Speed | 5.6 m/s | 90 % |
+| Height | 5.2 m (radius 1.35 m) | 1.44 × as tall |
+| HP | 600; **no health back between waves** (only WARLORD RAGE kills heal him) | 150 % |
+| Speed | analog: walk 0.9–2.6 m/s, run 4.3–5.6 m/s | top speed 90 % |
 | Regular damage | hook 20, uppercut finisher 36; Spartan kick 45 | 140 % (jab 14 → 20, power straight 26 → 36, kick 32 → 45) |
 | Heavy uppercut | 44, launches (lift 15, knockback 12) | 220 % of his standard punch (20) |
-| Grab | 3 squeezes × 12 + slam 51 = 87 | 170 % of Toaku's grab and throw (6 + 45 = 51) |
-| Reach / knockback | 4.2–4.8 m reach (Toaku 3.2–3.7); finisher knockback 14 (11), kick 23 (18) | more |
-| Style | Heavy, slow, armoured through his uppercut, kick and grab; dive-roll dodge | |
+| Grab | 3 squeezes × 12 + slam 51 = 87; works on Sidorak too | 170 % of Toaku's grab and throw (6 + 45 = 51) |
+| Reach / knockback | 5.1–5.8 m reach (Toaku 3.2–3.7), grab 5.4 m; finisher knockback 14 (11), kick 23 (18) | more |
+| WARLORD RAGE | 30 s: × 1.5 damage, +8 % max HP per kill | — |
+| Style | Heavy, armoured through his uppercut, kick, grab and scream; no jump; dive-roll dodge | |
 
 ## Moves (Toaku)
 - **Punch combo** (PUNCH ×4) — jab, cross, jab, power straight (launches).
@@ -180,79 +182,133 @@ an avenue climbing the ridge to a far monument, peach-pink sunset haze.
 - The chase camera rises over terrace walls instead of clipping into them.
 
 ## DREADNOUGHT model & animation
-`assets/models/dreadnought.glb` is built by `tools/build-character.mjs` from Meshy's seven Mixamo
-exports of the character (run_fast_10_inplace, Punch_Combo, Charged_Upward_Slash, Spartan_Kick,
-Grip_and_Throw_Down, Roll_Behind_Cover, Sit_to_Stand_Transition_M). They are Draco-compressed; the
-build decodes them and, as for the other fighters, **refuses to build if any skeleton differs** —
-all seven share one 66-joint Mixamo rig and one 42 k-vertex mesh. Constant translation/scale channels
-are dropped (67 channels per clip remain: every joint's rotation plus the hips). 7 × 17 MB of exports
-→ 1.85 MB (three 1024² WebP textures). The rig is not changed; the game scales him to 4.3 m.
+`assets/models/dreadnought.glb` is built by `tools/build-character.mjs` from Meshy's Mixamo exports of
+the overhauled character: walking_2, Run_03, Punch_Combo, Charged_Upward_Slash, Grip_and_Throw_Down,
+Roll_Dodge_2, Sit_to_standTransition_Female_2 and Skill_01 (the scream). They are Draco-compressed; the
+build decodes them and **refuses to build if any skeleton differs** — all share one 66-joint Mixamo
+rig and one mesh (46 k vertices, 29.5 k triangles). This model replaces the previous one outright:
+its clips (run_fast_10_inplace, Roll_Behind_Cover, Sit_to_Stand_Transition_M) and the baked jump poses
+are gone. The one move without a new clip, the Spartan kick, is the previous model's Spartan_Kick
+**retargeted** onto the new rig by `tools/retarget-clip.mjs` (each joint's world rotation away from the
+source rest pose is applied to the new rest pose; the hips' travel is scaled by the hip heights), so
+KICK still works. Constant channels are dropped (67 per clip remain). 9 clips, three 1024² WebP
+textures: 1.99 MB. The rig is never altered (no bone is scaled); the game scales the whole model to
+**5.2 m — 1.44 × Toaku's 3.6 m**.
 
-**Idle.** None of the exports is an idle and there is no static model, so the idle is baked at load
-(`src/js/clipPose.js`, `dreadnought.idle` in `config.js`): the upright frame his stand-up ends on
-(4.4 s) — arms down at his sides, feet planted — with small bone edits in his own frame (chest up,
-feet a little wider with soft knees and flat soles, arms clear of the thighs, elbows slightly bent),
-hips centred over his root and the feet kept on the floor, plus a 3.6 s breathing loop (chest, spine,
-shoulders, arms, neck, a slight head turn, a 4 mm rise) whose first and last keys are identical.
-No T-pose, no fists-up guard. The jump's crouch and tuck are baked the same way, and so is his seated
-breathing on the throne (the stand-up's first frame).
+**Idle.** Baked at load (`src/js/clipPose.js`, `dreadnought.idle` in `config.js`): the upright frame his
+stand-up reaches at 2.2 s — arms down at his sides, elbows slightly bent, feet planted — with small
+bone edits in his own frame (chest up, feet a little wider, soles flat, arms clear of the thighs) and a
+3.6 s breathing loop whose first and last keys are identical. His seated breathing on the throne is
+baked the same way (the stand-up's first frame).
 
 | Move (button) | Clip use |
 |---|---|
 | Idle | baked (above), looping |
-| Run (stick) | run_fast_10_inplace at 5.6 m/s, playback matched to ground speed (5.47 m/s per clip cycle) |
-| Punch (PUNCH tap) | Punch_Combo has two strikes: a left hook (impact 0.62 s) and a right uppercut finisher (1.27 s); a tap within 0.4 s chains the second |
+| Walk (light push of the stick) | walking_2; its hip travel is taken out and replayed as his movement, the clip plays at the ground speed under his planted foot (3.22 m/s at 1×), so the feet do not slide |
+| Run (stick near full) | Run_03 (in place), 1.25× faster than the ground under his foot (below) |
+| Punch (PUNCH tap) | Punch_Combo: a left hook (impact 0.62 s), then a right uppercut finisher (1.27 s) if PUNCH is tapped again within 0.4 s |
 | Heavy uppercut (hold PUNCH 0.5 s) | Charged_Upward_Slash: the wind-up shows from 0.15 s of holding and reaches the clip's 0.55 s at the threshold, then the blow (impact 1.03 s) |
-| Kick (KICK) | Spartan_Kick, impact 0.6 s |
-| Crushing grab (GRAB) | Grip_and_Throw_Down: the right hand grips at 0.88 s, squeezes at 1.6 / 2.25 / 2.9 s, throws down at 3.42 s |
-| Dodge (DODGE) | Roll_Behind_Cover from the dive: its hip root motion is stripped and replayed as movement (the wall stops it) |
-| Jump (JUMP) | baked crouch → tucked air pose → landing squash |
-| Throne intro | Sit_to_Stand_Transition_M (hips recentred on where he ends up standing) |
+| Kick (KICK) | Spartan_Kick (retargeted), impact 0.6 s |
+| Crushing grab (GRAB) | Grip_and_Throw_Down at 1.45×: grips at 0.88 s, squeezes at 1.6 / 2.25 / 2.9 s, slams at 3.42 s |
+| Dodge (DODGE) | Roll_Dodge_2, carried by its own root motion (walls stop it) |
+| WARLORD RAGE (RAGE) | Skill_01, the scream: the roar at 0.45 s, its last frame held 0.6 s |
+| Throne intro | Sit_to_standTransition_Female_2 (recentred where he ends up standing) |
 
-**Blending.** Every move fades in from the idle and back out to it: the idle ↔ run and every return
-to the idle reach 95 % in 0.23 s; punch, uppercut and kick fade in over 0.17 s, the dodge 0.19 s,
-the grab 0.2 s, the uppercut's wind-up 0.21 s (unit-tested). Weights always total 1, so the bind pose
-never leaks in; a skipped intro is hidden by a cut from black.
+**Analog movement** (`dreadnought.locomotion`). How far the stick is pushed picks the gait: under 15 %
+he stands (braking to a halt), 15–75 % he walks at 0.9–2.6 m/s following the stick, from 78 % he runs at
+4.3 m/s up to 5.6 m/s at full stick (90 % of Toaku's top speed, as specified), and he only drops back
+to the walk under 70 % — hysteresis, so the gait never flickers at the threshold. He accelerates at
+7 m/s² and brakes at 10 m/s² like a heavy body, turns toward the stick at 7 rad/s, and the walk and run
+cross-fade (rate 9). Run_03 is a sprint: played exactly at his ground speed it would run at 0.42×, a
+slower cadence than his own walk (slow motion), so it plays 1.25× faster than that — about 1.5 s per
+stride at full speed; the planted foot slips back ~20 % on the sand, never skating forward. Every heel
+strike (measured on the clips: walk 0.02 / 0.62 s, run 0.06 / 0.46 s) thuds, kicks up sand at that foot
+and, running near full speed, nudges the camera.
 
-**PUNCH tap vs hold.** A regular punch is thrown when the button comes back up, so holding never
-throws one first. Holding for 0.5 s unleashes the heavy uppercut (armoured): the enemy is launched up
-and back, falls under the normal physics and gets up if it survives; a violet shockwave, gold and
-violet sparks, a hit-stop and a camera shake mark the impact. While he charges, violet fire gathers in
-his right fist, the ring around PUNCH fills violet and the HEAVY CHARGE bar fills; at the threshold the
-ring flashes gold with a small HEAVY tag. A quick tap (released within 0.15 s) shows none of it.
+**No jump.** He is a grounded heavyweight: no JUMP button, the jump key does nothing, the old jump poses
+are gone. Gravity, falling, landing, knockback and the arena wall still apply to him; Toaku and Super
+Tahu keep their jumps. The rings the others jump (Nuhvok's ground slam, Sidorak's shockwave) he rolls
+through: his dodge is invulnerable through the roll.
 
-**Crushing grab.** He turns his right side to the closest enemy in reach, steps in and grips it in his
-right hand (it is attached to his hand bone every frame and its AI is suspended, `grabbed` state);
-lifts it, squeezes it three times (12 each, never lethal — the slam finishes it), then hurls it down
-at his side (`thrown`: 51 on the crash, 30 to anyone it lands on). Survivors get up and fight on.
-Bosses are too heavy to lift (the grab whiffs). If he is knocked out mid-grab the enemy is let go.
+**Blending.** Every move fades in from the idle or his movement and back out of it: punch, uppercut and
+kick reach 95 % in 0.17 s, the dodge 0.19 s, the grab 0.2 s, the uppercut's wind-up and the scream
+0.21 s, every return to the idle 0.23 s. Weights always total 1, so the bind pose never leaks in; a
+skipped intro is hidden by a cut from black (unit-tested).
 
-**Dodge.** A dive roll in the stick's direction (his facing without input), invulnerable 0.3–1.45 s of
-the clip, 0.5 s cooldown, cancellable into movement at the end.
+**PUNCH tap vs hold.** A regular punch is thrown when the button comes back up, so holding never throws
+one first. Holding for 0.5 s unleashes the heavy uppercut (armoured): the enemy is launched up and back,
+falls under the normal physics and gets up if it survives; a violet shockwave, sparks, a hit-stop and a
+camera shake mark the impact. While he charges, violet fire gathers in his right fist and the ring
+around PUNCH fills violet; at the threshold it flashes gold with a small HEAVY tag. A quick tap (released
+within 0.15 s) shows none of it.
 
-**Size and framing.** Collision radius 1.1 m (Toaku 0.9), grab range 4.4 m (3.4), reach 4.2–4.8 m.
-His chase camera is 1.2× further back and 1.3× higher than the standard one (1.7 m above his head,
-where Toaku's is 1 m) so mid-range enemies and a boss stay visible over his shoulders; an enemy right
-in front of any fighter can still be hidden by his body, as with every chase camera.
+**Attack tracking.** When a punch, the uppercut or the kick starts, the nearest enemy within its reach
+plus 1.6 m, inside a forward cone of ±63° and with no wall in between, is tracked: he turns toward it at
+9 rad/s through the wind-up and, if it stands just out of reach, steps in at most 1.6 m at 3.2 m/s (a
+lunge, never a teleport). Nothing behind him is picked, nothing through a wall, and blows never land
+far outside their reach (hook 5.1 m, finisher 5.3 m, uppercut 5.6 m, kick 5.8 m). Hit volumes run from
+the ground up to the striking limb, so blows from his height land on a 1.7 m Bohrok, and the
+uppercut's reaches up to 1.6 × his height (airborne enemies).
+
+**Crushing grab.** He turns his right side to the closest enemy in reach (5.4 m), steps in and closes
+his right hand on it. It is held in his **palm** — the centre of his knuckles, measured on the rig, not
+the wrist joint — by its upper body, and follows the hand's position and turn every frame (AI
+suspended, `grabbed` state); he lifts it, squeezes it three times (12 each, never lethal — the slam
+finishes it), then slams it into the ground at his side (`thrown`: 51 on the crash, 30 to anyone it
+lands on). Survivors get up and fight on. **Sidorak can be grabbed too** (only by Dreadnought): gripped
+a little higher up his body, crushed and slammed through his own hit handling (his boss bar takes the
+damage), then he stumbles, recovers and resumes his AI. Never during his warning, intro or defeat, never
+while already held. If Dreadnought is knocked out mid-grab, the enemy is let go.
+
+**Dodge.** A dive roll toward the stick (his facing without input): the clip travels diagonally ahead
+and to his left, so he is turned by that angle and the roll goes exactly where the stick points.
+Invulnerable 0.27–1.12 s, 0.5 s cooldown, cancellable into movement at its end.
+
+**WARLORD RAGE** (`dreadnought.rage`). The bar under his health fills with the damage he deals (1 per
+10 damage) plus 2.5 per kill — about a dozen Bohrok — never by itself and never between waves. At 100 %
+the bar glows gold and the **RAGE** button lights up. Pressed, it waits up to 1.5 s for a free moment
+(a punch or kick landing; never in a grab, the throne intro or a boss cinematic — a press still
+pending when a cinematic starts is dropped), then he screams
+(Skill_01: armoured and invulnerable, a purple shock ring, the ground shakes), the meter is spent and a
+translucent purple aura covers his whole silhouette. From the end of the scream he has **30 s of
+play** (the clock stands still while a boss cinematic holds the fight), with the seconds left on the
+bar: **+50 % damage** on punches, the uppercut, the kick and the grab, and every enemy he kills gives
+back **8 % of his maximum health** (once per enemy, never above his maximum; purple sparks on the kill,
+a green **+N** on his health bar). The meter does not charge while raging and a second activation is
+impossible until it is full again. At 0 s, or at once if he is knocked out, the aura fades, damage and
+healing return to normal and the meter charges again from empty. The aura is one extra draw per mesh
+sharing his geometry and skeleton (no extra memory; it follows every animation): pushed slightly out
+along the normals, additive, a gold fresnel rim over a faint violet body with slow bands rising through it —
+his own materials are never touched. It is hidden (no draw call) when he is not raging.
+
+**No health between waves.** The other fighters get +60 HP when a wave is cleared; Dreadnought keeps the
+health he finished the wave with (only WARLORD RAGE kills heal him). A new match starts him at full health.
+
+**Size and framing.** Collision radius 1.35 m (Toaku 0.9); his chase camera sits 1.42 × further back and
+1.55 × higher than the standard one, looking 1.45 × higher, so enemies at mid range and a boss stay
+visible over his shoulders.
 
 ## Dreadnought's throne & intro
 `src/js/throne.js` builds the throne from ~60 blocks merged into three meshes (one per material: black
 gunmetal, gold, emissive deep purple — 3 draw calls): a stepped dais, a seat with a purple cushion, a
-6 m backrest with a pointed crown, horns, side pillars and a purple panel with a gold mask, and heavy
+7.3 m backrest with a pointed crown, horns, side pillars and a purple panel with a gold mask, and heavy
 angular armrests with gold caps and claws. It stands on the Glatorian Arena's menu spot and is
-visible only in the menus while Dreadnought is shown. `src/js/throneIntro.js` times the 4.6 s shot:
-seated (breathing) 0.8 s → the stand-up 3.3 s → his idle; front camera pushing in and rising with
-him, panning so he ends right of centre as **DREADNOUGHT / THE WARLORD** shows on the left; then the
-camera eases into the location menu's view.
+visible only in the menus while Dreadnought is shown. It is sized for him at 5.2 m (seat top 1.4 m,
+2.4 m wide, his back against the backrest when seated). `src/js/throneIntro.js` times the 4.1 s shot:
+seated (breathing) 0.8 s → the stand-up 2.1 s (Sit_to_standTransition_Female_2 from 0.3 to 2.1 s, at
+0.85×) → his idle; front camera pushing in and rising with him (further back and higher for his new
+size), panning from 2.7 s so he ends right of centre as **DREADNOUGHT / THE WARLORD** shows on the left;
+then the camera eases into the location menu's view.
 
 ## Glatorian Arena
 The Meshy model (1.02 M triangles, 554 k vertices, 2048² texture) is rebuilt by
 `tools/build-arena.mjs`: measured from a top-down height raster (floor = the median height at the
 centre, the podium edge in 144 directions), centred on the floor and scaled uniformly so the floor
-is 88 m across (≥ 20 × the tallest fighter: 86 m for Dreadnought's 4.3 m; the fighters are not
-scaled), decimated to 90 k triangles (meshopt simplifier), one single-sided matte material,
-2048² WebP: 5.9 MB → 1.5 MB. The layout file holds the floor edge per direction (44–47 m), the podium
-height (3.8 m) and a 1 m height grid of the stands.
+is 106 m across (≥ 20 × the tallest fighter: 104 m for Dreadnought's 5.2 m — enlarged from 88 m when
+he grew; the fighters are never scaled to fit the arena), decimated to 90 k triangles (meshopt
+simplifier), one single-sided matte material, 2048² WebP: 5.9 MB → 1.5 MB. The layout file holds the
+floor edge per direction (52.9–56.7 m), the podium height (4.6 m) and a 1 m height grid of the stands
+(192 × 192).
 
 - **Collision:** the sand floor is flat (y = 0); the podium wall is the boundary — every body (fighters,
   enemies, thrown and launched bodies, rolls) is kept inside it by its radius + 0.3 m. No mesh
@@ -405,8 +461,11 @@ He turns slowly (1.8 rad/s — circle him), must face the player before starting
 a recovery window after each one. Weak hits never interrupt him (a jolt only); heavy hits in an
 opening, or 220 poise damage in quick succession, **stagger** him — then he cannot be staggered for
 7 s (no stun-lock), and nothing he does chains into an unavoidable hit on the player. A single hit is
-capped at 120 (Super Tahu's INFERNO SLAM is a huge chunk, not an instant kill); he cannot be grabbed,
-launched or knocked away, and shoves the player aside instead. The playable characters are unchanged.
+capped at 120 (Super Tahu's INFERNO SLAM is a huge chunk, not an instant kill); he cannot be launched
+or knocked away, and shoves the player aside instead. Only Dreadnought can grab him (his crushing grab,
+see Dreadnought — never during the warning, intro or defeat): Sidorak hangs in his palm, takes the
+crushes and the slam through his own hit handling, then stumbles, recovers and resumes his AI. Toaku's
+grab still cannot lift him.
 
 **Boss bar.** Top centre under the wave counter (the player's bars, the wave/enemy/score panels and
 the controls stay clear): a long chamfered gunmetal frame with angular end caps, a crimson fill, a
@@ -416,12 +475,14 @@ cinematic ends and fades out after his collapse.
 
 **Defeat.** At 0 HP his AI stops, any bolt or spinner in flight vanishes, he can no longer be hurt; he
 totters back, his knees buckle and he crashes onto his back. The camera dwells on him (5 s, controls
-locked), the bar fades, **SIDORAK DEFEATED!**, +5000 score, the wave is cleared (+60 HP) and the next
+locked), the bar fades, **SIDORAK DEFEATED!**, +5000 score, the wave is cleared (+60 HP, not for
+Dreadnought) and the next
 Bohrok wave follows; his body sinks into the ground as it starts.
 
 ## Loop
 Waves of Bohrok burst out of the sand (3 + 2 per wave, max 8 alive, max 3 head thrusts and 2 specials
-at once) — in whichever location was chosen. Tonua drops in every 3rd wave; Sidorak comes alone on wave 5 and every 5th wave after. +60 HP between waves. Score = kills + combo bonus.
+at once) — in whichever location was chosen. Tonua drops in every 3rd wave; Sidorak comes alone on wave 5 and every 5th wave after. +60 HP between waves (Toaku and Super Tahu;
+Dreadnought's health carries over). Score = kills + combo bonus.
 
 ## Tech
 Three.js bundled by esbuild into `dist/`, wrapped in a minimal Android WebView app (`android/`).

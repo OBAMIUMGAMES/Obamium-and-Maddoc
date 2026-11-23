@@ -106,3 +106,15 @@ export function killScore(base, combo, perCombo) {
 export function machinegunHitCount(duration, interval) {
   return Math.floor(duration / interval + 1e-9);
 }
+
+/**
+ * Health after a wave is cleared: a fixed heal, capped at the maximum, or none at all for a fighter
+ * whose health carries over from wave to wave (DREADNOUGHT; his WARLORD RAGE kills heal him instead).
+ * @param {number} hp current health
+ * @param {number} maxHp
+ * @param {number} heal CONFIG.waves.healBetweenWaves
+ * @param {boolean} [noHeal] the fighter's cfg.noWaveHeal
+ */
+export function waveClearHp(hp, maxHp, heal, noHeal = false) {
+  return noHeal ? hp : Math.min(maxHp, hp + heal);
+}

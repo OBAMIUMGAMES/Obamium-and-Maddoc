@@ -4,35 +4,37 @@
 import * as THREE from 'three';
 
 /**
- * Strip horizontal hips motion from a clip and return it as a forward (z) curve, so gameplay can
- * move the fighter (and walls can stop it). Pure helper (works on any clip-shaped object).
+ * Strip horizontal hips motion from a clip and return it as forward (z) and sideways (x) curves, so
+ * gameplay can move the fighter (and walls can stop it). Pure helper (works on any clip-shaped object).
  * @param {{tracks:{name:string,times:Float32Array,values:Float32Array}[]}} clip
- * @returns {{times:Float32Array, z:Float32Array}|null} z is relative to the first key
+ * @returns {{times:Float32Array, z:Float32Array, x:Float32Array}|null} relative to the first key, in
+ *   the model's frame (+z ahead, +x his left)
  */
 export function extractRootMotion(clip) {
   const track = clip.tracks.find((t) => /Hips\.position$/.test(t.name));
   if (!track) return null;
   const { times, values } = track;
   const x0 = values[0], z0 = values[2];
-  const z = new Float32Array(times.length);
+  const z = new Float32Array(times.length), x = new Float32Array(times.length);
   for (let i = 0; i < times.length; i++) {
     z[i] = values[i * 3 + 2] - z0;
+    x[i] = values[i * 3] - x0;
     values[i * 3] = x0;
     values[i * 3 + 2] = z0;
   }
-  return { times: Float32Array.from(times), z };
+  return { times: Float32Array.from(times), z, x };
 }
 
-/** Linear sample of a root-motion curve at time t (clamped). */
-export function sampleRoot(rm, t) {
-  const { times, z } = rm;
-  if (t <= times[0]) return z[0];
+/** Linear sample of a root-motion curve at time t (clamped); `axis` 'z' (ahead, default) or 'x'. */
+export function sampleRoot(rm, t, axis = 'z') {
+  const { times } = rm, v = rm[axis];
+  if (t <= times[0]) return v[0];
   const n = times.length - 1;
-  if (t >= times[n]) return z[n];
+  if (t >= times[n]) return v[n];
   let lo = 0, hi = n;
   while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (times[mid] <= t) lo = mid; else hi = mid; }
   const k = (t - times[lo]) / (times[hi] - times[lo]);
-  return z[lo] + (z[hi] - z[lo]) * k;
+  return v[lo] + (v[hi] - v[lo]) * k;
 }
 
 /**

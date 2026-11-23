@@ -36,14 +36,15 @@ export const ROSTER = [
     name: 'DREADNOUGHT',
     title: 'THE WARLORD',
     map: 'glatorian',
-    special: 'HEAVY UPPERCUT',
-    meterLabel: 'HEAVY CHARGE', // his bar is the hold-PUNCH charge (he has no meter special)
+    special: 'WARLORD RAGE',
+    meterLabel: 'WARLORD RAGE', // fills with his damage and kills; RAGE when full
     emblem: 'mask-dreadnought',
     stats: { defense: 5 },
-    moves: ['Hook + uppercut combo', 'Hold PUNCH: heavy uppercut', 'One-hand crushing grab', 'Spartan kick', 'Dive-roll dodge'],
+    moves: ['Hook + uppercut combo', 'Hold PUNCH: heavy uppercut', 'Crushing grab (even Sidorak)', 'Spartan kick', 'Dive-roll dodge', 'RAGE: +50% damage, kills heal'],
     color: '#a64dff',
     intro: true, // rises from his throne when chosen
-    buttons: { jump: 'JUMP', jumpIcon: 'i-jump', special: null, dodge: 'DODGE', dodgeIcon: 'i-dodge', kick: true, grab: true },
+    // a grounded heavyweight: no jump. DODGE takes the JUMP slot, RAGE the special's
+    buttons: { jump: null, special: 'RAGE', specialIcon: 'i-rage', dodge: 'DODGE', dodgeIcon: 'i-dodge', kick: true, grab: true },
   },
   { id: 'locked-2', locked: true },
 ];
