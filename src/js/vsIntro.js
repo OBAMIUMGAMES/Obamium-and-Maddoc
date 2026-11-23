@@ -15,11 +15,16 @@
 import * as THREE from 'three';
 import { CineCamera, pathShot, orbitShot, liveShot, ease } from './cineCam.js';
 
-const HEAD = 0.91; // mask height, in fighter heights
+const MASK_UP = 0.05; // the mask's centre above the head joint, in fighter heights
 
-/** Where a fighter stands and looks (feet position, height, facing). */
+/** Where a fighter stands and looks (feet position, height, facing) and where his mask is. */
 function frameOf(f) {
-  return { x: f.pos.x, y: f.pos.y, z: f.pos.z, h: f.height, yaw: f.facing, fx: Math.sin(f.facing), fz: Math.cos(f.facing) };
+  const h = f.height;
+  const head = f.headPos ? f.headPos(new THREE.Vector3()) : new THREE.Vector3(f.pos.x, f.pos.y + h * 0.83, f.pos.z);
+  return {
+    x: f.pos.x, y: f.pos.y, z: f.pos.z, h, yaw: f.facing, fx: Math.sin(f.facing), fz: Math.cos(f.facing),
+    mask: { x: head.x, y: head.y + h * MASK_UP, z: head.z },
+  };
 }
 
 /**
@@ -48,11 +53,11 @@ export function introShots(I, a, b, gameplay) {
     }, { ease: ease.inOut, tag: 'f2' }));
   }
   // 3: mask close-ups, fighter 1 then fighter 2, with a subtle shake
+  // (aimed at the mask itself: the rig's head, which sits forward of the root in a fighting stance)
   const mask = (F, dur, tag) => {
-    const M = I.mask, sx = F.fz, sz = -F.fx;
-    const hy = F.y + F.h * HEAD;
-    const at = (d) => v(F.x + F.fx * F.h * d + sx * F.h * M.side, F.y + F.h * M.height, F.z + F.fz * F.h * d + sz * F.h * M.side);
-    return pathShot(dur, at(M.dist * 1.12), at(M.dist), v(F.x, hy, F.z), v(F.x, hy, F.z), { ease: ease.out, shake: I.shake * F.h, tag });
+    const M = I.mask, sx = F.fz, sz = -F.fx, K = F.mask;
+    const at = (d) => v(K.x + F.fx * F.h * d + sx * F.h * M.side, K.y + F.h * M.lift, K.z + F.fz * F.h * d + sz * F.h * M.side);
+    return pathShot(dur, at(M.dist * 1.12), at(M.dist), v(K.x, K.y, K.z), v(K.x, K.y, K.z), { ease: ease.out, shake: I.shake * F.h, tag });
   };
   shots.push(mask(A, (e3 - e2) / 2, 'mask1'));
   shots.push(mask(B, (e3 - e2) / 2, 'mask2'));

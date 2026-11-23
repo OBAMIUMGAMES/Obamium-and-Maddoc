@@ -503,6 +503,7 @@ export const CONFIG = {
     getUpGrace: 0.35,
     koSlowMo: 0.9,        // s of slow motion on the knockout blow
     resultDelay: 2.8,     // s from the knockout to the results (victory / defeat poses meanwhile)
+    settle: 0.6,          // s the fighters stand in their idle stance before the intro's first frame
     // per-fighter config changes for duels (deep-merged over CONFIG.<id>)
     overrides: {
       // one duel is ~400-600 HP of damage: the WARLORD RAGE meter fills after ~250 dealt (horde: 1000 + kills)
@@ -544,13 +545,13 @@ export const CONFIG = {
       shots: [2, 4, 6, 7, 8],
       low: { from: 1.55, to: 1.05, height: 0.16, look: 0.82, side: 0.35 },       // 1: low angle push-in
       orbit: { dist: 1.25, height: 0.62, look: 0.7, sweep: 0.9 },                 // 2: orbit
-      mask: { dist: 0.5, height: 0.93, side: 0.26 },                              // 3: mask close-ups
+      mask: { dist: 0.5, lift: 0.02, side: 0.26 },                                // 3: mask close-ups (at the rig's head)
       wide: { dist: 1.15, height: 0.55, rise: 0.12 },                             // 4: standoff (x separation)
       shake: 0.04,
     },
     camera: {
       // PLAYER VS CPU: behind the player, looking past him at the opponent
-      versus: { dist: 1.15, height: 0.55, look: 0.38, ahead: 0.42, yawLerp: 3.5, follow: 5, minSep: 1.6, dragBack: 1.6 },
+      versus: { dist: 1.15, height: 0.55, look: 0.38, ahead: 0.42, yawLerp: 3.5, follow: 5, minSep: 1.6, dragBack: 1.6, shoulder: 0.7 },
       // CPU VS CPU: from the side of the fight, both fighters in frame
       spectator: { minDist: 10, sepK: 0.95, heightK: 1.55, rise: 0.5, look: 0.42, lerp: 2.2, sideHold: 0.35 },
       wide: { r: 34, h: 15, look: 1.5, track: 0.5 },

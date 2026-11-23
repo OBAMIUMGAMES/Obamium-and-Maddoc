@@ -30,10 +30,14 @@ export class VersusCamera {
     this.ready = false;
   }
 
-  /** The pose this camera wants right now (no smoothing). */
+  /**
+   * The pose this camera wants right now (no smoothing). It stands over the player's shoulder
+   * (`shoulder` rad off the line from the opponent through him), so he never hides the opponent;
+   * the controls stay relative to that line (update() returns the line's yaw).
+   */
   target(player, foe, out = { pos: new THREE.Vector3(), look: new THREE.Vector3() }) {
     const V = this.V, C = this.C, cm = player.cfg.camera || { distance: 1, height: 1, look: 1 };
-    const yaw = this.yaw + this.drag;
+    const yaw = this.yaw + this.drag + (V.shoulder || 0);
     let dist = C.distance * cm.distance * V.dist;
     const reach = this.map.cameraReach ? this.map.cameraReach(player.pos.x, player.pos.z, yaw, dist) : dist;
     let rise = 0;

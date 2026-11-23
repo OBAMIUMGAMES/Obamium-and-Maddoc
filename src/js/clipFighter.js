@@ -414,6 +414,20 @@ export class ClipFighter extends Fighter {
   /** Released from a pin. */
   vsUnpin() { if (this.state === 'pinned') this.setState('idle'); }
 
+  /**
+   * World position of the head: the rig's head bone (found once), else an estimate from the height.
+   * Framing uses it (the intro's mask close-ups): heads sit forward of the root in fighting stances.
+   */
+  headPos(out = new THREE.Vector3()) {
+    if (this.headBone === undefined) {
+      this.headBone = null;
+      this.root.traverse((o) => { if (!this.headBone && o.isBone && /head$/i.test(o.name)) this.headBone = o; });
+    }
+    if (!this.headBone) return out.set(this.pos.x, this.pos.y + this.height * 0.83, this.pos.z);
+    this.root.updateMatrixWorld(true);
+    return this.headBone.getWorldPosition(out);
+  }
+
   /** The match is won: the victory pose (subclasses pick it in vsPose). */
   vsVictory() {
     if (!this.alive || this.state === 'victory') return false;

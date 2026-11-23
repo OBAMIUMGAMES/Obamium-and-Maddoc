@@ -120,6 +120,7 @@ export function createVsMode(d) {
   function startMatch(ids) {
     if (!flow.load(ids)) return false;
     disposeMatch();
+    $('#banner').className = ''; // nothing from the previous match carries over (a K.O.! still showing)
     const map = d.maps.glatorian;
     d.setMap('glatorian');
     d.hideShowcases();
@@ -163,6 +164,9 @@ export function createVsMode(d) {
     d.fx.clear(); d.fire.clear();
     setupHud();
     flow.intro();
+    // both settle into their idle stances before the first frame: no bind pose on screen, and the
+    // intro's shots frame the stance (a fighting stance carries the head lower and forward)
+    for (let k = 0; k < Math.round(V.settle * 60); k++) fighters.forEach((f, i) => f.update(1 / 60, idle, 0, worlds[i]));
     startIntro();
     return true;
   }
@@ -224,7 +228,7 @@ export function createVsMode(d) {
     if (m.type === 'pvc') m.versus.reset(a, b); else m.spectator.reset(a, b);
     m.fightT = 0;
     for (const c of m.ctrls) if (c.ai && c.ai.reset) c.ai.reset();
-    setTimeout(() => { if (flow.state === VS.FIGHT) fightText(false); }, 1000);
+    m.fightTxt = true; // FIGHT! stays up for the fight's first second (game time: a pause holds it)
     return true;
   }
 
@@ -498,6 +502,8 @@ export function createVsMode(d) {
     if (fxState.slow > 0) { fxState.slow -= dt; sdt *= 0.35; }
     m.t += flow.fighting ? sdt : 0;
     const fighting = flow.fighting;
+    if (fighting) m.fightT += dt;
+    if (m.fightTxt && m.fightT > 1) { m.fightTxt = false; fightText(false); }
     const [a, b] = m.fighters;
     // camera first: the player's stick is relative to it
     let pose, playerYaw = 0;
