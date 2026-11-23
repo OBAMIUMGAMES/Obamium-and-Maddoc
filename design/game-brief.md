@@ -442,6 +442,15 @@ leak ~22 GPU buffers per robot), damage numbers reuse a fixed pool of elements, 
 hierarchy walk while Toaku holds an enemy, the HUD writes to the page only when a value changes and
 moves bars with transforms, and the main menu stops 3D rendering while it covers the screen.
 
+**Performance (v0.10, Dreadnought + Glatorian Arena).** The arena is one mesh with one material
+(90 k triangles, one 2048² WebP texture); it receives the fighters' shadows but casts none; its
+collision is a radius lookup per direction, no mesh tests. Measured in a 40 s wave fight in the arena
+(headless, per fighter): peak 22–64 draw calls and 108–133 k triangles, 34 shader programs and none
+compiled mid-fight; enemies never left the floor. Four full menu → intro → location → fight rounds
+leave the GPU object counts unchanged (272 geometries). Every model lit by the same palette shares one
+reflection map (it used to be one per model: eight identical ones for the desert alone). The APK
+grows from 3.6 MB to 6.5 MB (the arena and Dreadnought).
+
 **Performance (v0.6, Bohrok).** Each Bohrok type's clips are baked once at load and shared by every
 instance (one mixer each); geometry, textures and materials are shared clones; the skinned meshes
 carry a fixed culling sphere (no per-frame skinned bounds); distant Bohrok (> 26 m) update their
