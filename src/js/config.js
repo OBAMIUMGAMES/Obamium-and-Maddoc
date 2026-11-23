@@ -57,8 +57,11 @@ export const CONFIG = {
     // the export's material is fully matte (metalness 0, roughness 1) and looks chalky under the
     // desert sun; this makes it read as the gunmetal of the character sheet (tuned in-game)
     material: { color: 0xc8c8c8, metalness: 0.5, roughness: 0.45, envMapIntensity: 0.6 },
-    clips: { Run: 'run_fast_7_inplace', Punch: 'Punch_Combo_1', Kick: 'Rising_Flying_Kick', Grab: 'Skill_02' },
-    rootMotion: ['Kick'], // the flying kick carries him ~2 m (source) forward; gameplay moves him instead
+    clips: { Run: 'run_fast_7_inplace', Punch: 'Punch_Combo_1', Kick: 'Rising_Flying_Kick', Grab: 'Skill_02', Dodge: 'Roll_Dodge_2' },
+    rootMotion: ['Kick', 'Dodge'], // the flying kick (~2 m source) and the roll travel: gameplay moves him instead
+    // DODGE: Roll_Dodge_2 (the same Mixamo roll as Dreadnought's, a lighter body: played faster); a short
+    // evasion window, then a cooldown so rolls cannot chain into permanent invulnerability
+    dodge: { start: 0.05, end: 1.95, speed: 1.5, invuln: [0.35, 1.3], thud: 1.0, cancelAfter: 1.7, cooldown: 0.6 },
     idle: { clip: 'Punch', from: 0, to: 0.4, speed: 0.45 }, // fight stance from the start of the punch combo
     // single frames held as key poses for the moves that have no clip of their own
     poses: {
@@ -276,7 +279,7 @@ export const CONFIG = {
     },
     // DODGE: Roll_Dodge_2 is a dive roll that travels diagonally (left-forward, ~46 deg) while he keeps
     // facing ahead; he is turned so that it travels toward the stick (his facing without input)
-    dodge: { start: 0.05, end: 1.95, speed: 1.3, invuln: [0.35, 1.45], cancelAfter: 1.75, cooldown: 0.5 },
+    dodge: { start: 0.05, end: 1.95, speed: 1.3, invuln: [0.35, 1.45], thud: 1.0, cancelAfter: 1.75, cooldown: 0.5 },
     // WARLORD RAGE: the meter fills with the damage he deals and his kills (never by itself, never while
     // raging); RAGE at 100%: the Skill_01 scream, a purple aura, +50% damage, 8% of his health back per
     // kill, for 30 s of play

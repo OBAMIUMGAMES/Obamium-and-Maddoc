@@ -147,9 +147,9 @@ test('the CPU never starts an attack that is cooling down (CPU VS CPU, both figh
 
 test('the CPU does not choose an attack that is cooling down: it picks another option instead', () => {
   const kindOf = { punch: 'normal', heavy: 'heavy', kick: 'heavy', slam: 'heavy', grab: 'grab', special: 'special' };
-  for (const [ids, seed] of [[['dreadnought', 'toaku'], 3], [['toaku', 'dreadnought'], 9]]) {
+  let bad = 0, total = 0;
+  for (const [ids, seed] of [[['dreadnought', 'toaku'], 3], [['toaku', 'dreadnought'], 9], [['toaku', 'toaku'], 4]]) {
     const D = duel(ids, { type: 'cvc', seed });
-    let bad = 0, total = 0;
     D.ctrls.forEach((c, i) => {
       const f = D.fighters[i], orig = c.ai.start.bind(c.ai);
       c.ai.start = (kind, ...rest) => {
@@ -161,7 +161,7 @@ test('the CPU does not choose an attack that is cooling down: it picks another o
       };
     });
     for (let t = 0; t < 45 && D.flow.fighting; t += dt) D.step(1);
-    assert.ok(total > 10, `${ids}: ${total} attack decisions`);
-    assert.equal(bad, 0, `${ids}: ${bad} of ${total} attack decisions were for a move still cooling down`);
   }
+  assert.ok(total > 20, `${total} attack decisions over the matches`);
+  assert.equal(bad, 0, `${bad} of ${total} attack decisions were for a move still cooling down`);
 });

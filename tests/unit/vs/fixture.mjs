@@ -3,9 +3,9 @@
 // duel harness that wires two fighters exactly as vsMode.js does (VS config, spawns, VS worlds,
 // controllers) — without the DOM.
 import * as THREE from 'three';
-import { Toaku } from '../../../src/js/toaku.js';
+import { Toaku, TOAKU_CHANNELS } from '../../../src/js/toaku.js';
 import { SuperTahu } from '../../../src/js/tahu.js';
-import { Dreadnought } from '../../../src/js/dreadnought.js';
+import { Dreadnought, DREADNOUGHT_CHANNELS } from '../../../src/js/dreadnought.js';
 import { CONFIG } from '../../../src/js/config.js';
 import { ROSTER } from '../../../src/js/characters.js';
 import { VsFlow, vsSpawns, MATCH_TYPES } from '../../../src/js/vsRules.js';
@@ -27,9 +27,12 @@ const bone = (parent, x, y, z) => { const b = new THREE.Object3D(); b.position.s
 
 /** Toaku: hands clasped in front of the chest; the flying kick carries him ~2 m. */
 export function fakeToaku() {
-  const s = shell('toaku', ['Idle', 'Run', 'Punch', 'Kick', 'Grab', 'Flurry', 'PoseSquat', 'PoseFall', 'PoseRise', 'PoseBoost', 'PoseDive']);
+  const s = shell('toaku', TOAKU_CHANNELS);
   s.bones = { Spine2: bone(s.model, 0, 2.7, 0), Head: bone(s.model, 0, 3.3, 0.05), LeftHand: bone(s.model, 0.1, 2.3, 1.1), RightHand: bone(s.model, -0.1, 2.3, 1.1), LeftFoot: bone(s.model, 0.2, 0.3, 0.3) };
-  s.rootMotion = { Kick: { times: Float32Array.from([0, 0.5, 1.0, 1.5]), z: Float32Array.from([0, 1.0, 1.9, 2.0]) } };
+  s.rootMotion = {
+    Kick: { times: Float32Array.from([0, 0.5, 1.0, 1.5]), z: Float32Array.from([0, 1.0, 1.9, 2.0]) },
+    Dodge: { times: Float32Array.from([0, 0.4, 1.4, 1.95]), x: Float32Array.from([0, 0.3, 3.0, 3.2]), z: Float32Array.from([0, 0.3, 2.9, 3.1]) },
+  };
   return new Toaku(vsFighterConfig(CONFIG, 'toaku'), s);
 }
 /** Super Tahu: the jump-and-roll dodge travels ~4 m. */
@@ -42,7 +45,7 @@ export function fakeTahu() {
 }
 /** Dreadnought: right hand out at his side, knuckles ahead of the wrist; the roll goes diagonally. */
 export function fakeDreadnought() {
-  const s = shell('dreadnought', ['Idle', 'Walk', 'Run', 'Punch', 'Uppercut', 'Kick', 'Grab', 'Dodge', 'StandUp', 'Seated', 'Scream'], { Walk: 1.167, Run: 0.8 });
+  const s = shell('dreadnought', DREADNOUGHT_CHANNELS, { Walk: 1.167, Run: 0.8 });
   const hand = bone(s.model, -1.9, 3.6, 0.4);
   s.bones = { RightHand: hand, LeftHand: bone(s.model, 1.0, 3.2, 0.6), RightFoot: bone(s.model, -0.3, 0.3, 0), LeftFoot: bone(s.model, 0.3, 0.3, 0) };
   for (const [n, x] of [['RightHandIndex1', 0.04], ['RightHandMiddle1', 0.01], ['RightHandRing1', -0.02], ['RightHandPinky1', -0.05]]) s.bones[n] = bone(hand, x, -0.32, 0.12);

@@ -65,6 +65,9 @@ export function closingSpeed(f, g) {
   return (f.vel.x * dx + f.vel.z * dz) / d;
 }
 
+/** Opponent states an evasive roll is worth spending on (heavy blows, grabs, specials). */
+const HEAVY_STATES = new Set(['uppercut', 'charge', 'kick', 'grab', 'special', 'slam', 'scream']);
+
 /** Whether fighter f is in a recovery a counterattack can punish. */
 export function isRecovering(f) {
   if (STRIKES.has(f.state) && f.hitDone) return true;
@@ -234,7 +237,11 @@ export class CombatAI {
     // a fighter that keeps its distance steps back out of reach; others go sideways and a little back
     // (bent away from the wall)
     const dir = this.avoidWalls(toFoe + side * ((P.spacing || 0) > 0.5 ? Math.PI - 0.45 : Math.PI / 2 + 0.35));
-    if (this.moves.dodge && (S.dodgeCool || 0) <= 0) {
+    // the roll carries a body far: a fighter that keeps its distance (a counter-puncher) rolls away from
+    // heavy blows and grabs, and side-steps light ones so it stays close enough to punish the miss
+    const heavy = HEAVY_STATES.has(seen.state);
+    const roll = this.moves.dodge && (S.dodgeCool || 0) <= 0 && (heavy || (P.spacing || 0) <= 0.5);
+    if (roll) {
       this.press('dodge');
       this.stick(dir, 1);
       this.stats.dodge++;

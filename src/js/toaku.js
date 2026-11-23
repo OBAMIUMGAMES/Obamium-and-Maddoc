@@ -45,6 +45,9 @@ function thrusterGeometry() {
   return _thrusterGeo;
 }
 
+/** Every action Toaku blends (the instance must carry each). */
+export const TOAKU_CHANNELS = ['Idle', 'Run', 'Punch', 'Kick', 'Grab', 'Dodge', 'Flurry', 'PoseSquat', 'PoseFall', 'PoseRise', 'PoseBoost', 'PoseDive'];
+
 /** The player's heavyweight. Same public surface as SuperTahu (update, takeHit, meter, combo...). */
 export class Toaku extends ClipFighter {
   /**
@@ -52,8 +55,8 @@ export class Toaku extends ClipFighter {
    * @param {ReturnType<import('./characterModel.js').buildCharacterInstance>} inst
    */
   constructor(cfg, inst) {
-    super(cfg, inst, 'toaku', ['Idle', 'Run', 'Punch', 'Kick', 'Grab', 'Flurry', 'PoseSquat', 'PoseFall', 'PoseRise', 'PoseBoost', 'PoseDive']);
-    this.bufferedKeys = ['special', 'jump', 'kick', 'grab'];
+    super(cfg, inst, 'toaku', TOAKU_CHANNELS);
+    this.bufferedKeys = ['special', 'jump', 'kick', 'grab', 'dodge'];
     this.age = 0;
     this.jumps = 0;
     this.thrust = 0;
@@ -119,6 +122,7 @@ export class Toaku extends ClipFighter {
     this.age += dt;
     this.landT += dt;
     this.thrust = Math.max(0, this.thrust - dt);
+    this.dodgeCool = Math.max(0, this.dodgeCool - dt);
   }
 
   armored() { return ARMORED.has(this.state); }
@@ -127,6 +131,12 @@ export class Toaku extends ClipFighter {
     const cfg = this.cfg, B = this.buffer;
     const afterImpact = (this.state === 'punch' || this.state === 'kick') && this.hitDone;
     const free = this.state === 'idle' || afterImpact;
+    // DODGE: a roll toward the stick (or ahead), from a free moment or out of a flinch; on the ground
+    if (B.dodge > 0 && this.dodgeCool <= 0 && this.onGround && (free || this.state === 'hurt')) {
+      B.dodge = 0;
+      this.startRoll(ctl.mag > 0.15 ? ctl.wishYaw : this.facing, world);
+      return;
+    }
     if (free) {
       if (B.special > 0 && this.meter >= cfg.special.meterMax && this.canAttack('special')) { B.special = 0; this.startSpecial(world); return; }
       if (B.jump > 0) {
@@ -147,6 +157,7 @@ export class Toaku extends ClipFighter {
       case 'grab': this.updateGrab(dt, ctl, world); return 0;
       case 'slam': this.updateSlam(dt, world); return 10;
       case 'special': this.updateSpecial(dt, world); return 4;
+      case 'dodge': this.updateRoll(dt, world); return 0; // velocity comes from the clip's root motion
     }
     return 10;
   }
@@ -502,6 +513,7 @@ export class Toaku extends ClipFighter {
     switch (this.state) {
       case 'jumpSquat': T.PoseSquat = 1; this.pitch = 0.08; return 30;
       case 'kick': T.Kick = 1; A.Kick.time = this.clipT; return 22;
+      case 'dodge': T.Dodge = 1; A.Dodge.time = this.clipT; return 18;
       case 'grab': T.Grab = 1; A.Grab.time = Math.min(this.clipT, cfg.grab.end); return 24;
       case 'slam': {
         if (this.slamPhase === 'rise') { T.PoseRise = 1; this.pitch = -0.1; return 16; }

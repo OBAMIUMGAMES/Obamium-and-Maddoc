@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { Dreadnought } from '../../../src/js/dreadnought.js';
+import { Dreadnought, DREADNOUGHT_CHANNELS } from '../../../src/js/dreadnought.js';
 import { Bohrok, bohrokConfig } from '../../../src/js/bohrok.js';
 import { Sidorak } from '../../../src/js/sidorak.js';
 import { createSidorakFx } from '../../../src/js/sidorakFx.js';
@@ -17,7 +17,7 @@ import { CONFIG } from '../../../src/js/config.js';
 const C = CONFIG.dreadnought, T = CONFIG.toaku, R = C.rage, L = C.locomotion;
 const dt = 1 / 60;
 const idle = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, dodge: false, special: false, punchHeld: false };
-const CHANNELS = ['Idle', 'Walk', 'Run', 'Punch', 'Uppercut', 'Kick', 'Grab', 'Dodge', 'StandUp', 'Seated', 'Scream'];
+const CHANNELS = DREADNOUGHT_CHANNELS;
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} vs ${b}`);
 
 /**

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { Toaku, segmentDistance } from '../../../src/js/toaku.js';
+import { Toaku, segmentDistance, TOAKU_CHANNELS } from '../../../src/js/toaku.js';
 import { Bohrok, bohrokConfig } from '../../../src/js/bohrok.js';
 import { syntheticTemplate } from '../bohrok/fixture.mjs';
 import { sampleRoot } from '../../../src/js/clipUtils.js';
@@ -10,7 +10,7 @@ import { CONFIG } from '../../../src/js/config.js';
 const C = CONFIG.toaku;
 const dt = 1 / 60;
 const idle = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, special: false };
-const CHANNELS = ['Idle', 'Run', 'Punch', 'Kick', 'Grab', 'Flurry', 'PoseSquat', 'PoseFall', 'PoseRise', 'PoseBoost', 'PoseDive'];
+const CHANNELS = TOAKU_CHANNELS;
 
 /**
  * Stand-in for buildCharacterInstance(): no mixer playback, so the bones stay where they are
@@ -25,7 +25,9 @@ function fakeInstance() {
   const bones = { Spine2: bone(0, 2.7, 0), Head: bone(0, 3.3, 0.05), LeftHand: bone(0.1, 2.3, 1.1), RightHand: bone(-0.1, 2.3, 1.1), LeftFoot: bone(0.2, 0.3, 0.3) };
   // like Rising_Flying_Kick: 2 m forward over the clip (scale 1 here)
   const Kick = { times: Float32Array.from([0, 0.5, 1.0, 1.5]), z: Float32Array.from([0, 1.0, 1.9, 2.0]) };
-  return { kind: 'toaku', root, holder, model, actions, mixer: { update() {} }, bones, rootMotion: { Kick }, scale: 1, flames: [], j: {} };
+  // like Roll_Dodge_2: diagonally ahead and to his left
+  const Dodge = { times: Float32Array.from([0, 0.4, 1.4, 1.95]), x: Float32Array.from([0, 0.3, 3.0, 3.2]), z: Float32Array.from([0, 0.3, 2.9, 3.1]) };
+  return { kind: 'toaku', root, holder, model, actions, mixer: { update() {} }, bones, rootMotion: { Kick, Dodge }, scale: 1, flames: [], j: {} };
 }
 
 /** A world whose hits go through the real enemy state machines (like main.js), with a hit log. */

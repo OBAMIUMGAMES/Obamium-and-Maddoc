@@ -15,7 +15,7 @@ export const ROSTER = [
     stats: { defense: 5 }, // designer rating (out of 5) where the game has no numeric value
     moves: ['4-punch combo', 'Rising flying kick', 'Grab, swing & throw', 'Thruster double jump + slam'],
     color: '#39ff6a',
-    buttons: { jump: 'JUMP', jumpIcon: 'i-jump', special: 'MACHINEGUN<br>IMPACT', specialIcon: 'i-mgi', kick: true, grab: true },
+    buttons: { jump: 'JUMP', jumpIcon: 'i-jump', special: 'MACHINEGUN<br>IMPACT', specialIcon: 'i-mgi', dodge: 'DODGE', dodgeIcon: 'i-dodge', kick: true, grab: true },
     vs: { player: true, cpu: true }, // VS MODE: pilotable, or a CPU opponent
   },
   {

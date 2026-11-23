@@ -215,6 +215,8 @@ body.no-special #btn-special { display: none; }
 /* no jump (DREADNOUGHT): DODGE takes the JUMP button's place, RAGE the special's */
 body.no-jump #btn-jump { display: none; }
 body.no-jump.has-dodge #btn-dodge { right: 210px; bottom: 14px; width: 76px; height: 76px; }
+/* TOAKU keeps his JUMP and gains a DODGE of his own: above JUMP, left of GRAB (no overlap) */
+body.has-dodge:not(.no-jump) #btn-dodge { right: 204px; bottom: 100px; width: 74px; height: 74px; }
 /* per-theme tints for the secondary buttons */
 body[data-fighter="toaku"] #btn-kick { --btn-rgb: 140, 150, 160; }
 body[data-fighter="toaku"] #btn-jump { --btn-rgb: 120, 200, 255; }

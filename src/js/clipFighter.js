@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { Fighter } from './fighters.js';
 import { inArc, angleDiff, applyDamage, addMeter } from './combat.js';
 import { smooth } from './pose.js';
+import { sampleRoot } from './clipUtils.js';
 
 /**
  * VS MODE states in which a fighter is out of its own (or its CPU's) control: held in a grip, thrown,
@@ -60,6 +61,8 @@ export class ClipFighter extends Fighter {
     this.vsCounter = null;
     // attack cooldowns by kind (cfg.cooldowns): s until another attack of that kind may start
     this.cool = { normal: 0, heavy: 0, grab: 0, special: 0 };
+    this.dodgeCool = 0; // s before the next dodge
+    this.dodgeFacing = 0;
     this.atkSpeed = 1;  // attack clip playback multiplier (ENERGY OVERFLOW)
     this.speedMul = 1;  // movement speed multiplier (ENERGY OVERFLOW)
     this.weights = Object.fromEntries(channels.map((n) => [n, n === 'Idle' ? 1 : 0]));
@@ -267,6 +270,46 @@ export class ClipFighter extends Fighter {
     world.onPlayerHurt(dmg);
     if (r.killed) { this.alive = false; this.onDeath(world); this.setState('dead'); world.onPlayerDead(); }
     return true;
+  }
+
+  // ---------------------------------------------------------------- dodge: the dive roll
+  /**
+   * Roll toward `yaw` with the Dodge clip (Mixamo's Roll_Dodge_2, shared by Toaku and Dreadnought). The
+   * clip travels at an angle to the body's facing (its hips end up ahead and to the left), so the body is
+   * turned by that angle: the roll goes where the stick points. cfg.dodge: start / end / speed (clip),
+   * invuln [from, to] (clip s: the evasion window), thud (clip s the shoulder hits the sand),
+   * cancelAfter, cooldown (s before the next roll).
+   */
+  startRoll(yaw, world) {
+    const rm = this.inst.rootMotion.Dodge, n = rm.times.length - 1;
+    const travel = Math.atan2(rm.x ? rm.x[n] : 0, rm.z[n]);
+    this.setState('dodge');
+    this.clipT = this.cfg.dodge.start;
+    this.dodgeFacing = yaw - travel;
+    this.facing = this.dodgeFacing;
+    world.audio.jump();
+    world.fx.dust(this.pos, 8, 3.5);
+  }
+
+  /** The roll: the clip's own travel (his frame: +x his left, +z ahead) turned into the world; walls stop it. */
+  updateRoll(dt, world) {
+    const D = this.cfg.dodge, rm = this.inst.rootMotion.Dodge, s = this.inst.scale;
+    const prev = this.clipT;
+    this.clipT = Math.min(D.end, this.clipT + dt * D.speed);
+    const dx = rm.x ? (sampleRoot(rm, this.clipT, 'x') - sampleRoot(rm, prev, 'x')) * s : 0;
+    const dz = (sampleRoot(rm, this.clipT) - sampleRoot(rm, prev)) * s;
+    const f = this.dodgeFacing, c = Math.cos(f), sn = Math.sin(f);
+    const inv = dt > 0 ? 1 / dt : 0;
+    this.vel.x = (dx * c + dz * sn) * inv;
+    this.vel.z = (-dx * sn + dz * c) * inv;
+    this.facing = f;
+    if (this.clipT >= D.invuln[0] && this.clipT <= D.invuln[1]) this.invuln = Math.max(this.invuln, 0.05);
+    if (prev < D.thud && this.clipT >= D.thud) { world.fx.dust(this.pos, 16, 5); world.shake(0.15); } // he hits the sand
+    if (this.clipT >= D.end || (this.clipT >= D.cancelAfter && this.inputActive)) {
+      this.setState('idle');
+      this.dodgeCool = D.cooldown;
+      this.vel.x *= 0.3; this.vel.z *= 0.3;
+    }
   }
 
   // ---------------------------------------------------------------- animation

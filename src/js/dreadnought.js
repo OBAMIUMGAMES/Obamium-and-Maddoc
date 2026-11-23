@@ -60,17 +60,18 @@ function palmPoint(inst) {
 }
 
 /** The heavyweight warlord. Same public surface as Toaku / Super Tahu (update, takeHit, meter, combo...). */
+/** Every action Dreadnought blends (the instance must carry each). */
+export const DREADNOUGHT_CHANNELS = ['Idle', 'Walk', 'Run', 'Punch', 'Uppercut', 'Kick', 'Grab', 'Dodge', 'StandUp', 'Seated', 'Scream'];
+
 export class Dreadnought extends ClipFighter {
   /**
    * @param {object} cfg CONFIG.dreadnought
    * @param {ReturnType<import('./characterModel.js').buildCharacterInstance>} inst
    */
   constructor(cfg, inst) {
-    super(cfg, inst, 'dreadnought', ['Idle', 'Walk', 'Run', 'Punch', 'Uppercut', 'Kick', 'Grab', 'Dodge', 'StandUp', 'Seated', 'Scream']);
+    super(cfg, inst, 'dreadnought', DREADNOUGHT_CHANNELS);
     this.bufferedKeys = ['kick', 'grab', 'dodge'];
     this.charge = 0;          // 0..1 heavy uppercut charge (the PUNCH ring)
-    this.dodgeCool = 0;
-    this.dodgeFacing = 0;
     this.held = null;         // enemy in his grip
     this.grabTarget = null;
     this.grabPhase = 'reach'; // reach -> hold -> slammed, or reach -> miss
@@ -227,7 +228,7 @@ export class Dreadnought extends ClipFighter {
       case 'uppercut': this.updateUppercut(dt, world); return 10;
       case 'kick': this.updateKick(dt, world); return 10;
       case 'grab': this.updateGrab(dt, ctl, world); return 0;
-      case 'dodge': this.updateDodge(dt, world); return 0;
+      case 'dodge': this.updateRoll(dt, world); return 0;
       case 'scream': this.updateScream(dt, world); return 10;
       case 'standup':
         this.vel.x = 0; this.vel.z = 0;
@@ -464,42 +465,11 @@ export class Dreadnought extends ClipFighter {
     if (this.clipT >= K.end) { this.setState('idle'); this.coolDown('heavy'); }
   }
 
-  // ---------------------------------------------------------------- dodge: the dive roll
-  /**
-   * Roll toward yaw. The clip travels at an angle to his facing (its hips end up ahead and to his
-   * left), so he is turned by that angle: the roll goes where the stick points.
-   */
+  // ---------------------------------------------------------------- dodge: the dive roll (ClipFighter.startRoll)
+  /** Roll toward yaw (the roll goes where the stick points); the attack target is dropped. */
   startDodge(yaw, world) {
-    const rm = this.inst.rootMotion.Dodge, n = rm.times.length - 1;
-    const travel = Math.atan2(rm.x ? rm.x[n] : 0, rm.z[n]);
-    this.setState('dodge');
-    this.clipT = this.cfg.dodge.start;
-    this.dodgeFacing = yaw - travel;
-    this.facing = this.dodgeFacing;
     this.target = null;
-    world.audio.jump();
-    world.fx.dust(this.pos, 8, 3.5);
-  }
-
-  updateDodge(dt, world) {
-    const D = this.cfg.dodge, rm = this.inst.rootMotion.Dodge, s = this.inst.scale;
-    const prev = this.clipT;
-    this.clipT = Math.min(D.end, this.clipT + dt * D.speed);
-    // the clip's own travel (his frame: +x his left, +z ahead) turned into the world; walls stop it
-    const dx = rm.x ? (sampleRoot(rm, this.clipT, 'x') - sampleRoot(rm, prev, 'x')) * s : 0;
-    const dz = (sampleRoot(rm, this.clipT) - sampleRoot(rm, prev)) * s;
-    const f = this.dodgeFacing, c = Math.cos(f), sn = Math.sin(f);
-    const inv = dt > 0 ? 1 / dt : 0;
-    this.vel.x = (dx * c + dz * sn) * inv;
-    this.vel.z = (-dx * sn + dz * c) * inv;
-    this.facing = f;
-    if (this.clipT >= D.invuln[0] && this.clipT <= D.invuln[1]) this.invuln = Math.max(this.invuln, 0.05);
-    if (prev < 1.0 && this.clipT >= 1.0) { world.fx.dust(this.pos, 16, 5); world.shake(0.15); } // he hits the sand
-    if (this.clipT >= D.end || (this.clipT >= D.cancelAfter && this.inputActive)) {
-      this.setState('idle');
-      this.dodgeCool = D.cooldown;
-      this.vel.x *= 0.3; this.vel.z *= 0.3;
-    }
+    this.startRoll(yaw, world);
   }
 
   onLanded(vy, world) {
