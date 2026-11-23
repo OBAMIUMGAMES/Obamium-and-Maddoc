@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { extractRootMotion, bakeSubclip, bakePose } from './clipUtils.js';
+import { extractRootMotion, bakeSubclip, bakePose, groundAnchor } from './clipUtils.js';
 import { bakeEditedLoop, bakeEditedPose, recentreHips } from './clipPose.js';
 
 /**
@@ -31,6 +31,10 @@ export async function loadCharacterTemplate(bytes, cfg, opts = {}) {
   // root motion first, so poses baked from these clips stay centred on the fighter
   const rootMotion = {};
   for (const a of cfg.rootMotion || []) rootMotion[a] = extractRootMotion(clips[a]);
+  // clips whose hips are pinned over the root (the root follows them: the get-up's drift) and clips
+  // re-anchored on their lowest bone (their own fall / dive height is gameplay's: launches, the slam)
+  for (const a of cfg.rootMotionCentred || []) rootMotion[a] = extractRootMotion(clips[a], { centre: true });
+  for (const a of cfg.groundAnchor || []) groundAnchor(gltf.scene, clips[a], cfg.groundClearance || 0);
   // clips that end where the fighter stands (e.g. rising from a seat behind him): hips recentred there
   for (const [a, t] of Object.entries(cfg.recentre || {})) recentreHips(clips[a], t);
   const I = cfg.idle;

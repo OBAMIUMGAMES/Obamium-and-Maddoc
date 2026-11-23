@@ -217,6 +217,31 @@ test('a punch in the air becomes a ground slam that damages enemies around the i
   assert.ok(world.log.hits.every((h) => h.dmg === C.slam.damage));
 });
 
+test('the slam is the Dive_Down_and_Land_2 clip: its dive meets the ground on the very frame he lands', () => {
+  const { t, world } = setup();
+  const L = C.slam.land;
+  run(t, world, 25, { jump: true });
+  run(t, world, 1, { punch: true });
+  assert.equal(t.state, 'slam');
+  let prevT = -1, landed = false, framesDown = 0, slid = 0;
+  for (let k = 0; k < 240 && t.state === 'slam'; k++) {
+    const wasAir = !t.onGround;
+    run(t, world, 1);
+    if (t.state !== 'slam') break;
+    assert.ok(t.clipT >= prevT - 1e-9, 'the clip never runs backwards (no loop)');
+    prevT = t.clipT;
+    if (k > 8) assert.ok(t.weights.Land > 0.5, 'the landing clip plays (no key poses)');
+    if (wasAir && t.onGround) { landed = true; assert.ok(Math.abs(t.clipT - L.contact) < 1e-6, `touchdown frame ${t.clipT}`); }
+    else if (!landed) assert.ok(t.clipT < L.contact, 'the dive part plays only while airborne');
+    if (landed) { framesDown++; slid += Math.hypot(t.vel.x, t.vel.z) / 60; }
+  }
+  assert.ok(landed, 'he landed');
+  assert.equal(t.state, 'idle', 'back to the fight stance after the landing');
+  assert.ok(Math.abs(framesDown / 60 - (L.end - L.contact) / L.speed) < 0.1, `the landing plays once (${(framesDown / 60).toFixed(2)} s)`);
+  assert.ok(slid < 0.05, 'feet planted through the landing');
+  assert.ok(t.cooldown('heavy') > 0, 'a heavy move: it cools down');
+});
+
 test('MACHINEGUN IMPACT lands a flurry of hits and a finisher, then returns to idle', () => {
   const { t, world } = setup();
   // he advances 2.4 m/s through the flurry; real enemies are knocked back ahead of him, this

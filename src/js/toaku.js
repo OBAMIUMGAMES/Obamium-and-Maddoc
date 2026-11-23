@@ -46,7 +46,7 @@ function thrusterGeometry() {
 }
 
 /** Every action Toaku blends (the instance must carry each). */
-export const TOAKU_CHANNELS = ['Idle', 'Run', 'Punch', 'Kick', 'Grab', 'Dodge', 'Flurry', 'PoseSquat', 'PoseFall', 'PoseRise', 'PoseBoost', 'PoseDive'];
+export const TOAKU_CHANNELS = ['Idle', 'Run', 'Punch', 'Kick', 'Grab', 'Dodge', 'Land', 'Flurry', 'PoseSquat', 'PoseFall', 'PoseRise', 'PoseBoost', 'PoseDive'];
 
 /** The player's heavyweight. Same public surface as SuperTahu (update, takeHit, meter, combo...). */
 export class Toaku extends ClipFighter {
@@ -61,7 +61,7 @@ export class Toaku extends ClipFighter {
     this.jumps = 0;
     this.thrust = 0;
     this.slamPhase = 'rise';
-    this.slamLandT = 0;
+    this.slamAlt0 = 1;
     this.landT = 9;
     this.landK = 0;
     this.kickDir = 0;
@@ -202,27 +202,37 @@ export class Toaku extends ClipFighter {
     }
   }
 
-  /** Punch in mid-air: hang on the thrusters with a fist raised, then dive fist-first. */
+  /**
+   * Punch in mid-air: the air slam, played by Dive_Down_and_Land_2. He hangs on the thrusters (the clip's
+   * first frames), dives (the clip's dive, timed by the descent so its touchdown is the frame he lands),
+   * then the landing plays once, feet planted, into the fight stance.
+   */
   startSlam(world) {
     this.setState('slam');
     this.slamPhase = 'rise';
+    this.clipT = 0;
     this.vel.y = 4;
     this.vel.x *= 0.3; this.vel.z *= 0.3;
     world.audio.whoosh();
   }
 
   updateSlam(dt, world) {
-    const S = this.cfg.slam;
+    const S = this.cfg.slam, L = S.land;
     if (this.slamPhase === 'rise') {
       this.vel.y = Math.max(this.vel.y, 1.2);
       this.thrust = Math.max(this.thrust, 0.06);
-      if (this.stateT >= S.hang) { this.slamPhase = 'dive'; world.audio.whoosh(); }
+      this.clipT = L.hangTo * Math.min(1, this.stateT / S.hang);
+      if (this.stateT >= S.hang) { this.slamPhase = 'dive'; this.slamAlt0 = Math.max(0.5, this.altitude()); world.audio.whoosh(); }
     } else if (this.slamPhase === 'dive') {
       this.vel.y = S.diveSpeed;
       this.vel.x *= 0.9; this.vel.z *= 0.9;
-    } else if (this.stateT - this.slamLandT > S.recover) {
-      this.setState('idle');
-      this.coolDown('heavy');
+      const k = Math.min(1, Math.max(0, 1 - this.altitude() / this.slamAlt0));
+      this.clipT = Math.min(L.contact - 1e-3, L.hangTo + (L.contact - L.hangTo) * k);
+    } else {
+      // the landing: once, feet planted
+      this.vel.x = 0; this.vel.z = 0;
+      this.clipT = Math.min(L.end, this.clipT + dt * L.speed * this.atkSpeed);
+      if (this.clipT >= L.end) { this.setState('idle'); this.coolDown('heavy'); }
     }
   }
 
@@ -240,10 +250,10 @@ export class Toaku extends ClipFighter {
   slamImpact(world) {
     const S = this.cfg.slam;
     this.slamPhase = 'impact';
-    this.slamLandT = this.stateT;
+    this.clipT = S.land.contact; // the clip's touchdown, on the frame he lands
     this.vel.set(0, 0, 0);
     const fwdX = Math.sin(this.facing), fwdZ = Math.cos(this.facing);
-    const at = tmpV.set(this.pos.x + fwdX * 1.6, this.pos.y, this.pos.z + fwdZ * 1.6);
+    const at = tmpV.set(this.pos.x + fwdX * S.fxForward, this.pos.y, this.pos.z + fwdZ * S.fxForward);
     world.fx.crack(at, 2.6, this.facing);
     world.fx.shockwave(at, S.radius * 1.6, 0xfff2c0);
     world.fx.shockwave(at, S.radius, 0x9fffb0);
@@ -515,14 +525,7 @@ export class Toaku extends ClipFighter {
       case 'kick': T.Kick = 1; A.Kick.time = this.clipT; return 22;
       case 'dodge': T.Dodge = 1; A.Dodge.time = this.clipT; return 18;
       case 'grab': T.Grab = 1; A.Grab.time = Math.min(this.clipT, cfg.grab.end); return 24;
-      case 'slam': {
-        if (this.slamPhase === 'rise') { T.PoseRise = 1; this.pitch = -0.1; return 16; }
-        if (this.slamPhase === 'dive') { T.PoseDive = 1; this.pitch = 0.85; return 14; }
-        const k = this.stateT - this.slamLandT;
-        if (k < 0.12) { T.PoseDive = 1; this.pitch = 0.75; return 40; } // fist driven into the ground
-        T.PoseSquat = 1; this.pitch = 0.3 * (1 - smooth(0.12, cfg.slam.recover, k));
-        return 12;
-      }
+      case 'slam': T.Land = 1; A.Land.time = this.clipT; return 30; // Dive_Down_and_Land_2
       case 'special': {
         const S = cfg.special, M = cfg.mgi, t = this.stateT;
         if (t < M.windup) { T.Punch = 1; A.Punch.time = cfg.idle.to; this.pitch = -0.12; return 20; }

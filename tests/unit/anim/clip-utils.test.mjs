@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { bakeSubclip, bakePose } from '../../../src/js/clipUtils.js';
+import { bakeSubclip, bakePose, extractRootMotion, groundAnchor } from '../../../src/js/clipUtils.js';
 
 /** A clip with one dense track and one sparse track (keys only at 0 and 2 s). */
 function fixtureClip() {
@@ -40,4 +40,26 @@ test('bakePose holds a single frame of the source clip', () => {
   const pose = bakePose(fixtureClip(), 'pose', 1.5);
   assert.ok(Math.abs(pose.tracks[0].values[0] - 15) < 1e-5);
   assert.ok(pose.duration > 0 && pose.duration < 0.05);
+});
+
+test('extractRootMotion: by default the hips stay at the first key; centred, they are pinned over the root', () => {
+  const make = () => ({ tracks: [{ name: 'mixamorigHips.position', times: Float32Array.from([0, 1]), values: Float32Array.from([0.4, 1, -2, 0.6, 1, 0]) }] });
+  const a = make(), ra = extractRootMotion(a);
+  assert.deepEqual([...a.tracks[0].values], [0.4, 1, -2, 0.4, 1, -2].map(Math.fround));
+  const b = make(), rb = extractRootMotion(b, { centre: true });
+  assert.deepEqual([...b.tracks[0].values], [0, 1, 0, 0, 1, 0]);
+  for (const r of [ra, rb]) { assert.ok(Math.abs(r.z[1] - 2) < 1e-6 && Math.abs(r.x[1] - 0.2) < 1e-6, 'the travel is the same either way'); }
+});
+
+test('groundAnchor: a clip that falls from a height rests its lowest bone on the ground at every key', () => {
+  // a two-bone rig: hips, and a foot 1 unit below them; the clip drops the hips from 6 to 1
+  const scene = new THREE.Group();
+  const hips = new THREE.Bone(); hips.name = 'mixamorigHips'; scene.add(hips);
+  const foot = new THREE.Bone(); foot.name = 'mixamorigFoot'; foot.position.set(0, -1, 0); hips.add(foot);
+  const times = Float32Array.from([0, 0.5, 1]);
+  const clip = new THREE.AnimationClip('Fall', 1, [new THREE.VectorKeyframeTrack('mixamorigHips.position', times, [0, 6, 0, 0, 3, 0, 0, 1, 0])]);
+  groundAnchor(scene, clip, 0.05);
+  const ys = [1, 4, 7].map((i) => clip.tracks[0].values[i]);
+  for (const y of ys) assert.ok(Math.abs(y - 1.05) < 1e-5, `hips 1 unit above a foot on the ground (+0.05): ${ys}`);
+  assert.equal(hips.position.y, 0, 'the scene bones are restored');
 });

@@ -29,7 +29,14 @@ export const CONFIG = {
       { name: 'hammer', damage: 26, reach: 3.3, arc: 1.7, duration: 0.55, active: [0.2, 0.32], knockback: 11, lift: 6 },
     ],
     comboWindow: 0.35, // time after a step ends in which the next press chains
-    slam: { damage: 30, radius: 4.2, knockback: 12, lift: 7, diveSpeed: -28, hang: 0.2, recover: 0.7 },
+    // the air slam: hang on the thrusters (hang s), dive (diveSpeed), land. Dive_Down_and_Land_2 plays it:
+    // clip 0..hangTo while hanging, hangTo..contact over the descent (so the clip's touchdown meets the
+    // ground), then the landing from contact to end at `speed` (feet planted)
+    slam: {
+      damage: 30, radius: 4.2, knockback: 12, lift: 7, diveSpeed: -28, hang: 0.2, fxForward: 0.6,
+      land: { hangTo: 0.1, contact: 0.5, end: 2.1, speed: 2.0 },
+      recover: 0.7, // the procedural fallback Toaku (no model loaded): s kneeling after the impact
+    },
     special: {
       name: 'MACHINEGUN IMPACT',
       meterMax: 100,
@@ -57,8 +64,16 @@ export const CONFIG = {
     // the export's material is fully matte (metalness 0, roughness 1) and looks chalky under the
     // desert sun; this makes it read as the gunmetal of the character sheet (tuned in-game)
     material: { color: 0xc8c8c8, metalness: 0.5, roughness: 0.45, envMapIntensity: 0.6 },
-    clips: { Run: 'run_fast_7_inplace', Punch: 'Punch_Combo_1', Kick: 'Rising_Flying_Kick', Grab: 'Skill_02', Dodge: 'Roll_Dodge_2' },
+    clips: {
+      Run: 'run_fast_7_inplace', Punch: 'Punch_Combo_1', Kick: 'Rising_Flying_Kick', Grab: 'Skill_02', Dodge: 'Roll_Dodge_2',
+      Land: 'Dive_Down_and_Land_2', // the air slam's dive and landing
+      Launch: 'Fall3',              // knocked flying (VS): the fall while airborne
+      GetUp: 'Stand_Up4',           // up again after a knockdown
+      Overflow: 'Charged_Spell_Cast', // ENERGY OVERFLOW's activation emote
+    },
     rootMotion: ['Kick', 'Dodge'], // the flying kick (~2 m source) and the roll travel: gameplay moves him instead
+    rootMotionCentred: ['GetUp', 'Launch', 'Land'], // hips over the root (the get-up's drift moves the root)
+    groundAnchor: ['Launch', 'Land'], // their fall / dive height is gameplay's: the body rests on the root
     // DODGE: Roll_Dodge_2 (the same Mixamo roll as Dreadnought's, a lighter body: played faster); a short
     // evasion window, then a cooldown so rolls cannot chain into permanent invulnerability
     dodge: { start: 0.05, end: 1.95, speed: 1.5, invuln: [0.35, 1.3], thud: 1.0, cancelAfter: 1.7, cooldown: 0.6 },
@@ -187,8 +202,12 @@ export const CONFIG = {
     clips: {
       Walk: 'walking_2', Run: 'Run_03', Punch: 'Punch_Combo', Uppercut: 'Charged_Upward_Slash', Kick: 'Spartan_Kick',
       Grab: 'Grip_and_Throw_Down', Dodge: 'Roll_Dodge_2', StandUp: 'Sit_to_standTransition_Female_2', Scream: 'Skill_01',
+      Launch: 'Fall3',    // knocked flying (VS): the fall while airborne
+      GetUp: 'Stand_Up1', // up again after a knockdown
     },
     rootMotion: ['Dodge', 'Walk'], // played in place: gameplay moves him along their hips travel (walls stop him)
+    rootMotionCentred: ['GetUp', 'Launch'], // hips over the root (the get-up's drift moves the root)
+    groundAnchor: ['Launch'], // the fall's height is gameplay's: the body rests on the root
     recentre: { StandUp: 2.2 },    // he rises from a seat behind him: recentred where he ends up standing
     // analog movement from the virtual joystick: idle under deadZone, walking up to walkTop (speed
     // follows the stick), running from runEnter (back to walking under runExit: hysteresis) up to
