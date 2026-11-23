@@ -35,9 +35,9 @@ export class SuperTahu extends ClipFighter {
     const cfg = this.cfg, B = this.buffer;
     const afterImpact = (this.state === 'punch' || this.state === 'kick') && this.hitDone;
     const free = this.state === 'idle' || afterImpact;
-    if (B.special > 0 && this.meter >= cfg.special.meterMax && free) { B.special = 0; this.startSpecial(world); }
+    if (B.special > 0 && this.meter >= cfg.special.meterMax && free && this.canAttack('special')) { B.special = 0; this.startSpecial(world); }
     else if (B.jump > 0 && this.dodgeCool <= 0 && (free || this.state === 'hurt')) { B.jump = 0; this.startDodge(ctl.mag > 0.15 ? ctl.wishYaw : this.facing, world); }
-    else if (B.kick > 0 && free) { B.kick = 0; this.startKick(world); }
+    else if (B.kick > 0 && free && this.canAttack('heavy')) { B.kick = 0; this.startKick(world); }
     else this.handlePunch(ctl, world);
   }
 
@@ -80,7 +80,7 @@ export class SuperTahu extends ClipFighter {
       world.shake(hits ? 0.4 : 0.15);
       if (hits) world.audio.hit(true);
     }
-    if (this.clipT >= K.end) this.setState('idle');
+    if (this.clipT >= K.end) { this.setState('idle'); this.coolDown('heavy'); }
   }
 
   startDodge(yaw, world) {
@@ -149,6 +149,7 @@ export class SuperTahu extends ClipFighter {
     }
     if (this.clipT >= S.end) {
       this.setState('idle');
+      this.coolDown('special');
       this.invuln = 0.4;
       glow.scale.setScalar(0.0001);
     }

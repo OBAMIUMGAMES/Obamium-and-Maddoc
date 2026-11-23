@@ -187,8 +187,8 @@ export class Dreadnought extends ClipFighter {
       return;
     }
     if (free) {
-      if (B.grab > 0) { B.grab = 0; this.startGrab(world); return; }
-      if (B.kick > 0) { B.kick = 0; this.startKick(world); return; }
+      if (B.grab > 0 && this.canAttack('grab')) { B.grab = 0; this.startGrab(world); return; }
+      if (B.kick > 0 && this.canAttack('heavy')) { B.kick = 0; this.startKick(world); return; }
     }
     this.handlePunchHold(ctl, world);
   }
@@ -202,7 +202,8 @@ export class Dreadnought extends ClipFighter {
     if (this.state === 'punch') { if (inp.punch) this.punchQueued = true; return; }
     if (this.state === 'charge') {
       if (!inp.punchHeld) { this.startPunch(0, world); return; } // let go early: a regular punch
-      if (this.stateT >= U.hold) this.startUppercut(world);
+      // the uppercut needs the heavy cooldown; until then the held press stays a regular punch
+      if (this.stateT >= U.hold && this.canAttack('heavy')) this.startUppercut(world);
       return;
     }
     if (!inp.punch || this.state !== 'idle' || !this.onGround) return;
@@ -212,6 +213,7 @@ export class Dreadnought extends ClipFighter {
       this.startPunch(this.punchIdx + 1, world);
       return;
     }
+    if (!this.canAttack('normal')) return; // a new combo (or charge) waits for the cooldown
     if (!inp.punchHeld) { this.startPunch(0, world); return; } // a press already released (keyboard tap, scripted input)
     this.setState('charge');
   }
@@ -434,7 +436,7 @@ export class Dreadnought extends ClipFighter {
       world.shake(hits ? 0.6 : 0.25);
       if (hits) { world.hitStop(0.08); world.audio.hit(true); }
     }
-    if (this.clipT >= U.end) this.setState('idle');
+    if (this.clipT >= U.end) { this.setState('idle'); this.coolDown('heavy'); }
   }
 
   // ---------------------------------------------------------------- kick
@@ -459,7 +461,7 @@ export class Dreadnought extends ClipFighter {
       world.shake(hits ? 0.45 : 0.15);
       if (hits) world.audio.hit(true);
     }
-    if (this.clipT >= K.end) this.setState('idle');
+    if (this.clipT >= K.end) { this.setState('idle'); this.coolDown('heavy'); }
   }
 
   // ---------------------------------------------------------------- dodge: the dive roll
@@ -579,6 +581,7 @@ export class Dreadnought extends ClipFighter {
     if (this.grabPhase === 'miss' ? this.clipT >= G.whiffEnd : this.clipT >= G.end) {
       if (this.held) this.slam(world);
       this.setState('idle');
+      this.coolDown('grab'); // a miss cools down too
     }
   }
 
@@ -701,7 +704,7 @@ export class Dreadnought extends ClipFighter {
       world.fx.sparks(tmpV, 14, GOLD, 10);
       world.shake(0.7);
     }
-    if (this.clipT >= S.end + S.hold) this.setState('idle');
+    if (this.clipT >= S.end + S.hold) { this.setState('idle'); this.coolDown('special'); }
   }
 
   // ---------------------------------------------------------------- cinematic

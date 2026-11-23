@@ -128,14 +128,14 @@ export class Toaku extends ClipFighter {
     const afterImpact = (this.state === 'punch' || this.state === 'kick') && this.hitDone;
     const free = this.state === 'idle' || afterImpact;
     if (free) {
-      if (B.special > 0 && this.meter >= cfg.special.meterMax) { B.special = 0; this.startSpecial(world); return; }
+      if (B.special > 0 && this.meter >= cfg.special.meterMax && this.canAttack('special')) { B.special = 0; this.startSpecial(world); return; }
       if (B.jump > 0) {
         if (this.onGround) { B.jump = 0; this.setState('jumpSquat'); return; }
         if (this.jumps < 2) { B.jump = 0; this.thrusterJump(ctl, world); return; }
       }
-      if (this.onGround && B.grab > 0) { B.grab = 0; this.startGrab(world); return; }
-      if (this.onGround && B.kick > 0) { B.kick = 0; this.startKick(world); return; }
-      if (ctl.input.punch && !this.onGround && this.altitude() > 1.2 && this.state === 'idle') { this.startSlam(world); return; }
+      if (this.onGround && B.grab > 0 && this.canAttack('grab')) { B.grab = 0; this.startGrab(world); return; }
+      if (this.onGround && B.kick > 0 && this.canAttack('heavy')) { B.kick = 0; this.startKick(world); return; }
+      if (ctl.input.punch && !this.onGround && this.altitude() > 1.2 && this.state === 'idle' && this.canAttack('heavy')) { this.startSlam(world); return; }
     }
     this.handlePunch(ctl, world);
   }
@@ -211,6 +211,7 @@ export class Toaku extends ClipFighter {
       this.vel.x *= 0.9; this.vel.z *= 0.9;
     } else if (this.stateT - this.slamLandT > S.recover) {
       this.setState('idle');
+      this.coolDown('heavy');
     }
   }
 
@@ -268,7 +269,7 @@ export class Toaku extends ClipFighter {
   updateKick(dt, world) {
     const K = this.cfg.kick;
     const prev = this.clipT;
-    this.clipT = Math.min(K.end, this.clipT + dt * K.speed);
+    this.clipT = Math.min(K.end, this.clipT + dt * K.speed * this.atkSpeed);
     // the clip's own leap carries him forward (walls can stop it)
     const rm = this.inst.rootMotion.Kick;
     const d = (sampleRoot(rm, this.clipT) - sampleRoot(rm, prev)) * this.inst.scale;
@@ -286,7 +287,7 @@ export class Toaku extends ClipFighter {
     if (this.clipT >= K.active[0] && prev <= K.active[1] && this.strike(world, K, true, this.kickHits)) world.shake(0.4);
     if (this.clipT > K.active[1]) this.hitDone = true;
     if (prev < K.land && this.clipT >= K.land) { world.fx.dust(this.pos, 14, 4); world.audio.land(); world.shake(0.12); }
-    if (this.clipT >= K.end || (this.clipT >= K.cancelAfter && this.inputActive)) this.setState('idle');
+    if (this.clipT >= K.end || (this.clipT >= K.cancelAfter && this.inputActive)) { this.setState('idle'); this.coolDown('heavy'); }
   }
 
   // ---------------------------------------------------------------- grab, giant swing, throw
@@ -322,7 +323,7 @@ export class Toaku extends ClipFighter {
 
   updateGrab(dt, ctl, world) {
     const G = this.cfg.grab;
-    this.clipT += dt * G.speed;
+    this.clipT += dt * G.speed * this.atkSpeed;
     const tgt = this.grabTarget;
     if (this.grabPhase === 'reach') {
       const live = tgt && this.grabbable(tgt, world);
@@ -353,6 +354,7 @@ export class Toaku extends ClipFighter {
     if (this.grabPhase === 'miss' ? this.clipT >= G.whiffEnd : this.clipT >= G.end) {
       if (this.held) this.throwHeld(world);
       this.setState('idle');
+      this.coolDown('grab'); // a miss cools down too
     }
   }
 
@@ -483,7 +485,7 @@ export class Toaku extends ClipFighter {
         if (hits) { this.combo += hits; this.comboTimer = 2.2; world.onCombo(this.combo); }
       }
       this.vel.x *= 0.8; this.vel.z *= 0.8;
-      if (t > M.windup + S.duration + 0.45) { this.setState('idle'); this.invuln = 0.3; }
+      if (t > M.windup + S.duration + 0.45) { this.setState('idle'); this.invuln = 0.3; this.coolDown('special'); }
     }
   }
 

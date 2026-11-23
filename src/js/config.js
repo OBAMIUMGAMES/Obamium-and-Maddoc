@@ -2,6 +2,13 @@
  * All gameplay tuning values live here (data-driven, no magic numbers in systems).
  * Units: metres, seconds, hit points.
  */
+/**
+ * Every attack's cooldown, by kind (s of game time from the end of the move until another of that kind
+ * may start; combo follow-ups are part of the same attack). ENERGY OVERFLOW's faster attacks do not
+ * shorten them. Each fighter carries a copy (`cooldowns`) it can tune.
+ */
+const ATTACK_COOLDOWNS = Object.freeze({ normal: 0.35, heavy: 0.8, grab: 2.0, special: 1.5 });
+
 export const CONFIG = {
   arena: { radius: 38, gravity: 26 },
 
@@ -40,6 +47,7 @@ export const CONFIG = {
       finisherLift: 9,
     },
     hurtInvuln: 0.5,
+    cooldowns: { ...ATTACK_COOLDOWNS }, // normal / heavy / grab / special
     hurtTime: 0.32,
 
     // ---- Meshy/Mixamo rigged model (assets/models/toaku.glb, tools/build-character.mjs) ----
@@ -150,6 +158,7 @@ export const CONFIG = {
       waveSpeed: 40, // m/s the eruption front travels outward
     },
     hurtInvuln: 0.5,
+    cooldowns: { ...ATTACK_COOLDOWNS }, // normal / heavy / grab / special
     hurtTime: 0.3,
   },
 
@@ -283,6 +292,7 @@ export const CONFIG = {
     // where Toaku's is 1 m) so enemies at mid range and a boss stay visible over his shoulders
     camera: { distance: 1.42, height: 1.55, look: 1.45 },
     hurtInvuln: 0.5,
+    cooldowns: { ...ATTACK_COOLDOWNS }, // normal / heavy / grab / special
     hurtTime: 0.3,
   },
 

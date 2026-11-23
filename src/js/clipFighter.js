@@ -58,6 +58,10 @@ export class ClipFighter extends Fighter {
     this.targetable = true;
     this.holder = null;
     this.vsCounter = null;
+    // attack cooldowns by kind (cfg.cooldowns): s until another attack of that kind may start
+    this.cool = { normal: 0, heavy: 0, grab: 0, special: 0 };
+    this.atkSpeed = 1;  // attack clip playback multiplier (ENERGY OVERFLOW)
+    this.speedMul = 1;  // movement speed multiplier (ENERGY OVERFLOW)
     this.weights = Object.fromEntries(channels.map((n) => [n, n === 'Idle' ? 1 : 0]));
     const A = inst.actions;
     const loops = new Set(['Run', 'Walk', ...Object.keys(cfg.breathLoops || {})]); // play on their own, looping
@@ -83,6 +87,7 @@ export class ClipFighter extends Fighter {
     this.comboGap = Math.max(0, this.comboGap - dt);
     this.comboTimer = Math.max(0, this.comboTimer - dt);
     if (this.comboTimer === 0) this.combo = 0;
+    for (const k in this.cool) if (this.cool[k] > 0) this.cool[k] = Math.max(0, this.cool[k] - dt);
     if (this.state !== 'special' && this.alive) this.meter = addMeter(this.meter, cfg.special.meterPassive * dt, cfg.special.meterMax);
     this.tick(dt);
     if (this.vs && VS_STATES.has(this.state)) { this.vsStep(dt, world); return; } // VS: not in control
@@ -136,6 +141,17 @@ export class ClipFighter extends Fighter {
   postAnimate() {}
   /** States in which a hit does not interrupt the move. */
   armored() { return this.state === 'special'; }
+
+  // ---------------------------------------------------------------- attack cooldowns
+  /** Seconds before an attack of `kind` ('normal' | 'heavy' | 'grab' | 'special') may start again. */
+  cooldown(kind) { return this.cool[kind] || 0; }
+  /** Whether an attack of `kind` may start now (its cooldown has run out). */
+  canAttack(kind) { return !(this.cool[kind] > 0); }
+  /** A move of `kind` is over (hit or miss): its cooldown starts (game time; cfg.cooldowns). */
+  coolDown(kind) {
+    const C = this.cfg.cooldowns;
+    if (C && C[kind] > 0) this.cool[kind] = Math.max(this.cool[kind] || 0, C[kind]);
+  }
   /** The fighter just died. */
   onDeath() {}
 
@@ -144,7 +160,7 @@ export class ClipFighter extends Fighter {
   steer(dt, ctl) {
     const cfg = this.cfg;
     if (ctl.mag > 0.15) this.turnTowards(ctl.wishYaw, cfg.turnRate, dt);
-    const sp = ctl.mag > 0.15 ? cfg.moveSpeed * ctl.mag * (this.onGround ? 1 : 0.85) : 0;
+    const sp = ctl.mag > 0.15 ? cfg.moveSpeed * this.speedMul * ctl.mag * (this.onGround ? 1 : 0.85) : 0;
     const acc = this.onGround ? 11 : cfg.airControl || 11;
     this.vel.x += (Math.sin(this.facing) * sp - this.vel.x) * Math.min(1, acc * dt);
     this.vel.z += (Math.cos(this.facing) * sp - this.vel.z) * Math.min(1, acc * dt);
@@ -156,8 +172,10 @@ export class ClipFighter extends Fighter {
     if (this.state === 'punch') { this.punchQueued = true; return; }
     if (this.state !== 'idle' || !this.onGround) return;
     const P = this.cfg.punch;
-    // a press shortly after a punch finishes continues the combo instead of restarting it
+    // a press shortly after a punch finishes continues the combo instead of restarting it; a new
+    // combo waits for the normal-attack cooldown
     const next = this.comboGap > 0 && this.punchIdx >= 0 && this.punchIdx < P.hits.length - 1 ? this.punchIdx + 1 : 0;
+    if (next === 0 && !this.canAttack('normal')) return;
     if (next > 0) this.clipT = P.hits[next - 1].end;
     this.startPunch(next, world);
   }
@@ -176,7 +194,7 @@ export class ClipFighter extends Fighter {
   updatePunch(dt, world) {
     const P = this.cfg.punch;
     const h = P.hits[this.punchIdx];
-    this.clipT += dt * P.speed;
+    this.clipT += dt * P.speed * this.atkSpeed;
     this.vel.x *= 0.7; this.vel.z *= 0.7;
     if (!this.hitDone && this.clipT >= h.impact) {
       this.hitDone = true;
@@ -187,7 +205,7 @@ export class ClipFighter extends Fighter {
     }
     if (this.clipT >= h.end) {
       if (this.punchQueued && this.punchIdx < P.hits.length - 1) this.startPunch(this.punchIdx + 1, world);
-      else { this.setState('idle'); this.comboGap = P.window; }
+      else { this.setState('idle'); this.comboGap = P.window; this.coolDown('normal'); }
     }
   }
 
