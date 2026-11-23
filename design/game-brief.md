@@ -359,7 +359,8 @@ VS MODE refuses to open and says why). Code: `src/js/vsMode.js` (flow, HUD, resu
   when nothing happens. **Dreadnought** (aggression 0.92, heavy 0.62, grab 0.5, dodge 0.2, retreat
   0.05): constant pressure, uppercuts and grabs, RAGE when full. **Toaku** (aggression 0.55, dodge 0.7,
   moveFreq 0.9, counter 0.9): circles, side-steps, punishes recoveries; against a longer reach he
-  hovers outside it and fights hit-and-run.
+  waits just outside it (its reach plus his own radius), backs off when the opponent advances and
+  sprints in on a whiffed blow — hit-and-run, the flying kick his main punish.
 - **SUPER TAHU** (not the ordinary CPU): stands still, calmly facing the opponent, and never presses
   anything — approaching, circling or touching him does nothing. The first blow that **lands** on him,
   or a grab closing on him, wakes him (that blow can never knock him out): the attacker is pinned,
@@ -370,17 +371,23 @@ VS MODE refuses to open and says why). Code: `src/js/vsMode.js` (flow, HUD, resu
 - **Intro (8 s, SKIP):** 0–2 s low angle pushing in on fighter 1 with his nameplate; 2–4 s orbit around
   fighter 2 with his; 4–6 s mask close-ups of both with a slight shake; 6–7 s wide standoff with the VS
   graphic and both names; 7–8 s FIGHT! as the camera flies into the gameplay camera. Framing is in each
-  fighter's height. Super Tahu stands calm through it.
-- **Cameras:** PvC — behind the player on the line from the opponent through him, looking past him at
-  the opponent (the stick is relative to it; a drag turns it, it eases back); CvC — beside the fight,
+  fighter's height; the close-ups aim at the rig's head in the fighter's idle stance (both settle into
+  it before the first frame). Super Tahu stands calm through it.
+- **Cameras:** PvC — behind the player, over his right shoulder (0.7 rad off the line from the opponent
+  through him), the player on the left of the screen and the opponent on the right, never hidden behind
+  him (fully visible from 2 m apart, 54–84% at body contact, also behind a Dreadnought); the stick is
+  relative to the line to the opponent (pushing up walks at him); a drag turns the camera, it eases
+  back. CvC — beside the fight,
   both in frame, pulling back as they part, keeping its side; or a steady wide shot. Both stay over the
   floor (the arena's spring arm).
 - **HUD:** both fighters' names, emblems, health (with the damage trail) and resource bars (Toaku's
   ENERGY OVERFLOW, Dreadnought's WARLORD RAGE with its seconds; Super Tahu has none), the player's own
   buttons in PvC only.
-- **Matchups (CPU VS CPU, measured over 20 seeded matches each):** mirror matches split about evenly
-  (~30 s each); Dreadnought beats Toaku almost always — by design he has 150% health, 140% damage,
-  armour on his heavy moves and far more reach; Toaku lands real damage but loses the race.
+- **Matchups (CPU VS CPU, seeded matches):** mirror matches split (either slot wins; ~20–40 s);
+  Dreadnought beats Toaku every time (24 of 24) — by design he has 150% health, 140% damage, armour on
+  his heavy moves and far more reach; Toaku fights back (on average ~125 of Dreadnought's 600 health,
+  up to ~320 in the real game) but loses the race. Knobs if that should change: `CONFIG.vs.overrides`
+  (duel-only stats), `vs.knockMul`, `vs.launchFrom`, `vs.ai.<id>`.
 
 ## Bohrok (enemies): Tahnok, Gahlok, Lehvak, Pahrak, Nuhvok, Kohrak
 The only standard enemies (the old Scrapbot drones are gone). Six types share one body, rig

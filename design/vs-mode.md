@@ -70,9 +70,59 @@ Horde mode (waves, bosses, locations) is untouched.
 names. 5. 7–8 s FIGHT!, blend into the gameplay camera, controls / AI on. Distances and heights scale with
 each fighter's height. SKIP ends it at once and starts the fight (once).
 
-## Tests
+## Tests (automated: `npm test`, 50 of the suite's 250 in `tests/unit/vs/`)
 
-Unit (`tests/unit/vs/`): selection rules, state machine, spawns, fighter-vs-fighter hits / grabs / KO,
-AI decisions and personality differences, Super Tahu (never attacks, counters only on contact, one-shot vs
-full-health and raging Dreadnought and Toaku, once, reset), intro timeline, cameras. In-game (Playwright):
-PvC and CvC flows, every Super Tahu case, rematch, skip, regressions of the horde mode.
+- **rules** (8): roster flags; PvC — Super Tahu refused as the player, allowed as the CPU; CvC — never
+  twice, ordinary mirrors allowed; locked / unavailable fighters refused; default picks legal; the
+  state machine's guards (fight once, first KO only); spawns; keyboard browsing only lands on legal picks.
+- **combat** (11): blows land with damage, knockback by mass, hitstun; launch -> down -> invulnerable
+  get-up; armour; dodge invulnerability makes a blow miss (mutation-checked); grabs and throws both ways;
+  one KO ends it; fighters share their parts' geometry (no GPU leak per match).
+- **Super Tahu** (8): never moves or presses anything when approached or circled; only a landed blow or
+  a closing grab triggers him; one-shot defeat of a full-health Dreadnought, a raging Dreadnought and
+  Toaku, applied at the slam's impact and not before; the triggering blow cannot knock him out; once per
+  match; reset on rematch.
+- **CPU** (10): real fights to a knockout; mirrors — either slot wins; only legal moves (in range,
+  Dreadnought never jumps, reactions take their delay, no spam over three matches); personalities; RAGE
+  when full; nothing pressed outside FIGHTING; wall avoidance; Toaku waits at the edge of a longer reach
+  and punishes whiffs; an attack decided with the opponent behind is carried out after the turn.
+- **cameras / intro** (10): the 8 s timeline (plates, VS, FIGHT!), SKIP once; every shot framed by the
+  fighter's height; close-ups on the rig's head; the cinematic camera; PvC — both in view, over the
+  shoulder, the opponent never hidden; CvC spectator — both in frame, pulls back, no flips.
+
+## Verification in the real game
+
+Desktop Chromium with SwiftShader (software WebGL), a 915 x 412 landscape phone viewport with touch
+emulation, the real models, clips and arena (`dist/`); a harness steps the game at 60 fps.
+
+- **Flow**: VS MODE -> type -> select -> arena -> intro -> FIGHTING -> K.O. -> results -> REMATCH + SKIP
+  (the fight starts once: fights 1, matches 2) -> CHARACTER SELECTION (match disposed) -> CPU VS CPU
+  (controls hidden, CAM switches DYNAMIC / WIDE) -> MAIN MENU; PvC played to VICTORY (as Dreadnought) and
+  DEFEAT (as Toaku); no page errors.
+- **Selection**: Super Tahu refused as the PvC player, allowed as the CPU; refused in a CvC slot while
+  the other holds him; mirror Toaku vs Toaku allowed.
+- **Super Tahu, frame by frame** (5 cases: CvC vs Dreadnought, vs Dreadnought in RAGE with 26 s left, vs
+  Toaku; PvC grabbed by a Dreadnought player, punched by a Toaku player): 0 m moved before the trigger;
+  the attacker at full health right up to the column, 0 after it; one ultimate each. Circled for 14 s
+  and stood beside for 6 s by a player: nothing.
+- **CPU VS CPU** Toaku vs Dreadnought (real clips): both deal damage, decided by knockout; after the CPU
+  fixes Toaku deals 64–319 per match (was 52–235) with punches, kicks, grabs and his special.
+- **Cross-mode**: horde -> VS -> horde -> 8 rematches -> horde, all working, no VS leftovers in the horde
+  HUD; Android back (`__backPressed`) in every VS state; pause holds the fight still; QUIT disposes.
+- **Memory**: 24 consecutive matches — GPU geometries settle after three matches and stay flat; textures,
+  programs and scene objects flat.
+- Evidence: `production/qa/evidence/114`–`119`.
+
+## Needs an Android device
+
+Frame rate on a phone GPU (SwiftShader timings say nothing about it), the feel of the touch controls
+against the over-the-shoulder camera, audio, the hardware back button (simulated here), and overlay
+timings in real time (the harness steps game time faster than the CSS transitions run).
+
+## Known limits
+
+- No dedicated victory clips: Dreadnought roars (his Scream clip), Toaku raises a fist (key pose), Super
+  Tahu stays calm. INFERNO SLAM is Super Tahu's existing `Charged_Ground_Slam` clip plus a fire column.
+- Toaku has no dodge move: he evades by stepping out of range (sometimes jumping).
+- Dreadnought beats Toaku in every measured CPU VS CPU match: the stats the game gives him (see the brief's
+  Matchups line and its tuning knobs).
