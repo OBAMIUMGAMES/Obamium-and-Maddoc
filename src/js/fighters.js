@@ -472,10 +472,9 @@ export class ToakuClassic extends Fighter {
     this.meter = 0;
     this.specialHitT = 0;
     this.specialFinished = false;
-    this.invuln = this.cfg.special.duration + 0.6;
-    this.vel.set(0, Math.min(this.vel.y, 0), 0);
+    this.vel.set(0, Math.min(this.vel.y, 0), 0); // armoured, not invulnerable (as the rigged Toaku)
     this.aimAssist(world, 8, 3.2);
-    world.onSpecial();
+    world.onSpecial(this.cfg.special.name);
   }
 
   updateSpecial(dt, world) {

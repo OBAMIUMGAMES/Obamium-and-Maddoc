@@ -416,9 +416,13 @@ export class ClipFighter extends Fighter {
     if (this.alive) this.setState('launched');
   }
 
-  /** Whether this fighter shrugs off a grab closing on it (Super Tahu: his counter answers instead). */
+  /**
+   * Whether this fighter shrugs off a grab closing on it: Super Tahu (his counter answers instead), or a
+   * fighter in a move a grab cannot interrupt (grabProof). The grabber's grab then whiffs.
+   */
   refuseGrab(holder, world) {
-    return !!(this.vsCounter && this.vsCounter.grabbed(holder, world));
+    if (this.vsCounter) return !!this.vsCounter.grabbed(holder, world);
+    return !!(this.grabProof && this.grabProof());
   }
 
   /** Rooted to the spot (Super Tahu's counter): no control until released or defeated. */

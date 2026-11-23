@@ -422,16 +422,23 @@ export class Toaku extends ClipFighter {
   }
 
   // ---------------------------------------------------------------- MACHINEGUN IMPACT
+  /**
+   * MACHINEGUN IMPACT. Uninterruptible once started (armoured: blows deal their damage but no flinch or
+   * knockback; grabs on him are refused) but not invulnerable; a knockout and Super Tahu's ultimate
+   * still end it.
+   */
   startSpecial(world) {
     this.setState('special');
     this.meter = 0;
     this.specialHitT = 0;
     this.specialFinished = false;
-    this.invuln = this.cfg.mgi.windup + this.cfg.special.duration + 0.6;
     this.vel.set(0, Math.min(this.vel.y, 0), 0);
     this.aimAssist(world, 8, 3.2);
-    world.onSpecial();
+    world.onSpecial(this.cfg.special.name);
   }
+
+  /** Moves a grab cannot take him out of (MACHINEGUN IMPACT, the ENERGY OVERFLOW activation). */
+  grabProof() { return this.state === 'special' || this.state === 'overflow'; }
 
   updateSpecial(dt, world) {
     const S = this.cfg.special, M = this.cfg.mgi;

@@ -105,7 +105,7 @@ test('one hit defeats anyone: Dreadnought at full health, Dreadnought in WARLORD
     assert.equal(W.rageT, 0, 'his rage ended with him');
     assert.equal(D.flow.winner, 1);
   }
-  // Toaku in MACHINEGUN IMPACT (invulnerable for the whole move)
+  // Toaku in MACHINEGUN IMPACT (armoured: ordinary blows cannot interrupt it)
   {
     const D = vsTahu('toaku');
     const P = D.fighters[0];
@@ -114,9 +114,9 @@ test('one hit defeats anyone: Dreadnought at full health, Dreadnought in WARLORD
     D.step(1, [{ special: true }]);
     D.step(secs(0.2));
     assert.equal(P.state, 'special');
-    assert.ok(P.invuln > 0);
+    assert.ok(P.armored(), 'uninterruptible by ordinary blows');
     D.until(() => !P.alive, 6);
-    assert.equal(P.alive, false, 'defeated through MACHINEGUN IMPACT\'s invulnerability');
+    assert.equal(P.alive, false, 'defeated through MACHINEGUN IMPACT\'s protection');
     assert.equal(D.flow.winner, 1);
   }
 });

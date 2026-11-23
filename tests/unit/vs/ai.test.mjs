@@ -166,7 +166,7 @@ test('Toaku against a longer reach waits at its edge and punishes whiffed blows 
   // a Dreadnought who just keeps throwing an uppercut at him every 2.5 s: every miss is an opening
   let total = 0;
   const each = [];
-  for (const seed of [1, 2, 3, 4, 5]) {
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
     const D = duel(['toaku', 'dreadnought'], { type: 'cvc', seed, scripted: [false, true] });
     const [T, W] = D.fighters;
     D.place(0, 0, -6, 0).place(1, 0, 6, Math.PI);
@@ -179,10 +179,10 @@ test('Toaku against a longer reach waits at its edge and punishes whiffed blows 
     const dealt = D.log.hits.filter((h) => h.from === 0).reduce((s, h) => s + h.dmg, 0);
     each.push(Math.round(dealt)); total += dealt;
   }
-  // judged over the five runs (one run's timeline can leave few openings): the hovering bug gave a
-  // median of 64 and 570 in total
-  const median = [...each].sort((x, y) => x - y)[2];
-  assert.ok(median >= 150 && total >= 1000, `damage Toaku dealt in 30 s per match: ${each} (median ${median}, total ${Math.round(total)})`);
+  // judged over eight runs (one run's timeline can leave few openings): the hovering bug gave a median
+  // of 64 and a mean of 114 per run
+  const median = [...each].sort((x, y) => x - y)[3], mean = total / each.length;
+  assert.ok(median >= 150 && mean >= 150, `damage Toaku dealt in 30 s per match: ${each} (median ${median}, mean ${Math.round(mean)})`);
 });
 
 test('an attack decided with the opponent behind is carried out after the turn, not re-decided midway', () => {

@@ -187,7 +187,7 @@ const world = {
       el.style.opacity = 1;
     }
   },
-  onSpecial(name = 'MACHINEGUN IMPACT', kind = 'special') {
+  onSpecial(name, kind = 'special') {
     banner(`${name}!!`, kind);
     if (kind === 'fire') audio.inferno(); else audio.special();
     G.specialCam = kind === 'fire' ? 3.2 : 2.3;
