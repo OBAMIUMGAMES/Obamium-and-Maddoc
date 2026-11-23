@@ -682,7 +682,7 @@ function select(i) {
   bars.forEach((b, k) => { b.style.transitionDelay = `${k * 0.06}s`; b.style.transform = `scaleX(${stats[k].fill})`; });
   $('#sel-moves').innerHTML = c.moves.map((m) => `<li>${m}</li>`).join('');
   $('#sel-special').innerHTML = `SPECIAL <b>${c.special}</b>`;
-  $('#sel-arena').innerHTML = `HOME ARENA <b>${maps[c.map] ? maps[c.map].name : ''}</b>`;
+  $('#sel-arena').innerHTML = `HOME <b>${maps[c.map] ? maps[c.map].name : ''}</b>`; // fights anywhere: SELECT LOCATION
   showShowcase(c.id);
   seatOnThrone();
   titleT = 0;

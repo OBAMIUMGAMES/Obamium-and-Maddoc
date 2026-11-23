@@ -245,7 +245,9 @@ export const CONFIG = {
     jump: { velocity: 9.5, squat: 0.1, land: 0.18 },
     // the HUD's energy bar is his uppercut charge (he has no meter special)
     special: { name: '', meterMax: 100, meterPerHit: 0, meterPerHurt: 0, meterPassive: 0 },
-    camera: { distance: 1.18, height: 1.15, look: 1.25 }, // multipliers of CONFIG.camera for his size
+    // multipliers of CONFIG.camera for his size: further back and higher (1.7 m above his head where
+    // Toaku's is 1 m) so enemies at mid range and a boss stay visible over his shoulders
+    camera: { distance: 1.2, height: 1.3, look: 1.2 },
     hurtInvuln: 0.5,
     hurtTime: 0.3,
   },

@@ -230,6 +230,11 @@ Bosses are too heavy to lift (the grab whiffs). If he is knocked out mid-grab th
 **Dodge.** A dive roll in the stick's direction (his facing without input), invulnerable 0.3–1.45 s of
 the clip, 0.5 s cooldown, cancellable into movement at the end.
 
+**Size and framing.** Collision radius 1.1 m (Toaku 0.9), grab range 4.4 m (3.4), reach 4.2–4.8 m.
+His chase camera is 1.2× further back and 1.3× higher than the standard one (1.7 m above his head,
+where Toaku's is 1 m) so mid-range enemies and a boss stay visible over his shoulders; an enemy right
+in front of any fighter can still be hidden by his body, as with every chase camera.
+
 ## Dreadnought's throne & intro
 `src/js/throne.js` builds the throne from ~60 blocks merged into three meshes (one per material: black
 gunmetal, gold, emissive deep purple — 3 draw calls): a stepped dais, a seat with a purple cushion, a
