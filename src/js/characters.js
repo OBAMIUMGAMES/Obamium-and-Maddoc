@@ -16,6 +16,7 @@ export const ROSTER = [
     moves: ['4-punch combo', 'Rising flying kick', 'Grab, swing & throw', 'Thruster double jump + slam'],
     color: '#39ff6a',
     buttons: { jump: 'JUMP', jumpIcon: 'i-jump', special: 'MACHINEGUN<br>IMPACT', specialIcon: 'i-mgi', kick: true, grab: true },
+    vs: { player: true, cpu: true }, // VS MODE: pilotable, or a CPU opponent
   },
   {
     id: 'tahu',
@@ -30,6 +31,10 @@ export const ROSTER = [
     moves: ['4-punch combo', 'Spartan kick', 'Jump-and-roll dodge'],
     color: '#ff7a1a',
     buttons: { jump: 'DODGE', jumpIcon: 'i-dodge', special: 'INFERNO<br>SLAM', specialIcon: 'i-fire', kick: true, grab: false },
+    // VS MODE: a CPU-only special character (never piloted), at most one per match. He waits and only
+    // ever answers an attack with INFERNO SLAM, which defeats anyone (vsAI.js SuperTahuCounter). His
+    // horde-mode entry above is unchanged.
+    vs: { player: false, cpu: true, unique: true, counter: true, tag: 'CPU ONLY' },
   },
   {
     id: 'dreadnought',
@@ -45,6 +50,7 @@ export const ROSTER = [
     intro: true, // rises from his throne when chosen
     // a grounded heavyweight: no jump. DODGE takes the JUMP slot, RAGE the special's
     buttons: { jump: null, special: 'RAGE', specialIcon: 'i-rage', dodge: 'DODGE', dodgeIcon: 'i-dodge', kick: true, grab: true },
+    vs: { player: true, cpu: true },
   },
   { id: 'locked-2', locked: true },
 ];

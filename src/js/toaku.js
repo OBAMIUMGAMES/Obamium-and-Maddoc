@@ -323,7 +323,8 @@ export class Toaku extends ClipFighter {
       }
       if (this.clipT >= G.catchAt) {
         const reach = live ? Math.hypot(tgt.pos.x - this.pos.x, tgt.pos.z - this.pos.z) - this.radius - tgt.radius : Infinity;
-        if (reach < 1.3) { this.seize(tgt, world); this.grabPhase = 'hold'; } else this.grabPhase = 'miss';
+        // (VS MODE: Super Tahu shrugs a grab off — his counter answers it instead)
+        if (reach < 1.3 && !(tgt.refuseGrab && tgt.refuseGrab(this, world))) { this.seize(tgt, world); this.grabPhase = 'hold'; } else this.grabPhase = 'miss';
       }
     } else {
       this.vel.x *= 0.5; this.vel.z *= 0.5; // planted for the spin
@@ -515,6 +516,15 @@ export class Toaku extends ClipFighter {
       }
     }
     return super.animTargets(T, A);
+  }
+
+  /** VS MODE poses: arms flung out when knocked flying, held or floored; a raised fist when he wins. */
+  vsPose(T) {
+    switch (this.state) {
+      case 'launched': case 'thrown': case 'grabbed': case 'down': T.PoseFall = 1; return true;
+      case 'victory': T.PoseRise = 1; return true;
+    }
+    return false;
   }
 
   postAnimate(dt, world) {

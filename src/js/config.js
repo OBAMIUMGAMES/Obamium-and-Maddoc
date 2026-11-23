@@ -486,4 +486,74 @@ export const CONFIG = {
     // floor, never shorter than minArm m, and the camera rises by armRise x the length it lost (at most
     // maxRise m); with less than 60% of the arm free it swings toward open floor at up to wallTurn rad/s
     minArm: 1.6, armRise: 0.35, maxRise: 2.6, wallTurn: 1.8 },
+
+  /**
+   * VS MODE — 1v1 duels in the Glatorian Arena (design/vs-mode.md). The horde values above are not
+   * touched: whatever a fighter does differently in a duel comes from here.
+   */
+  vs: {
+    gap: 10,              // m between the two fighters' bodies when the match starts
+    hurtInvuln: 0.12,     // s after a hit before another lands (the horde's 0.5 s would swallow combos)
+    // knockback / launch a fighter takes, by mass (Super Tahu does not budge)
+    knockMul: { toaku: 1, dreadnought: 0.55, tahu: 0 },
+    launchFrom: 7,        // lift x knockMul at or above this sends the target flying: knockdown — the real
+                          // launchers only (uppercuts, finishers, slams); kicks and punches stagger
+    downTime: 0.55,       // s lying on the sand after a knockdown or a crash landing
+    getUpTime: 0.4,       // s getting back up (invulnerable, then a short grace)
+    getUpGrace: 0.35,
+    koSlowMo: 0.9,        // s of slow motion on the knockout blow
+    resultDelay: 2.8,     // s from the knockout to the results (victory / defeat poses meanwhile)
+    // per-fighter config changes for duels (deep-merged over CONFIG.<id>)
+    overrides: {
+      // one duel is ~400-600 HP of damage: the WARLORD RAGE meter fills after ~250 dealt (horde: 1000 + kills)
+      dreadnought: { rage: { perDamage: 0.4 } },
+    },
+    /**
+     * CPU fighting personalities (src/js/vsAI.js). Weights 0..1 unless noted; they scale the utility of
+     * real decisions, not animation speeds. reaction / think in seconds; range = preferred distance as a
+     * fraction of the fighter's main striking reach.
+     */
+    ai: {
+      dreadnought: { // the aggressive juggernaut: constant pressure, heavy blows, grabs, rarely backs off
+        aggression: 0.92, range: 0.72, moveFreq: 0.35, dodge: 0.2, heavy: 0.62, grab: 0.5, combo: 0.75,
+        counter: 0.4, special: 0.9, reaction: 0.3, defense: 0.12, retreat: 0.05, jump: 0, think: 0.2, spacing: 0,
+      },
+      toaku: { // the agile tactician: keeps moving, evades, punishes recoveries, avoids slugging matches
+        aggression: 0.55, range: 0.95, moveFreq: 0.9, dodge: 0.7, heavy: 0.3, grab: 0.45, combo: 0.85,
+        counter: 0.9, special: 0.8, reaction: 0.17, defense: 0.6, retreat: 0.45, jump: 0.35, think: 0.12,
+        spacing: 0.85, // against a longer reach: hover just outside it, dart in on an opening
+      },
+      default: {
+        aggression: 0.7, range: 0.85, moveFreq: 0.6, dodge: 0.45, heavy: 0.4, grab: 0.35, combo: 0.7,
+        counter: 0.6, special: 0.8, reaction: 0.24, defense: 0.35, retreat: 0.2, jump: 0.15, think: 0.16, spacing: 0.4,
+      },
+      pressureRamp: 0.12,  // per s without a blow traded: the urge to engage grows (no endless standoffs)
+      repeatPenalty: 0.35, // utility lost by the same attack as last time (variety)
+      wallMargin: 7,       // m from the wall where movement bends back toward the centre
+    },
+    // SUPER TAHU, CPU only: waits, then counters the first blow with INFERNO SLAM (instant defeat)
+    superTahu: {
+      turnRate: 2.2,       // rad/s: he calmly keeps facing the opponent
+      faceTurnRate: 9,     // rad/s: turning on the attacker for the counter
+      columnDelay: 0.08,   // s from the slam's impact to the column under the attacker
+      launch: 15,          // m/s the column throws the defeated attacker up
+      hpFloor: 1,          // the blow that wakes him can never knock him out
+    },
+    /** The 8 s intro (src/js/vsIntro.js). Shot ends in s; distances in fighter heights. */
+    intro: {
+      shots: [2, 4, 6, 7, 8],
+      low: { from: 1.55, to: 1.05, height: 0.16, look: 0.82, side: 0.35 },       // 1: low angle push-in
+      orbit: { dist: 1.25, height: 0.62, look: 0.7, sweep: 0.9 },                 // 2: orbit
+      mask: { dist: 0.5, height: 0.93, side: 0.26 },                              // 3: mask close-ups
+      wide: { dist: 1.15, height: 0.55, rise: 0.12 },                             // 4: standoff (x separation)
+      shake: 0.04,
+    },
+    camera: {
+      // PLAYER VS CPU: behind the player, looking past him at the opponent
+      versus: { dist: 1.15, height: 0.55, look: 0.38, ahead: 0.42, yawLerp: 3.5, follow: 5, minSep: 1.6, dragBack: 1.6 },
+      // CPU VS CPU: from the side of the fight, both fighters in frame
+      spectator: { minDist: 10, sepK: 0.95, heightK: 1.55, rise: 0.5, look: 0.42, lerp: 2.2, sideHold: 0.35 },
+      wide: { r: 34, h: 15, look: 1.5, track: 0.5 },
+    },
+  },
 };

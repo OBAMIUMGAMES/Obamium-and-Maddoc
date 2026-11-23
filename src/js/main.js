@@ -1,7 +1,7 @@
 /**
  * TOAKU: DESERT BRAWL — entry point. Scene, menus, maps, game loop, waves, HUD.
  * Flow: MAIN MENU -> CHARACTER SELECT -> the fighter's intro (DREADNOUGHT rises from his throne) ->
- * SELECT LOCATION -> the fight.
+ * SELECT LOCATION -> the fight. VS MODE (vsMode.js): 1v1 duels in the Glatorian Arena.
  * Fighters: TOAKU, SUPER TAHU, DREADNOUGHT; locations: GLATORIAN ARENA (featured), DESERT RUINS,
  * SUNSET TERRACES (locations.js).
  */
@@ -24,6 +24,7 @@ import { LOCATIONS, availableLocations, defaultLocation, stepLocation } from './
 import { waveComposition, killScore, waveClearHp } from './combat.js';
 import { loadCharacterTemplate, buildCharacterInstance } from './characterModel.js';
 import { ROSTER, nextSelectable, fighterStats } from './characters.js';
+import { createVsMode } from './vsMode.js';
 import toakuGlb from '../../assets/models/toaku.glb'; // bundled as bytes (esbuild binary loader)
 import tahuGlb from '../../assets/models/tahu.glb';
 import dreadnoughtGlb from '../../assets/models/dreadnought.glb'; // tools/build-character.mjs (7 Mixamo exports)
@@ -119,7 +120,7 @@ const G = {
   gameCam: new THREE.Vector3(), // the smoothed gameplay camera (scripted shots blend over it)
   bossZoom: 0,
   bossRef: null,
-  mode: 'title', // title | select | intro | location | playing | paused | over
+  mode: 'title', // title | select | intro | location | playing | paused | over | vs (VS MODE runs its own states)
   charId: 'toaku',
   sel: 0,
   locSel: 0,          // focused card on SELECT LOCATION (it opens on the featured one)
@@ -279,6 +280,7 @@ const BOHROK_MODELS = { lehvak: lehvakGlb, tahnok: tahnokGlb, gahlok: gahlokGlb,
 let assetsReady = false;
 const startBtn = $('#btn-start');
 startBtn.disabled = true;
+$('#btn-vs').disabled = true;
 const startLabel = startBtn.querySelector('.cta-text');
 startLabel.textContent = 'LOADING';
 const loadStart = performance.now();
@@ -305,6 +307,7 @@ Promise.allSettled([
   assetsReady = true;
   startBtn.disabled = false;
   startLabel.textContent = 'INIZIO';
+  $('#btn-vs').disabled = false;
 });
 /** The Glatorian Arena (model, sky, desert) and DREADNOUGHT's throne on its menu spot. */
 async function loadGlatorian(bytes) {
@@ -339,12 +342,16 @@ async function loadRhotuka(bytes) {
 }
 const rosterOf = (id) => ROSTER.find((c) => c.id === id);
 const available = (c) => !c.locked && (c.id !== 'tahu' || tahuTpl) && (c.id !== 'dreadnought' || (dreadTpl && maps.glatorian));
-/** A fresh fighter. Toaku falls back to the procedural classic model if his rig failed to load. */
-function createFighter(id) {
-  if (id === 'tahu' && tahuTpl) return new SuperTahu(cfg.tahu, buildCharacterInstance(tahuTpl, 'tahu'));
-  if (id === 'dreadnought' && dreadTpl) return new Dreadnought(cfg.dreadnought, buildCharacterInstance(dreadTpl, 'dreadnought'));
-  if (toakuTpl && !G.forceProcedural) return new Toaku(cfg.toaku, buildCharacterInstance(toakuTpl, 'toaku'));
-  return new ToakuClassic(cfg.toaku);
+/**
+ * A fresh fighter (its own instance: two of the same fighter can share a duel). Toaku falls back to
+ * the procedural classic model if his rig failed to load. `fcfg` replaces his config (VS MODE's duel
+ * values); default CONFIG.<id>.
+ */
+function createFighter(id, fcfg) {
+  if (id === 'tahu' && tahuTpl) return new SuperTahu(fcfg || cfg.tahu, buildCharacterInstance(tahuTpl, 'tahu'));
+  if (id === 'dreadnought' && dreadTpl) return new Dreadnought(fcfg || cfg.dreadnought, buildCharacterInstance(dreadTpl, 'dreadnought'));
+  if (toakuTpl && !G.forceProcedural) return new Toaku(fcfg || cfg.toaku, buildCharacterInstance(toakuTpl, 'toaku'));
+  return new ToakuClassic(fcfg || cfg.toaku);
 }
 
 /**
@@ -643,11 +650,13 @@ function showGameOver() {
   setScreen('over');
 }
 function pause(on) {
+  if (G.mode === 'vs') { vsMode.pause(on); return; }
   if (G.mode !== 'playing' && G.mode !== 'paused') return;
   G.mode = on ? 'paused' : 'playing';
   setScreen(on ? 'pause' : null);
 }
 function toTitle() {
+  if (vsMode && vsMode.active) vsMode.exit();
   clearWorld();
   endIntroUi();
   G.mode = 'title';
@@ -659,6 +668,7 @@ function toTitle() {
 window.__pauseGame = () => pause(true);
 /** Android back: one step back through the menus; in a fight, pause. */
 window.__backPressed = () => {
+  if (G.mode === 'vs') return vsMode.back();
   if (G.mode === 'select') { toTitle(); return true; }
   if (G.mode === 'intro') { skipIntro(); return true; }
   if (G.mode === 'location') { showSelect(); return true; }
@@ -987,9 +997,28 @@ tap('#btn-resume', () => pause(false));
 tap('#btn-quit', toTitle);
 tap('#btn-mute', () => { $('#btn-mute').textContent = audio.toggleMute() ? 'SOUND: OFF' : 'SOUND: ON'; });
 document.addEventListener('touchstart', () => audio.unlock(), { passive: true });
+
+// ---------- VS MODE (vsMode.js): 1v1 duels, Glatorian Arena only ----------
+/** Full-screen flash of a special (fire or energy). */
+function flash(kind) {
+  const f = $('#flash');
+  f.className = kind === 'fire' ? 'fire' : '';
+  void f.offsetWidth;
+  f.classList.add('go');
+}
+const vsMode = createVsMode({
+  cfg, $, scene, camera, audio, fx, fire, maps, ROSTER, portraits,
+  available: (c) => assetsReady && available(c),
+  createFighter, setScreen, setMap, hideShowcases, configureHud, banner, flash,
+  clearHorde: () => { if (G.player || G.enemies.length) clearWorld(); endIntroUi(); },
+  toTitle,
+  setMode: (m) => { G.mode = m; },
+});
+tap('#btn-vs', () => { if (assetsReady) vsMode.open(); });
 window.addEventListener('keydown', (e) => {
   audio.unlock();
   if (e.repeat) return;
+  if (G.mode === 'vs') { vsMode.key(e.code); return; }
   if (e.code === 'Escape' || e.code === 'KeyP') {
     if (G.mode === 'select') toTitle();
     else if (G.mode === 'intro') skipIntro();
@@ -1211,6 +1240,7 @@ function stepGame(dt, inp) {
 
 /** One tick of whatever the current mode runs. */
 function stepMode(dt, inp) {
+  if (G.mode === 'vs') { vsMode.step(dt, inp); return; }
   if (G.mode === 'select') stepShowcase(dt, true);
   else if (G.mode === 'location') stepShowcase(dt, false);
   else if (G.mode === 'intro') stepIntro(dt);
@@ -1232,6 +1262,7 @@ frame();
 
 // ---------- automated smoke tests / animation capture ----------
 window.__game = {
+  vs: vsMode,
   G, world, CONFIG, ROSTER, LOCATIONS, spawnTonua, spawnBohrok, elements, newGame, showSelect, select, fire,
   confirmFighter, skipIntro, showLocations, focusLocation, fightAt, maps,
   get intro() { return intro; },

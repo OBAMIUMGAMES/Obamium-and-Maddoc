@@ -566,7 +566,8 @@ export class Dreadnought extends ClipFighter {
         // judged on the ground plane: his hand closes at his own height, the body is lifted into it
         const palm = this.palmWorld(tmpH);
         const c = live ? tgt.center(tmpV) : null;
-        if (c && Math.hypot(palm.x - c.x, palm.z - c.z) < G.catchDist) { this.seize(tgt, world); this.grabPhase = 'hold'; } else this.grabPhase = 'miss';
+        // (VS MODE: Super Tahu shrugs a grab off — his counter answers it instead)
+        if (c && Math.hypot(palm.x - c.x, palm.z - c.z) < G.catchDist && !(tgt.refuseGrab && tgt.refuseGrab(this, world))) { this.seize(tgt, world); this.grabPhase = 'hold'; } else this.grabPhase = 'miss';
       }
     } else {
       this.vel.x *= 0.5; this.vel.z *= 0.5; // planted
@@ -755,6 +756,15 @@ export class Dreadnought extends ClipFighter {
         T.StandUp = 1; A.StandUp.time = this.clipT; return 40;
     }
     return super.animTargets(T, A);
+  }
+
+  /** VS MODE: he wins with the roar of his scream (the clip alone: no WARLORD RAGE). */
+  vsPose(T, A) {
+    if (this.state !== 'victory') return false;
+    const S = this.cfg.rage.scream;
+    T.Scream = 1;
+    A.Scream.time = Math.min(this.stateT * S.speed, S.end);
+    return true;
   }
 
   postAnimate(dt, world) {

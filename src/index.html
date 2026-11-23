@@ -92,6 +92,13 @@
     <div id="enemy-panel"><svg class="bot"><use href="#i-bot"></use></svg><div id="left">0</div><small>ENEMIES</small></div>
     <div id="score-panel"><div class="score-box"><small>SCORE</small><div id="score">0</div></div><button id="btn-pause" aria-label="Pause"><i></i><i></i></button></div>
     <div id="bossbar"><div class="name">TONUA</div><div class="bar"><div id="boss-fill"></div></div></div>
+    <!-- VS MODE (src/js/vsMode.js): both fighters' health and resource bars -->
+    <div id="vs-bars" aria-hidden="true">
+      <div class="vs-side l vs-theme" id="vs-side-0"><div class="vs-emb"><svg class="mask"><use href="#mask-toaku"></use></svg><img alt=""></div><div class="vs-info"><div class="vs-nm"><span class="vs-name"></span><em class="vs-tag"></em></div><div class="vs-hp"><i class="lag"></i><i class="fill"></i></div><div class="vs-res"><i></i><span></span></div><span class="vs-heal"></span></div></div>
+      <div class="vs-mid-tag">VS</div>
+      <div class="vs-side r vs-theme" id="vs-side-1"><div class="vs-emb"><svg class="mask"><use href="#mask-toaku"></use></svg><img alt=""></div><div class="vs-info"><div class="vs-nm"><span class="vs-name"></span><em class="vs-tag"></em></div><div class="vs-hp"><i class="lag"></i><i class="fill"></i></div><div class="vs-res"><i></i><span></span></div><span class="vs-heal"></span></div></div>
+    </div>
+    <button id="vs-cam" class="chip-btn">CAM: DYNAMIC</button>
     <div id="combo"></div>
     <div id="banner"></div>
     <div id="stick"><div id="knob"></div></div>
@@ -111,6 +118,8 @@
     <img class="key-art" src="ui/key-art.webp" alt="BIONICLE ITALIA: BRAWLERS">
     <div class="menu-side">
       <button id="btn-start" class="cta"><span class="cta-text">INIZIO</span></button>
+      <button id="btn-vs" class="cta vs-cta"><span class="cta-text">VS MODE</span></button>
+      <div id="vs-error" class="vs-error"></div>
       <div class="howto">
         <div><b>LEFT THUMB</b> move · <b>RIGHT DRAG</b> camera</div>
         <div><b>PUNCH</b> combo · <b>KICK</b> · <b>GRAB</b> &amp; throw · <b>JUMP</b> / <b>DODGE</b></div>
@@ -167,6 +176,47 @@
       <button id="loc-next" class="arrow" aria-label="Next location">&#9654;</button>
     </div>
     <button id="btn-fight" class="cta small"><span class="cta-text">FIGHT</span></button>
+  </div>
+
+  <!-- ======================= VS MODE (src/js/vsMode.js) ======================= -->
+  <div id="vs-type" class="screen">
+    <div class="vs-shade"></div>
+    <button id="vs-type-back" class="chip-btn">&#9664; MENU</button>
+    <h2 class="sel-head">VS MODE</h2>
+    <div class="vs-types">
+      <button class="vs-type" data-type="pvc"><span class="vt-ic">P1</span><b>PLAYER VS CPU</b><small>Pick your Self-MOC and fight a CPU opponent</small></button>
+      <button class="vs-type" data-type="cvc"><span class="vt-ic">CPU</span><b>CPU VS CPU</b><small>Pick two Self-MOCs and watch them fight it out</small></button>
+    </div>
+    <div class="vs-arena"><i></i>GLATORIAN ARENA</div>
+  </div>
+  <div id="vs-select" class="screen">
+    <div class="vs-shade"></div>
+    <button id="vs-sel-back" class="chip-btn">&#9664; MATCH TYPE</button>
+    <h2 class="sel-head" id="vs-sel-head">PLAYER VS CPU</h2>
+    <div class="vs-pick">
+      <div class="vs-slot vs-theme" id="vs-slot-0"><div class="vs-role"></div><div class="vs-big"><img alt=""></div><div class="vs-pname"></div><div class="vs-cpu-tag"></div><div class="vs-cards"></div></div>
+      <div class="vs-mid">VS</div>
+      <div class="vs-slot vs-theme" id="vs-slot-1"><div class="vs-role"></div><div class="vs-big"><img alt=""></div><div class="vs-pname"></div><div class="vs-cpu-tag"></div><div class="vs-cards"></div></div>
+    </div>
+    <div class="vs-arena"><i></i>GLATORIAN ARENA</div>
+    <button id="vs-go" class="cta small"><span class="cta-text">FIGHT</span></button>
+  </div>
+  <div id="vs-intro" class="screen">
+    <div class="vsi-plate p0 vs-theme"><div class="vsi-role"></div><div class="vsi-name"></div><div class="vsi-title"></div></div>
+    <div class="vsi-plate p1 vs-theme"><div class="vsi-role"></div><div class="vsi-name"></div><div class="vsi-title"></div></div>
+    <div class="vsi-vs"><span class="vsi-n0"></span><b>VS</b><span class="vsi-n1"></span></div>
+    <button id="vs-skip" class="chip-btn">SKIP &#9654;&#9654;</button>
+  </div>
+  <div id="vs-fight-txt" aria-hidden="true">FIGHT!</div>
+  <div id="vs-over" class="screen">
+    <div class="panel">
+      <h2 id="vs-result">VICTORY</h2>
+      <div id="vs-winner" class="vs-theme"><img alt=""><span></span></div>
+      <p id="vs-detail"></p>
+      <button id="vs-rematch" class="cta small"><span class="cta-text">REMATCH</span></button>
+      <button id="vs-reselect" class="chip-btn">CHARACTER SELECTION</button>
+      <button id="vs-menu" class="chip-btn">MAIN MENU</button>
+    </div>
   </div>
 
   <!-- ======================= PAUSE / DEFEAT ======================= -->

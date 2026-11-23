@@ -13,6 +13,16 @@ import { Fighter } from './fighters.js';
 import { inArc, angleDiff, applyDamage, addMeter } from './combat.js';
 import { smooth } from './pose.js';
 
+/**
+ * VS MODE states in which a fighter is out of its own (or its CPU's) control: held in a grip, thrown,
+ * launched, knocked down, getting up, pinned by Super Tahu's counter, or posing after a win.
+ */
+export const VS_STATES = new Set(['grabbed', 'thrown', 'launched', 'down', 'getup', 'pinned', 'victory']);
+/** VS states that take damage only (no stagger, no knockback): held or flying through the air. */
+const CARRIED = new Set(['grabbed', 'thrown']);
+const NO_HIT = Object.freeze({ landed: false, killed: false });
+const tmpC = new THREE.Vector3();
+
 export class ClipFighter extends Fighter {
   /**
    * @param {object} cfg fighter config (CONFIG.toaku / CONFIG.tahu)
@@ -42,6 +52,12 @@ export class ClipFighter extends Fighter {
     this.world = null;
     this.bufferedKeys = [];
     this.buffer = {};
+    // VS MODE (dormant otherwise): the duel's rules for this fighter (CONFIG.vs + its mass), whoever
+    // holds it, and Super Tahu's counter controller when this fighter is him
+    this.vs = null;
+    this.targetable = true;
+    this.holder = null;
+    this.vsCounter = null;
     this.weights = Object.fromEntries(channels.map((n) => [n, n === 'Idle' ? 1 : 0]));
     const A = inst.actions;
     const loops = new Set(['Run', 'Walk', ...Object.keys(cfg.breathLoops || {})]); // play on their own, looping
@@ -69,6 +85,7 @@ export class ClipFighter extends Fighter {
     if (this.comboTimer === 0) this.combo = 0;
     if (this.state !== 'special' && this.alive) this.meter = addMeter(this.meter, cfg.special.meterPassive * dt, cfg.special.meterMax);
     this.tick(dt);
+    if (this.vs && VS_STATES.has(this.state)) { this.vsStep(dt, world); return; } // VS: not in control
 
     const mx = input.moveX || 0, my = input.moveY || 0;
     const mag = Math.min(1, Math.hypot(mx, my));
@@ -108,8 +125,11 @@ export class ClipFighter extends Fighter {
   /** Fill target weights for the current state; return the blend rate, or 0 for idle/run. */
   animTargets(T, A) {
     if (this.state === 'punch') { T.Punch = 1; A.Punch.time = this.clipT; return 22; }
+    if (VS_STATES.has(this.state)) { if (!this.vsPose(T, A)) T.Idle = 1; return 12; }
     return 0;
   }
+  /** VS MODE: the pose for a VS state (held, flying, down, pinned, victory); false = the idle stance. */
+  vsPose() { return false; }
   /** Touched the ground after being airborne. */
   onLanded() {}
   /** After the pose is final this frame (world matrices are fresh). */
@@ -257,8 +277,211 @@ export class ClipFighter extends Fighter {
     this.hurtK = Math.max(0, this.hurtK - dt * 4);
     this.pitchSm += (this.pitch - this.pitchSm) * Math.min(1, dt * this.pitchRate);
     const holder = this.inst.holder;
-    if (this.state === 'dead') holder.rotation.x += (-1.45 - holder.rotation.x) * Math.min(1, dt * 3);
-    else holder.rotation.x = this.pitchSm - 0.22 * this.hurtK;
+    // a whole-body lean about the feet: falls, knockdowns and flinches
+    const lean = (to, rate) => { holder.rotation.x += (to - holder.rotation.x) * Math.min(1, dt * rate); };
+    switch (this.state) {
+      case 'dead': lean(-1.45, 3); break;
+      case 'down': lean(-1.45, 10); break;                       // flat on the sand
+      case 'launched': case 'thrown': lean(-0.55, 5); break;     // flung back
+      case 'getup': holder.rotation.x = -1.45 * (1 - smooth(0, this.vs ? this.vs.getUpTime : 0.45, this.stateT)); break;
+      case 'grabbed': lean(-0.25, 8); break;
+      case 'pinned': holder.rotation.x = -0.14 + Math.sin(this.stateT * 38) * 0.03; break; // rooted, trembling
+      default: holder.rotation.x = this.pitchSm - 0.22 * this.hurtK;
+    }
+  }
+
+  // ---------------------------------------------------------------- VS MODE: a fighter as a target
+  // Another fighter's blows and grabs reach this fighter only in VS MODE (its VS world routes them
+  // here); horde enemies still go through takeHit. Nothing below runs unless `this.vs` is set.
+
+  /** Held in a grip or flying from a throw: damage only, no stagger. */
+  get carried() { return CARRIED.has(this.state); }
+
+  /**
+   * A blow from the opponent. Misses while invulnerable (dodge, specials, getting up) and on a fighter
+   * lying down; otherwise damage, then — unless the move is armoured or the body is carried — knockback
+   * scaled by mass and hitstun, or a launch into a knockdown. A killing blow is a knockout.
+   * @returns {{landed:boolean, killed:boolean}}
+   */
+  vsReceive(dmg, dirX, dirZ, knock, lift, stun, world) {
+    const V = this.vs;
+    if (!this.alive || !V) return NO_HIT;
+    const carried = this.carried;
+    if (!carried && (this.invuln > 0 || this.state === 'down' || this.state === 'getup')) return NO_HIT;
+    const r = applyDamage(this.hp, dmg);
+    this.hp = r.hp;
+    this.hurtK = 1;
+    if (r.killed) { this.vsKnockout(dirX, dirZ, Math.max(lift, 4)); return { landed: true, killed: true }; }
+    if (carried) return { landed: true, killed: false };
+    this.invuln = Math.max(this.invuln, V.hurtInvuln);
+    this.meter = addMeter(this.meter, this.cfg.special.meterPerHurt, this.cfg.special.meterMax);
+    if (this.armored() || this.state === 'pinned' || this.state === 'victory') return { landed: true, killed: false };
+    const m = V.knockMul;
+    this.vel.x = dirX * knock * m; this.vel.z = dirZ * knock * m;
+    if (dirX || dirZ) this.facing = Math.atan2(-dirX, -dirZ); // turns into the blow
+    if (lift * m >= V.launchFrom || (!this.onGround && lift > 0)) {
+      this.vsLetGo();
+      this.vel.y = Math.max(this.vel.y * 0.3, lift * m);
+      this.onGround = false;
+      this.setState('launched');
+    } else if (m > 0) {
+      this.vsLetGo();
+      this.setState('hurt');
+    }
+    return { landed: true, killed: false };
+  }
+
+  /** Knocked out: stops everything (a held body is let go), falls; the world declares the result. */
+  vsKnockout(dirX = 0, dirZ = 0, lift = 0) {
+    if (!this.alive) return false;
+    this.alive = false;
+    this.hp = 0;
+    this.targetable = false;
+    const w = this.world;
+    const m = this.vs ? Math.max(0.35, this.vs.knockMul) : 1;
+    this.vel.x = dirX * 6 * m; this.vel.z = dirZ * 6 * m;
+    if (lift > 0) { this.vel.y = Math.max(this.vel.y, lift * m); this.onGround = false; }
+    this.holder = null;
+    this.root.rotation.x = 0;
+    this.onDeath(w);
+    this.setState('dead');
+    if (w) w.onPlayerDead();
+    return true;
+  }
+
+  /**
+   * Instant defeat (Super Tahu's ultimate, VS MODE only): health to zero regardless of health,
+   * armour, invulnerability or any temporary power-up; the move in progress, its CPU and its controls
+   * stop at once. Ordinary damage rules are not involved.
+   */
+  vsInstantDefeat(dirX = 0, dirZ = 0, launch = 0) {
+    if (!this.alive) return false;
+    this.invuln = 0;
+    this.vsLetGo();
+    return this.vsKnockout(dirX, dirZ, launch);
+  }
+
+  /** Let go of whatever this fighter holds (it is losing control). */
+  vsLetGo() {
+    if (this.held) { const e = this.held; this.held = null; if (e.release) e.release(); }
+  }
+
+  /** Caught in the opponent's grip: no control, placed by the holder every frame. */
+  grabbedBy(holder) {
+    this.vsLetGo();
+    this.setState('grabbed');
+    this.holder = holder;
+    this.targetable = false;
+    this.vel.set(0, 0, 0);
+    this.onGround = false;
+  }
+
+  /** Hurled by the holder: flies, crashes (landDamage from `cfg`), knocked down. */
+  thrownBy(thrower, vx, vy, vz, cfg) {
+    this.setState('thrown');
+    this.holder = null;
+    this.thrower = thrower;
+    this.throwCfg = cfg;
+    this.tumble = 0;
+    this.vel.set(vx, vy, vz);
+    this.onGround = false;
+    this.targetable = false;
+  }
+
+  /** Let go without a throw (the holder lost control): drops, knocked down. */
+  release() {
+    this.holder = null;
+    this.targetable = this.alive;
+    this.root.rotation.x = 0;
+    this.vel.set(0, 2, 0);
+    this.onGround = false;
+    if (this.alive) this.setState('launched');
+  }
+
+  /** Whether this fighter shrugs off a grab closing on it (Super Tahu: his counter answers instead). */
+  refuseGrab(holder, world) {
+    return !!(this.vsCounter && this.vsCounter.grabbed(holder, world));
+  }
+
+  /** Rooted to the spot (Super Tahu's counter): no control until released or defeated. */
+  vsPin() {
+    if (!this.alive) return false;
+    this.vsLetGo();
+    this.setState('pinned');
+    this.vel.x = 0; this.vel.z = 0;
+    return true;
+  }
+  /** Released from a pin. */
+  vsUnpin() { if (this.state === 'pinned') this.setState('idle'); }
+
+  /** The match is won: the victory pose (subclasses pick it in vsPose). */
+  vsVictory() {
+    if (!this.alive || this.state === 'victory') return false;
+    this.vsLetGo();
+    this.vel.x = 0; this.vel.z = 0;
+    this.setState('victory');
+    return true;
+  }
+
+  /** A VS frame out of control: the held / flying / knocked-down / pinned / victory states. */
+  vsStep(dt, world) {
+    const V = this.vs;
+    switch (this.state) {
+      case 'grabbed':
+        // the holder places the body every frame (position, facing, sync); it only struggles
+        if (!this.holder || this.holder.held !== this || !this.holder.alive) this.release();
+        this.animate(dt);
+        return;
+      case 'thrown': {
+        this.physics(dt, world, 0);
+        this.tumble += dt * 9;
+        this.root.rotation.x = -(this.tumble % (Math.PI * 2));
+        if (this.onGround && this.stateT > 0.05) {
+          // the crash: credited to the thrower by the VS world
+          this.root.rotation.x = 0;
+          world.fx.dust(this.pos, 16, this.height * 0.9, 1.2);
+          world.fx.shockwave(tmpC.set(this.pos.x, this.pos.y + 0.2, this.pos.z), this.height * 0.8, 0xfff0c0);
+          world.shake(0.35);
+          const C = this.throwCfg, l = Math.hypot(this.vel.x, this.vel.z) || 1;
+          this.throwCfg = null; this.thrower = null;
+          if (C) world.hitEnemy(this, C.landDamage, this.vel.x / l, this.vel.z / l, 0, 0, 0.8, true);
+          if (this.alive) this.vsDown();
+        }
+        break;
+      }
+      case 'launched':
+        if (this.physics(dt, world, 0) || (this.onGround && this.stateT > 0.1)) {
+          world.fx.dust(this.pos, 10, this.height * 0.6);
+          world.audio.land();
+          this.vsDown();
+        }
+        break;
+      case 'down':
+        this.physics(dt, world, 8);
+        if (this.stateT >= V.downTime) { this.setState('getup'); this.invuln = V.getUpTime + V.getUpGrace; }
+        break;
+      case 'getup':
+        this.physics(dt, world, 10);
+        if (this.stateT >= V.getUpTime) this.setState('idle');
+        break;
+      case 'pinned':
+        this.vel.x = 0; this.vel.z = 0;
+        this.physics(dt, world, 10);
+        break;
+      default: // victory
+        this.physics(dt, world, 10);
+    }
+    this.animate(dt);
+    this.sync();
+    this.postAnimate(dt, world);
+  }
+
+  /** Lands flat on the sand: knocked down, then gets up. */
+  vsDown() {
+    this.root.rotation.x = 0;
+    this.vel.x *= 0.3; this.vel.z *= 0.3;
+    this.targetable = true;
+    this.setState('down');
   }
 
   applyWeights() {
