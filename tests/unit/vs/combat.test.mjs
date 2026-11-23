@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG } from '../../../src/js/config.js';
-import { duel, dt } from './fixture.mjs';
+import { duel, dt, fakeToaku, fakeDreadnought, fakeTahu } from './fixture.mjs';
 
 const secs = (s) => Math.ceil(s / dt);
 const dmgTo = (D, i) => D.log.hits.filter((h) => h.to === i).reduce((s, h) => s + h.dmg, 0);
@@ -146,4 +146,15 @@ test('horde mode unaffected: a fighter without duel rules never enters a VS stat
   T.vs = null;
   assert.deepEqual(T.vsReceive(50, 0, 1, 10, 10, 0.5, D.worlds[1]), { landed: false, killed: false });
   assert.equal(T.hp, T.maxHp);
+});
+
+test('every match builds fresh fighters: their own parts share geometry, so disposing a match leaks nothing', () => {
+  // regression: each Toaku built his back thrusters (cylinder, torus, two flame cones per nozzle) from
+  // new geometries that nothing disposed: 8 GPU geometries lost per Toaku per VS match
+  const geos = (f) => { const s = new Set(); f.root.traverse((o) => { if (o.geometry && !o.isSkinnedMesh) s.add(o.geometry); }); return s; };
+  for (const make of [fakeToaku, fakeDreadnought, fakeTahu]) {
+    const a = make(), b = make();
+    const ga = geos(a), gb = geos(b);
+    for (const g of ga) assert.ok(gb.has(g), `${a.kind}: a ${g.type} is built anew for every instance`);
+  }
 });

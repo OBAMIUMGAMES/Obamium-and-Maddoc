@@ -1284,6 +1284,8 @@ window.__game = {
   renderStats() { const i = renderer.info; return { calls: i.render.calls, triangles: i.render.triangles, programs: i.programs ? i.programs.length : 0, geometries: i.memory.geometries, textures: i.memory.textures, sceneChildren: scene.children.length }; },
   /** Live shader programs (name + usage) to spot mid-fight compiles. */
   programs() { return (renderer.info.programs || []).map((q) => `${q.name}#${q.id} x${q.usedTimes} ${q.cacheKey.replace(/\s+/g, "")}`); },
+  /** The scene (leak hunting: which objects / geometries a mode leaves behind). */
+  get scene() { return scene; },
   get skinned() { return !!toakuTpl; },
   get tahuLoaded() { return !!tahuTpl; },
   get dreadnoughtLoaded() { return !!dreadTpl; },

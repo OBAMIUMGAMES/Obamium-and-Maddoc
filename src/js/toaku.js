@@ -31,6 +31,20 @@ export function segmentDistance(px, pz, ax, az, bx, bz) {
 const flameMat = () => new THREE.MeshBasicMaterial({ color: 0x2f8cff, transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide });
 const flameCoreMat = () => new THREE.MeshBasicMaterial({ color: 0xffc860, transparent: true, opacity: 0.95, depthWrite: false });
 
+let _thrusterGeo = null;
+/** The thruster parts' geometry, built once and shared by every Toaku. */
+function thrusterGeometry() {
+  if (!_thrusterGeo) {
+    _thrusterGeo = {
+      body: new THREE.CylinderGeometry(0.06, 0.085, 0.16, 12),
+      lip: new THREE.TorusGeometry(0.083, 0.014, 6, 14),
+      flame: new THREE.ConeGeometry(0.09, 0.7, 12, 1, true),
+      core: new THREE.ConeGeometry(0.048, 0.42, 10, 1, true),
+    };
+  }
+  return _thrusterGeo;
+}
+
 /** The player's heavyweight. Same public surface as SuperTahu (update, takeHit, meter, combo...). */
 export class Toaku extends ClipFighter {
   /**
@@ -59,25 +73,28 @@ export class Toaku extends ClipFighter {
     this.dress(inst);
   }
 
-  /** Back thrusters with flames, and the core / eye / turbine glows, fixed to his bones. */
+  /**
+   * Back thrusters with flames, and the core / eye / turbine glows, fixed to his bones. The parts'
+   * geometry is shared by every Toaku (each VS match builds fresh fighters; nothing to dispose).
+   */
   dress(inst) {
-    const A = this.cfg.attach;
+    const A = this.cfg.attach, G = thrusterGeometry();
     const metal = new THREE.MeshStandardMaterial({ color: 0x3a3c42, metalness: 0.8, roughness: 0.35 });
     const rim = new THREE.MeshStandardMaterial({ color: 0x9ea3aa, metalness: 0.9, roughness: 0.25 });
     inst.flames = [];
     for (const [key, splay] of [['nozzleL', -0.14], ['nozzleR', 0.14]]) {
       const noz = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.085, 0.16, 12), metal);
+      const body = new THREE.Mesh(G.body, metal);
       body.castShadow = true;
       noz.add(body);
-      const lip = new THREE.Mesh(new THREE.TorusGeometry(0.083, 0.014, 6, 14), rim);
+      const lip = new THREE.Mesh(G.lip, rim);
       lip.rotation.x = Math.PI / 2;
       lip.position.y = -0.08;
       noz.add(lip);
-      const fl = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.7, 12, 1, true), flameMat());
+      const fl = new THREE.Mesh(G.flame, flameMat());
       fl.position.y = -0.43;
       fl.rotation.x = Math.PI;
-      const inner = new THREE.Mesh(new THREE.ConeGeometry(0.048, 0.42, 10, 1, true), flameCoreMat());
+      const inner = new THREE.Mesh(G.core, flameCoreMat());
       inner.position.y = -0.1;
       fl.add(inner);
       const hot = glowSprite(0x7fc4ff, 0.34);
