@@ -4,6 +4,9 @@
   Keys: WASD move (Dreadnought: a light push walks, a full one runs), J punch (hold: Dreadnought's heavy uppercut), K kick, G grab,
   Space jump (not Dreadnought), Shift dodge, L special (Dreadnought: WARLORD RAGE when the meter is full), Q/R camera,
   Enter confirm (start / select / skip the intro / fight), ←/→ browse fighters and locations, Esc back / pause.
+  VS MODE: V on the main menu opens it; 1 / 2 (or Enter = 1) pick PLAYER VS CPU / CPU VS CPU; on the select screen
+  ←/→ browse fighter 1, ↑/↓ fighter 2, Enter FIGHT; Enter / Space skip the intro; C switches the CPU VS CPU camera;
+  on the results Enter REMATCH, Esc CHARACTER SELECTION, M MAIN MENU.
 - **Build the APK:** `npm run build:apk` (needs `apt-get install aapt apksigner zipalign dalvik-exchange` + JDK). Output: `builds/toaku-desert-brawl.apk` (debug-signed).
 - **Tests:** `npm test`
 - **Bohrok enemies:** `for k in lehvak tahnok gahlok pahrak nuhvok kohrak; do node tools/build-bohrok.mjs $k assets/source/bohrok/$k.meshy.glb; done` rebuilds the six models (rig fix + optimisation; build Lehvak first, the others reuse its layout). Details: `design/bohrok-import.md`.
@@ -24,6 +27,12 @@
   106 m across, 20 × Dreadnought's height) and writes the gameplay layout `assets/models/glatorian-layout.json` (floor edge,
   podium height, height grid). Code: `src/js/glatorian.js`;
   the SELECT LOCATION list is `src/js/locations.js`.
+- **VS MODE (1v1 duels, Glatorian Arena only):** PLAYER VS CPU and CPU VS CPU, Super Tahu as a CPU-only counter-fighter.
+  Code: `src/js/vsMode.js` (screens, match lifecycle, HUD, results), `src/js/vsRules.js` (who may fill which slot, the match
+  state machine, spawns), `src/js/vsCombat.js` (fighter-vs-fighter hits, knockback, KO), `src/js/vsAI.js` (the CPU and
+  Super Tahu's counter), `src/js/vsIntro.js` + `src/js/cineCam.js` (the 8 s intro on a reusable cinematic camera),
+  `src/js/vsCamera.js` (versus and spectator cameras); the fighters' VS states live in `src/js/clipFighter.js`. Tuning:
+  `CONFIG.vs`; roster flags: `characters.js` → `vs`. Design: `design/vs-mode.md`, `design/game-brief.md` → VS MODE.
 - **App icon:** `node tools/build-icons.mjs` rebuilds `android/res/mipmap-*` from `assets/branding/app-icon-source.jpg`.
 - **Interface:** `src/index.html` + `src/style.css` (per-fighter themes = `body[data-fighter]` blocks); fonts in `assets/fonts/` are inlined at build, the main-menu art comes from `assets/branding/key-art.jpg`.
 - **Tuning:** everything is in `src/js/config.js` — the fighters' moves and clip timings, their look, enemies, waves, the arena and the throne intro; the roster is `src/js/characters.js`, the locations `src/js/locations.js`. Design: `design/game-brief.md`.

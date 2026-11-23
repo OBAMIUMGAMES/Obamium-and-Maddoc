@@ -18,7 +18,7 @@ One visual language: angular metal frames, Oxanium display type, Rajdhani text (
 
 | Screen | Content |
 |---|---|
-| Main menu | the key art (`assets/branding/key-art.jpg`) at its own proportions, as tall as the screen allows, over a pre-blurred copy of itself; large **INIZIO** button (glow + shine); controls hint. The 3D scene is not rendered behind it. |
+| Main menu | the key art (`assets/branding/key-art.jpg`) at its own proportions, as tall as the screen allows, over a pre-blurred copy of itself; large **INIZIO** button (glow + shine) — the horde mode — and **VS MODE** under it (1v1 duels, see VS MODE); controls hint. The 3D scene is not rendered behind it. |
 | Character select | name plate, subtitle (Toaku: THE BUILDER; Super Tahu: none; Dreadnought: THE WARLORD), five animated stat bars, special, moves, home arena, roster strip with 3D-rendered portraits, **SELECT**, ◀ MENU; the fighter idles live in their home arena (Dreadnought sits on his throne) |
 | Fighter intro | DREADNOUGHT only: letterbox, front camera, he rises from his throne into his idle stance, name card **DREADNOUGHT / THE WARLORD**; TAP TO SKIP (also Enter, Esc, Android back) |
 | Select location | **SELECT LOCATION** heading, a large card (pre-rendered arena preview, tag, name, one-line description), a strip of location cards with ◀ ▶, **FIGHT**, ◀ FIGHTER; the chosen fighter idles live in the focused arena behind the menu |
@@ -324,6 +324,63 @@ floor edge per direction (52.9–56.7 m), the podium height (4.6 m) and a 1 m he
 - **Look:** a pale desert sky dome, fog, sun + sky light; the arena receives the fighters' shadows
   (1024² shadow map that follows the fight) but casts none; a sand plain with mesas outside, drifting
   dust. 1 mesh, 1 material.
+
+## VS MODE
+1v1 duels between the Self-MOCs, **always in the Glatorian Arena** (no arena choice; without the arena
+VS MODE refuses to open and says why). Code: `src/js/vsMode.js` (flow, HUD, results), `vsRules.js`
+(rules), `vsCombat.js` (fighter vs fighter), `vsAI.js` (CPUs), `vsIntro.js` + `cineCam.js` (intro),
+`vsCamera.js` (cameras); tuning `CONFIG.vs`. Plan and architecture: `design/vs-mode.md`.
+
+- **Match types:** PLAYER VS CPU (the player drives fighter 1, a CPU fighter 2) and CPU VS CPU (both
+  CPUs; the player watches — no controls, a CAM button switches a dynamic side view / a wide shot).
+- **Character select:** two slots with the roster's VS flags. Toaku and Dreadnought: pilotable or CPU.
+  **Super Tahu: CPU only** (refused as PLAYER 1 with a CPU ONLY tag), **at most one per match** (no
+  Super Tahu vs Super Tahu); ordinary mirror matches are allowed (two independent instances).
+- **Flow:** MATCH_TYPE_SELECTION → CHARACTER_SELECTION → ARENA_LOADING → CINEMATIC_INTRO → FIGHTING →
+  MATCH_FINISHED. Nothing can hurt and no CPU or pad acts outside FIGHTING; the fight starts exactly
+  once (intro end or SKIP); the first knockout decides (no double result). Results: VICTORY / DEFEAT
+  (PvC) or CPU n WINS, with REMATCH (same type, fighters, arena — everything rebuilt and reset),
+  CHARACTER SELECTION, MAIN MENU. The winner poses (Dreadnought's roar, Toaku's raised fist; Super Tahu
+  stays calm) under a slow orbit; the loser falls.
+- **Arena:** fighter 1 and 2 start on the centre line, 10 m between their bodies (plus their radii),
+  facing each other; the arena wall is the boundary for both.
+- **Duel combat** (the fighters' own moves, unchanged): blows land on the opponent with damage,
+  knockback by mass (Toaku 1, Dreadnought 0.55, Super Tahu 0), hitstun; launchers (lift × mass ≥ 7:
+  uppercuts, finishers, slams) send him flying → knocked down 0.55 s → getting up (invulnerable) →
+  back in control; armoured moves keep going (damage only); dodge / special invulnerability makes a blow
+  miss; grabs hold and throw the opponent fighter (the crash credited to the thrower). Duel-only values:
+  0.12 s after a blow before another lands (the horde's 0.5 s would swallow combos), and Dreadnought's
+  WARLORD RAGE meter fills after ~250 damage dealt (the horde needs 1000 plus kills).
+- **CPU (Toaku, Dreadnought):** a virtual controller pressing the same buttons as the pad (so only real
+  moves, with their timings, cooldowns and restrictions — Dreadnought never jumps): sees the opponent
+  through a reaction delay, decides every think tick by utility over approach / retreat / circle / wait
+  / punch combo / heavy / kick / grab / jump-slam / special or RAGE, turns to face before striking,
+  dodges (or side-steps) perceived attacks once each, avoids the wall, varies its attacks, presses on
+  when nothing happens. **Dreadnought** (aggression 0.92, heavy 0.62, grab 0.5, dodge 0.2, retreat
+  0.05): constant pressure, uppercuts and grabs, RAGE when full. **Toaku** (aggression 0.55, dodge 0.7,
+  moveFreq 0.9, counter 0.9): circles, side-steps, punishes recoveries; against a longer reach he
+  hovers outside it and fights hit-and-run.
+- **SUPER TAHU** (not the ordinary CPU): stands still, calmly facing the opponent, and never presses
+  anything — approaching, circling or touching him does nothing. The first blow that **lands** on him,
+  or a grab closing on him, wakes him (that blow can never knock him out): the attacker is pinned,
+  Super Tahu turns on him and performs **INFERNO SLAM** (his `Charged_Ground_Slam` clip, the fire in his
+  fist, the crown of fire); at the slam's impact a fire column erupts under the attacker and **defeats
+  him outright** — health to zero whatever his health, armour, invulnerability or WARLORD RAGE. Once per
+  match; every match starts him waiting again.
+- **Intro (8 s, SKIP):** 0–2 s low angle pushing in on fighter 1 with his nameplate; 2–4 s orbit around
+  fighter 2 with his; 4–6 s mask close-ups of both with a slight shake; 6–7 s wide standoff with the VS
+  graphic and both names; 7–8 s FIGHT! as the camera flies into the gameplay camera. Framing is in each
+  fighter's height. Super Tahu stands calm through it.
+- **Cameras:** PvC — behind the player on the line from the opponent through him, looking past him at
+  the opponent (the stick is relative to it; a drag turns it, it eases back); CvC — beside the fight,
+  both in frame, pulling back as they part, keeping its side; or a steady wide shot. Both stay over the
+  floor (the arena's spring arm).
+- **HUD:** both fighters' names, emblems, health (with the damage trail) and resource bars (Toaku's
+  ENERGY OVERFLOW, Dreadnought's WARLORD RAGE with its seconds; Super Tahu has none), the player's own
+  buttons in PvC only.
+- **Matchups (CPU VS CPU, measured over 20 seeded matches each):** mirror matches split about evenly
+  (~30 s each); Dreadnought beats Toaku almost always — by design he has 150% health, 140% damage,
+  armour on his heavy moves and far more reach; Toaku lands real damage but loses the race.
 
 ## Bohrok (enemies): Tahnok, Gahlok, Lehvak, Pahrak, Nuhvok, Kohrak
 The only standard enemies (the old Scrapbot drones are gone). Six types share one body, rig
