@@ -6,7 +6,7 @@
  * intro in vsIntro.js, the cameras in vsCamera.js / cineCam.js.
  */
 import * as THREE from 'three';
-import { VS, VsFlow, MATCH_TYPES, slotCheck, pairingOk, defaultPicks, vsRoster, vsSpawns, slotLabel } from './vsRules.js';
+import { VS, VsFlow, MATCH_TYPES, slotCheck, pairingOk, defaultPicks, vsRoster, vsSpawns, slotLabel, cyclePick } from './vsRules.js';
 import { makeVsWorld, vsFighterConfig, vsRulesFor, separate } from './vsCombat.js';
 import { CombatAI, SuperTahuCounter, idleInput, rngFrom, COUNTER } from './vsAI.js';
 import { VsIntro } from './vsIntro.js';
@@ -578,6 +578,14 @@ export function createVsMode(d) {
       if (st === VS.INTRO) return skip();
       if (st === VS.DONE && m && m.resultsShown && code === 'Enter') return rematch();
     }
+    if (st === VS.TYPE && (code === 'Digit1' || code === 'Numpad1')) return chooseType('pvc');
+    if (st === VS.TYPE && (code === 'Digit2' || code === 'Numpad2')) return chooseType('cvc');
+    if (st === VS.SELECT) {
+      // left / right browse fighter 1's slot, up / down fighter 2's (refused fighters are skipped)
+      const slot = code === 'ArrowLeft' || code === 'ArrowRight' ? 0 : code === 'ArrowUp' || code === 'ArrowDown' ? 1 : -1;
+      if (slot >= 0) return pick(slot, cyclePick(d.ROSTER, flow.type, slot, picks, code === 'ArrowLeft' || code === 'ArrowUp' ? -1 : 1, d.available));
+    }
+    if (st === VS.DONE && m && m.resultsShown && code === 'KeyM') { toMenu(); return true; }
     if (code === 'KeyC' && st === VS.FIGHT && m && m.type === 'cvc') { toggleCam(); return true; }
     return false;
   }

@@ -78,6 +78,21 @@ export function defaultPicks(roster, type, available = () => true, prev = []) {
 }
 
 /**
+ * The next fighter (in roster order, `dir` = +1 / -1, wrapping) that `slot` may take next to the other
+ * slot's pick — the keyboard's browse step on the select screen. The current pick if there is none.
+ */
+export function cyclePick(roster, type, slot, picks, dir = 1, available = () => true) {
+  const pool = vsRoster(roster, available);
+  if (!pool.length) return picks[slot];
+  const at = Math.max(0, pool.findIndex((c) => c.id === picks[slot]));
+  for (let k = 1; k <= pool.length; k++) {
+    const c = pool[(at + dir * k + pool.length * k) % pool.length];
+    if (c.id !== picks[slot] && slotCheck(c, type, slot, picks[1 - slot], available).ok) return c.id;
+  }
+  return picks[slot];
+}
+
+/**
  * Start spots: on a line through the arena's centre at `axisYaw`, the fighters' bodies `gap` m apart,
  * facing each other. Fighter 1 stands on the -axis side, fighter 2 on the +axis side.
  * @returns {[{x:number,z:number,facing:number},{x:number,z:number,facing:number}]}

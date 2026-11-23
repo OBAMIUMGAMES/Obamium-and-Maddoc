@@ -1026,6 +1026,7 @@ window.addEventListener('keydown', (e) => {
     else pause(G.mode === 'playing');
     return;
   }
+  if (e.code === 'KeyV' && G.mode === 'title') { if (assetsReady) vsMode.open(); return; }
   if (e.code === 'Enter' || (e.code === 'Space' && G.mode === 'intro')) {
     if (G.mode === 'title') showSelect();
     else if (G.mode === 'select') confirmFighter(ROSTER[G.sel].id);

@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ROSTER } from '../../../src/js/characters.js';
 import { CONFIG } from '../../../src/js/config.js';
-import { VS, VsFlow, slotCheck, pairingOk, defaultPicks, vsRoster, vsSpawns, slotLabel } from '../../../src/js/vsRules.js';
+import { VS, VsFlow, slotCheck, pairingOk, defaultPicks, vsRoster, vsSpawns, slotLabel, cyclePick } from '../../../src/js/vsRules.js';
 
 const R = (id) => ROSTER.find((c) => c.id === id);
 
@@ -106,4 +106,27 @@ test('start spots: on the arena floor, the configured gap between the bodies, fa
   // well inside the Glatorian floor (52.9 m to the wall at its narrowest), even for Dreadnought vs Dreadnought
   const [c, e] = vsSpawns(gap, 1.35, 1.35, 0.7);
   for (const s of [a, b, c, e]) assert.ok(Math.hypot(s.x, s.z) + 1.35 < 52.9 - 20);
+});
+
+test('browsing a slot (keyboard arrows) only ever lands on fighters that slot may take', () => {
+  // PLAYER VS CPU, player slot: Toaku <-> Dreadnought, Super Tahu skipped (CPU ONLY)
+  assert.equal(cyclePick(ROSTER, 'pvc', 0, ['toaku', 'dreadnought'], 1), 'dreadnought');
+  assert.equal(cyclePick(ROSTER, 'pvc', 0, ['dreadnought', 'toaku'], 1), 'toaku', 'wraps around, past Super Tahu');
+  assert.equal(cyclePick(ROSTER, 'pvc', 0, ['toaku', 'dreadnought'], -1), 'dreadnought');
+  // the CPU slot may take Super Tahu
+  assert.equal(cyclePick(ROSTER, 'pvc', 1, ['toaku', 'toaku'], 1), 'tahu');
+  // CPU VS CPU: never Super Tahu twice
+  assert.equal(cyclePick(ROSTER, 'cvc', 1, ['tahu', 'toaku'], 1), 'dreadnought');
+  assert.equal(cyclePick(ROSTER, 'cvc', 1, ['tahu', 'dreadnought'], 1), 'toaku');
+  // every step of a full lap is legal for its slot
+  for (const type of ['pvc', 'cvc']) for (const slot of [0, 1]) {
+    const picks = defaultPicks(ROSTER, type);
+    for (let k = 0; k < 6; k++) {
+      picks[slot] = cyclePick(ROSTER, type, slot, picks, k % 2 ? -1 : 1);
+      assert.ok(slotCheck(R(picks[slot]), type, slot, picks[1 - slot]).ok, `${type} slot ${slot}: ${picks}`);
+      assert.ok(pairingOk(ROSTER, type, picks), `${type}: ${picks} is a legal pairing`);
+    }
+  }
+  // nothing else legal: it stays put
+  assert.equal(cyclePick(ROSTER, 'pvc', 0, ['toaku', 'dreadnought'], 1, (c) => c.id !== 'dreadnought'), 'toaku');
 });
