@@ -90,7 +90,7 @@ Horde mode (waves, bosses, locations) is untouched.
 names. 5. 7–8 s FIGHT!, blend into the gameplay camera, controls / AI on. Distances and heights scale with
 each fighter's height. SKIP ends it at once and starts the fight (once).
 
-## Tests (automated: `npm test`, 81 of the suite's 288 in `tests/unit/vs/`)
+## Tests (automated: `npm test`, 82 of the suite's 289 in `tests/unit/vs/`)
 
 - **rules** (8): roster flags; PvC — Super Tahu refused as the player, allowed as the CPU; CvC — never
   twice, ordinary mirrors allowed; locked / unavailable fighters refused; default picks legal; the
@@ -115,7 +115,7 @@ each fighter's height. SKIP ends it at once and starts the fight (once).
   back within 8 s; throws and knockouts; a body on the wrong side turns over while gathering (real
   AnimationMixer clips: seam < 0.2 rad, no jump, nothing sinks); a held key cannot freeze a bone in the
   blend (watched failing first).
-- **cooldowns** (7), **MACHINEGUN IMPACT** (6), **dodge** (5), **ENERGY OVERFLOW** (9): see the brief's
+- **cooldowns** (7), **MACHINEGUN IMPACT** (6), **dodge** (5), **ENERGY OVERFLOW** (10): see the brief's
   Moves; each checks the CPU obeys the same rules.
 
 ## Verification in the real game

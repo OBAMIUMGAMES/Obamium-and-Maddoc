@@ -116,7 +116,7 @@ loaded at start-up (behind the main menu's LOADING), so FIGHT needs no loading s
 - **DODGE** (its own button, above JUMP; Shift on a keyboard) — a dive roll where the stick points
   (ahead without the stick), carried by the clip's own root motion (the arena wall stops it). Blows miss
   inside its evasion window (clip 0.35–1.3 s, about 0.6 s of the 1.3 s roll), not at its start or end;
-  0.5 s before the next roll, so mashing it never makes him untouchable. No attack starts mid-roll.
+  0.6 s before the next roll, so mashing it never makes him untouchable. No attack starts mid-roll.
 - **MACHINEGUN IMPACT** — when the core is fully charged: ~42 piston punches in 1.9 s
   with after-images, ending in a launching straight. Once started, ordinary blows and grabs cannot
   interrupt it: he still takes their damage (no invulnerability), a grab on him whiffs; a knockout and
