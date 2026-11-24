@@ -239,7 +239,7 @@ test('the slam is the Dive_Down_and_Land_2 clip: its dive meets the ground on th
   assert.equal(t.state, 'idle', 'back to the fight stance after the landing');
   assert.ok(Math.abs(framesDown / 60 - (L.end - L.contact) / L.speed) < 0.1, `the landing plays once (${(framesDown / 60).toFixed(2)} s)`);
   assert.ok(slid < 0.05, 'feet planted through the landing');
-  assert.ok(t.cooldown('heavy') > 0, 'a heavy move: it cools down');
+  assert.ok(t.cooldown('slam') > 0, 'the slam cools down');
 });
 
 test('MACHINEGUN IMPACT lands a flurry of hits and a finisher, then returns to idle', () => {

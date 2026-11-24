@@ -25,6 +25,13 @@ const FLOORED = new Set(['ragdoll', 'rollover', 'down', 'getup']);
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Quaternion();
 /** VS states that take damage only (no stagger, no knockback): held or flying through the air. */
 const CARRIED = new Set(['grabbed', 'thrown']);
+/**
+ * The attack each move state is (its cooldown kind, cfg.cooldowns): while the state runs that attack cannot
+ * start again, and its cooldown starts the moment the state is left - however it is left.
+ */
+export const ATTACK_OF_STATE = Object.freeze({
+  punch: 'punch', kick: 'kick', grab: 'grab', slam: 'slam', uppercut: 'uppercut', special: 'special', scream: 'special',
+});
 const NO_HIT = Object.freeze({ landed: false, killed: false });
 const tmpC = new THREE.Vector3();
 
@@ -64,7 +71,7 @@ export class ClipFighter extends Fighter {
     this.holder = null;
     this.vsCounter = null;
     // attack cooldowns by kind (cfg.cooldowns): s until another attack of that kind may start
-    this.cool = { normal: 0, heavy: 0, grab: 0, special: 0 };
+    this.cool = {};
     this.dodgeCool = 0; // s before the next dodge
     this.dodgeFacing = 0;
     this.atkSpeed = 1;  // attack clip playback multiplier (ENERGY OVERFLOW)
@@ -163,10 +170,22 @@ export class ClipFighter extends Fighter {
   armored() { return this.state === 'special'; }
 
   // ---------------------------------------------------------------- attack cooldowns
-  /** Seconds before an attack of `kind` ('normal' | 'heavy' | 'grab' | 'special') may start again. */
+  /** Seconds before an attack of `kind` (cfg.cooldowns: punch, kick, grab, slam, uppercut, special) may start again. */
   cooldown(kind) { return this.cool[kind] || 0; }
-  /** Whether an attack of `kind` may start now (its cooldown has run out). */
-  canAttack(kind) { return !(this.cool[kind] > 0); }
+  /**
+   * Whether an attack of `kind` may start now: not while that same attack is still running (no restarts),
+   * and not until its cooldown has run out.
+   */
+  canAttack(kind) { return !(this.cool[kind] > 0) && ATTACK_OF_STATE[this.state] !== kind; }
+  /**
+   * How unavailable an attack is, for its HUD button: 1 while it runs, then the share of its cooldown left
+   * (0 = ready).
+   */
+  cooldownFrac(kind) {
+    if (ATTACK_OF_STATE[this.state] === kind) return 1;
+    const C = this.cfg.cooldowns, c = this.cool[kind] || 0;
+    return C && C[kind] > 0 ? Math.min(1, c / C[kind]) : 0;
+  }
   /** A move of `kind` is over (hit or miss): its cooldown starts (game time; cfg.cooldowns). */
   coolDown(kind) {
     const C = this.cfg.cooldowns;
@@ -195,7 +214,7 @@ export class ClipFighter extends Fighter {
     // a press shortly after a punch finishes continues the combo instead of restarting it; a new
     // combo waits for the normal-attack cooldown
     const next = this.comboGap > 0 && this.punchIdx >= 0 && this.punchIdx < P.hits.length - 1 ? this.punchIdx + 1 : 0;
-    if (next === 0 && !this.canAttack('normal')) return;
+    if (next === 0 && !this.canAttack('punch')) return;
     if (next > 0) this.clipT = P.hits[next - 1].end;
     this.startPunch(next, world);
   }
@@ -225,7 +244,7 @@ export class ClipFighter extends Fighter {
     }
     if (this.clipT >= h.end) {
       if (this.punchQueued && this.punchIdx < P.hits.length - 1) this.startPunch(this.punchIdx + 1, world);
-      else { this.setState('idle'); this.comboGap = P.window; this.coolDown('normal'); }
+      else { this.setState('idle'); this.comboGap = P.window; }
     }
   }
 
@@ -607,6 +626,10 @@ export class ClipFighter extends Fighter {
   }
 
   setState(s) {
+    // an attack's cooldown runs from the moment its move is left - finished, cancelled into another move,
+    // interrupted by a blow, a grab or a knockdown - so nothing skips it (a punch combo stays one attack)
+    const attack = ATTACK_OF_STATE[this.state];
+    if (attack && s !== this.state) this.coolDown(attack);
     // a fresh launch clip for a new flight (a body already flying keeps its clip going)
     if ((s === 'launched' || s === 'thrown' || s === 'dead') && this.state !== 'launched' && this.state !== 'thrown') this.launchT = 0;
     super.setState(s);

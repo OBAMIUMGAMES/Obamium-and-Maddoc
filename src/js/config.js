@@ -7,7 +7,13 @@
  * may start; combo follow-ups are part of the same attack). ENERGY OVERFLOW's faster attacks do not
  * shorten them. Each fighter carries a copy (`cooldowns`) it can tune.
  */
-const ATTACK_COOLDOWNS = Object.freeze({ normal: 0.35, heavy: 0.8, grab: 2.0, special: 1.5 });
+/**
+ * Attack cooldowns (s), set per fighter and per attack in each fighter's `cooldowns` (ClipFighter): an attack's
+ * cooldown runs from the moment the move is over - however it ends: finished, cancelled into another move,
+ * interrupted - and the same attack can never start again while it runs or cools down. Kinds: punch (a new
+ * combo; its follow-ups are part of it), kick, grab (hit or miss), slam (Toaku's air slam), uppercut
+ * (Dreadnought's held punch), special (MACHINEGUN IMPACT, INFERNO SLAM, INSATIABLE DOMINION's scream).
+ */
 
 export const CONFIG = {
   arena: { radius: 38, gravity: 26 },
@@ -70,7 +76,7 @@ export const CONFIG = {
       aura: { color: 0x39ff6a, rim: 0xeaffd8, inflate: 0.03, opacity: 0.85, fadeIn: 0.25, fadeOut: 0.8, gather: 0.35 },
     },
     hurtInvuln: 0.5,
-    cooldowns: { ...ATTACK_COOLDOWNS }, // normal / heavy / grab / special
+    cooldowns: { punch: 0.35, kick: 1.5, grab: 3.0, slam: 0.8, special: 1.5 }, // s, per attack (see ATTACK_COOLDOWNS' note)
     hurtTime: 0.32,
 
     // ---- Meshy/Mixamo rigged model (assets/models/toaku.glb, tools/build-character.mjs) ----
@@ -203,7 +209,7 @@ export const CONFIG = {
       waveSpeed: 40, // m/s the eruption front travels outward
     },
     hurtInvuln: 0.5,
-    cooldowns: { ...ATTACK_COOLDOWNS }, // normal / heavy / grab / special
+    cooldowns: { punch: 0.35, kick: 1.5, special: 1.5 }, // s, per attack (no grab, no heavy punch)
     hurtTime: 0.3,
   },
 
@@ -348,7 +354,7 @@ export const CONFIG = {
     // where Toaku's is 1 m) so enemies at mid range and a boss stay visible over his shoulders
     camera: { distance: 1.42, height: 1.55, look: 1.45 },
     hurtInvuln: 0.5,
-    cooldowns: { ...ATTACK_COOLDOWNS }, // normal / heavy / grab / special
+    cooldowns: { punch: 0.35, uppercut: 0.8, kick: 1.5, grab: 3.0, special: 1.5 }, // s, per attack
     hurtTime: 0.3,
   },
 

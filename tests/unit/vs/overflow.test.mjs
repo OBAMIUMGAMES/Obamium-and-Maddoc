@@ -171,7 +171,7 @@ test('the mode: +25% movement, +20% attack animation speed, +30% damage; cooldow
   T.overflowT = O(T).duration;
   D.step(1, [{ kick: true }]);
   D.until(() => T.state === 'idle', 4);
-  assert.ok(Math.abs(T.cooldown('heavy') - T.cfg.cooldowns.heavy) <= 2 * dt, `heavy cooldown ${T.cooldown('heavy').toFixed(3)} s`);
+  assert.ok(Math.abs(T.cooldown('kick') - T.cfg.cooldowns.kick) <= 2 * dt, `kick cooldown ${T.cooldown('kick').toFixed(3)} s`);
 });
 
 test('30 s of fighting, then everything is back to normal (the clock stands still outside the fight); nothing stacks', () => {

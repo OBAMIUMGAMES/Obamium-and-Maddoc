@@ -294,13 +294,13 @@ export class CombatAI {
       const punish = opening ? P.counter : 0;
       // attacking into an attack that is coming: less attractive, much less for a fighter that keeps its distance
       const wary = threat ? (1 - P.aggression) * 0.45 + (P.spacing || 0) * 0.6 : 0;
-      if (inRange(M.punch.reach) && (ready('normal') || followUp)) U.punch = agg * (1 - P.heavy * 0.5) * 0.8 + punish * 0.7 - wary;
-      if (M.heavy && inRange(M.heavy.reach) && ready('heavy')) U.heavy = agg * P.heavy * 1.1 + punish * 0.8 - wary * 1.5;
+      if (inRange(M.punch.reach) && (ready('punch') || followUp)) U.punch = agg * (1 - P.heavy * 0.5) * 0.8 + punish * 0.7 - wary;
+      if (M.heavy && inRange(M.heavy.reach) && ready('uppercut')) U.heavy = agg * P.heavy * 1.1 + punish * 0.8 - wary * 1.5;
       // the flying kick closes the gap: a hit-and-run fighter's way to punish from outside its punch range
-      if (M.kick && inRange(M.kick.reach) && ready('heavy')) U.kick = agg * (0.25 + P.heavy * 0.6) * 0.85 + punish * (this.hitAndRun() ? 1.1 : 0.5) - wary;
+      if (M.kick && inRange(M.kick.reach) && ready('kick')) U.kick = agg * (0.25 + P.heavy * 0.6) * 0.85 + punish * (this.hitAndRun() ? 1.1 : 0.5) - wary;
       // a grab is not stopped by armour: the best punish of a long recovery at close range
       if (M.grab && inRange(M.grab.reach) && !seen.attacking && ready('grab')) U.grab = agg * P.grab * 1.3 * (opening || seen.state === 'idle' ? 1 : 0.5) + punish * P.grab;
-      if (M.slam && dist > R * 0.5 && dist < R + 2.5 && ready('heavy')) U.slam = agg * P.heavy * 0.45 + P.jump * 0.2;
+      if (M.slam && dist > R * 0.5 && dist < R + 2.5 && ready('slam')) U.slam = agg * P.heavy * 0.45 + P.jump * 0.2;
       if (M.special === 'meter' && S.meter >= S.cfg.special.meterMax && dist <= M.specialReach + F.radius && ready('special')) U.special = P.special * (1.2 + (hpF > 0.3 ? 0.3 : 0));
     }
     // WARLORD RAGE: a self-buff, used when the fight is on (about to engage, not under attack)
