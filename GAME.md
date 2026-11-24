@@ -2,7 +2,8 @@
 
 - **Play in a browser:** `npm install && npm run build:web`, open `dist/index.html`.
   Keys: WASD move (Dreadnought: a light push walks, a full one runs), J punch (hold: Dreadnought's heavy uppercut), K kick, G grab,
-  Space jump (not Dreadnought), Shift dodge, L special (Dreadnought: WARLORD RAGE when the meter is full), Q/R camera,
+  Space jump (not Dreadnought), Shift dodge, L special (Dreadnought: WARLORD RAGE when the meter is full),
+  O ENERGY OVERFLOW (Toaku, when its green bar is full), Q/R camera,
   Enter confirm (start / select / skip the intro / fight), ←/→ browse fighters and locations, Esc back / pause.
   VS MODE: V on the main menu opens it; 1 / 2 (or Enter = 1) pick PLAYER VS CPU / CPU VS CPU; on the select screen
   ←/→ browse fighter 1, ↑/↓ fighter 2, Enter FIGHT; Enter / Space skip the intro; C switches the CPU VS CPU camera;
@@ -16,7 +17,7 @@
   Spartan_Kick is first retargeted onto the new rig (the first file supplies the motion, the second the rig):
   ```
   node tools/retarget-clip.mjs old/Spartan_Kick.glb walking_2.glb Spartan_Kick.glb
-  node tools/build-character.mjs assets/models/dreadnought.glb walking_2.glb Run_03.glb Punch_Combo.glb Charged_Upward_Slash.glb Grip_and_Throw_Down.glb Roll_Dodge_2.glb Sit_to_standTransition_Female_2.glb Spartan_Kick.glb Skill_01.glb
+  node tools/build-character.mjs assets/models/dreadnought.glb walking_2.glb Run_03.glb Punch_Combo.glb Charged_Upward_Slash.glb Grip_and_Throw_Down.glb Roll_Dodge_2.glb Sit_to_standTransition_Female_2.glb Spartan_Kick.glb Skill_01.glb Fall3_1.glb Stand_Up1_1.glb
   ```
   He has no idle clip: `config.js` (`dreadnought.idle`) bakes one from the upright frame his stand-up reaches, with bone
   edits and a breathing loop (`src/js/clipPose.js`). Code: `src/js/dreadnought.js` (analog walk/run, palm grab, attack
@@ -33,13 +34,19 @@
   Super Tahu's counter), `src/js/vsIntro.js` + `src/js/cineCam.js` (the 8 s intro on a reusable cinematic camera),
   `src/js/vsCamera.js` (versus and spectator cameras); the fighters' VS states live in `src/js/clipFighter.js`. Tuning:
   `CONFIG.vs`; roster flags: `characters.js` → `vs`. Design: `design/vs-mode.md`, `design/game-brief.md` → VS MODE.
+- **Combat update (knockdowns, DODGE, ENERGY OVERFLOW, cooldowns):** VS knockdowns run the Fall3 launch clip, a
+  skeletal ragdoll on impact (`src/js/ragdoll.js`, no physics library), a gather into the get-up clip's first frame
+  and the Stand_Up clip (`src/js/clipFighter.js`); Toaku's DODGE (Roll_Dodge_2), the slam's Dive_Down_and_Land_2
+  landing and ENERGY OVERFLOW (the Charged_Spell_Cast emote, `src/js/toaku.js`, its aura from `src/js/rageAura.js`);
+  attack cooldowns for every fighter. Tuning: `CONFIG.toaku.overflow`, `.ragdoll`, `.getUp`, `.launch`,
+  `.cooldowns` (and Dreadnought's). Design: `design/game-brief.md` → Moves (Toaku), VS MODE; `design/vs-mode.md`.
 - **App icon:** `node tools/build-icons.mjs` rebuilds `android/res/mipmap-*` from `assets/branding/app-icon-source.jpg`.
 - **Interface:** `src/index.html` + `src/style.css` (per-fighter themes = `body[data-fighter]` blocks); fonts in `assets/fonts/` are inlined at build, the main-menu art comes from `assets/branding/key-art.jpg`.
 - **Tuning:** everything is in `src/js/config.js` — the fighters' moves and clip timings, their look, enemies, waves, the arena and the throne intro; the roster is `src/js/characters.js`, the locations `src/js/locations.js`. Design: `design/game-brief.md`.
 - **Rebuild a fighter's model** from Meshy's rigged (Mixamo) exports of one character — the first
   file supplies the mesh and skin, every file contributes its animation clip:
   ```
-  node tools/build-character.mjs assets/models/toaku.glb toaku_run_fast_7_inplace.glb toaku_Punch_Combo_1.glb toaku_Rising_Flying_Kick.glb toaku_Skill_02.glb
+  node tools/build-character.mjs assets/models/toaku.glb toaku_run_fast_7_inplace.glb toaku_Punch_Combo_1.glb toaku_Rising_Flying_Kick.glb toaku_Skill_02.glb toaku_Fall3.glb toaku_Stand_Up4.glb toaku_Roll_Dodge_2.glb toaku_Dive_Down_and_Land_2.glb toaku_Charged_Spell_Cast.glb
   node tools/build-character.mjs assets/models/tahu.glb Running.glb Punch_Combo_1.glb Spartan_Kick.glb Run_and_Jump.glb Charged_Ground_Slam.glb
   ```
   The build fails if any file's skeleton (bone names, rest pose) or mesh differs from the first,

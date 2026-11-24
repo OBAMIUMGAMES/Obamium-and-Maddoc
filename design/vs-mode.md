@@ -31,14 +31,31 @@ Horde mode (waves, bosses, locations) is untouched.
   MATCH_FINISHED`. Damage, AI and player input only in FIGHTING; the fight starts exactly once (intro end
   or SKIP); the first KO ends it (no double victory); everything stops in MATCH_FINISHED.
 - **Combat between fighters** (VS only): hits go to the opponent's `receiveHit` — damage, knockback scaled
-  by body mass (`vs.knockMul`), hitstun (`hurtTime`), launch → knockdown → get-up; armoured moves keep
-  going (damage only); dodge / special invulnerability makes a hit miss; a short `vs.hurtInvuln` so combos
-  connect (horde keeps its 0.5 s). Grabs hold / throw the opponent fighter like an enemy. Rage meter rates
-  for 1v1 come from `vs.overrides` (the horde values are unchanged).
+  by body mass (`vs.knockMul`), hitstun (`hurtTime`); armoured moves keep going (damage only); a dodge's
+  evasion window makes a hit miss; a short `vs.hurtInvuln` so combos connect (horde keeps its 0.5 s).
+  Grabs hold / throw the opponent fighter like an enemy. Rage / ENERGY OVERFLOW meter rates for 1v1 come
+  from `vs.overrides` (the horde values are unchanged).
+- **Knockdowns** (combat update; Toaku and Dreadnought — any rig with the Mixamo joints and Launch /
+  GetUp clips): a launcher (lift × mass ≥ `vs.launchFrom`) or a throw → `launched` / `thrown` (the Fall3
+  clip, time-warped so its touchdown meets the predicted landing) → on the first ground contact a
+  skeletal **ragdoll** (`ragdoll`: `src/js/ragdoll.js`, position-based dynamics on 20 joints; the flight's
+  motion carried in, mostly absorbed along the ground) → settled → **gather** (`rollover`: the body drawn
+  into the get-up clip's first frame — torso carried kinematically, turning over when needed, limbs still
+  simulated against the sand; constraints, contact clearance and bone rotations eased into that pose) →
+  `getup` (the clip from where the body lies, its last ragdoll pose blended in) → `idle`. Floored states
+  take no blows and cannot act; one knockdown per impact; a knockout lands as a ragdoll and rests.
+  Classic procedural fighters keep the old `down` → `getup`.
+- **Protected moves**: MACHINEGUN IMPACT and the ENERGY OVERFLOW activation are armoured (damage lands,
+  no flinch or launch) and grab-proof (`grabProof()`: the grab whiffs); death and Super Tahu's ultimate
+  still win. **Cooldowns** (`cooldowns` per fighter: normal 0.35, heavy 0.8, grab 2.0, special 1.5 s, real
+  seconds) gate every attack for players and CPUs alike; failed and successful grabs both cool down.
 - **CPU (ordinary fighters)**: a virtual controller per fighter (`vsAI.js`): perception through a delay
   buffer (reaction time), utility scores over the fighter's real options (approach, retreat, strafe /
-  circle, hold, punch combo, heavy uppercut, kick, grab, special / RAGE, dodge, jump) decided every think
-  tick, executed as button presses; moves already in progress are never cancelled; wall avoidance,
+  circle, hold, punch combo, heavy uppercut, kick, grab, special / RAGE, ENERGY OVERFLOW, dodge, jump)
+  decided every think tick, executed as button presses (ENERGY OVERFLOW through the fighter's own
+  `requestOverflow()`, the OVERFLOW button's function); options still cooling down are not options;
+  heavy blows are rolled away from (Toaku's DODGE), light ones side-stepped; nothing is issued while its
+  own emote plays; moves already in progress are never cancelled; wall avoidance,
   stuck detection, repetition penalty, pressure that grows while nothing happens. Profiles
   (`vs.ai.<id>`) weight those scores: Dreadnought = aggressive juggernaut, Toaku = agile tactician.
 - **SUPER TAHU** (`SuperTahuCounter`, not the ordinary AI): `PASSIVE_WAITING` (idle, slowly faces the
@@ -53,8 +70,11 @@ Horde mode (waves, bosses, locations) is untouched.
 
 - `src/js/vsRules.js` — pure: roster eligibility, match state machine, spawn placement.
 - `src/js/vsCombat.js` — the per-fighter VS world (hit routing, HUD hooks, KO), body separation.
-- `src/js/clipFighter.js` — fighters as targets (receiveHit, grabbed / thrown / launched / down / pinned,
-  instant defeat), dormant outside VS.
+- `src/js/clipFighter.js` — fighters as targets (receiveHit, grabbed / thrown / launched / ragdoll /
+  rollover / getup / pinned, instant defeat), dormant outside VS; cooldowns; the shared dive roll.
+- `src/js/ragdoll.js` — the skeletal ragdoll and its gather into a pose (combat update).
+- `src/js/clipUtils.js` — clip preparation (root motion, ground anchoring) and `poseFromClip` (a clip's
+  frame without the mixer, which writes only values that changed since its own last update).
 - `src/js/vsAI.js` — `CombatAI` (+ profiles), `SuperTahuCounter`.
 - `src/js/cineCam.js` — reusable cinematic camera (keyed shots, easing, orbit, cuts, shake, blend out).
 - `src/js/vsIntro.js` — the 8 s intro timeline (5 shots) on top of `cineCam.js`.
@@ -70,7 +90,7 @@ Horde mode (waves, bosses, locations) is untouched.
 names. 5. 7–8 s FIGHT!, blend into the gameplay camera, controls / AI on. Distances and heights scale with
 each fighter's height. SKIP ends it at once and starts the fight (once).
 
-## Tests (automated: `npm test`, 50 of the suite's 250 in `tests/unit/vs/`)
+## Tests (automated: `npm test`, 81 of the suite's 288 in `tests/unit/vs/`)
 
 - **rules** (8): roster flags; PvC — Super Tahu refused as the player, allowed as the CPU; CvC — never
   twice, ordinary mirrors allowed; locked / unavailable fighters refused; default picks legal; the
@@ -86,9 +106,17 @@ each fighter's height. SKIP ends it at once and starts the fight (once).
   Dreadnought never jumps, reactions take their delay, no spam over three matches); personalities; RAGE
   when full; nothing pressed outside FIGHTING; wall avoidance; Toaku waits at the edge of a longer reach
   and punishes whiffs; an attack decided with the opponent behind is carried out after the turn.
-- **cameras / intro** (10): the 8 s timeline (plates, VS, FIGHT!), SKIP once; every shot framed by the
+- **cameras / intro** (9): the 8 s timeline (plates, VS, FIGHT!), SKIP once; every shot framed by the
   fighter's height; close-ups on the rig's head; the cinematic camera; PvC — both in view, over the
   shoulder, the opponent never hidden; CvC spectator — both in frame, pulls back, no flips.
+- **ragdoll** (8, combat update): settles lying without sinking (> -1% of the height), stretching (< 5%)
+  or a knee bending backwards; a 30 m/s impact does not explode and the wall holds; the bones follow the
+  joints; the VS sequence launched → ragdoll → get-up → idle once per impact, no damage while floored,
+  back within 8 s; throws and knockouts; a body on the wrong side turns over while gathering (real
+  AnimationMixer clips: seam < 0.2 rad, no jump, nothing sinks); a held key cannot freeze a bone in the
+  blend (watched failing first).
+- **cooldowns** (7), **MACHINEGUN IMPACT** (6), **dodge** (5), **ENERGY OVERFLOW** (9): see the brief's
+  Moves; each checks the CPU obeys the same rules.
 
 ## Verification in the real game
 
@@ -112,17 +140,31 @@ emulation, the real models, clips and arena (`dist/`); a harness steps the game 
 - **Memory**: 24 consecutive matches — GPU geometries settle after three matches and stay flat; textures,
   programs and scene objects flat.
 - Evidence: `production/qa/evidence/114`–`119`.
+- **Combat update** (evidence `120`–`126`): knockdowns on the real rigs — Toaku launched 0.75 s →
+  ragdoll 0.82 s → gather 0.47 s → get-up 1.35 s, Dreadnought 0.58 → 0.70 → 0.52 → 3.50 s; at the
+  seam ≤ 4° per bone, no hips jump; nothing below the sand by more than 4 cm except fingertips inside
+  the get-up clips' own frames (Dreadnought's Stand_Up1 dips a fingertip 0.26 m at 4.8 s: the asset);
+  a forced turn-over (Dreadnought on his front) turned in 0.71–0.79 s. ENERGY OVERFLOW: a tap on the
+  OVERFLOW button starts the emote (weight 1.0, clip time only increasing, moved 0.000 m), the surge at
+  clip 1.917 s, then x1.25 / x1.2 / x1.3 with the bar counting down; the CPU activates it (CvC) and
+  fights on; a knockout and a rematch reset it; the horde HUD too. No button overlaps at 915 x 412 or
+  640 x 360.
 
 ## Needs an Android device
 
-Frame rate on a phone GPU (SwiftShader timings say nothing about it), the feel of the touch controls
-against the over-the-shoulder camera, audio, the hardware back button (simulated here), and overlay
-timings in real time (the harness steps game time faster than the CSS transitions run).
+Frame rate on a phone GPU (SwiftShader timings say nothing about it) — including the ragdoll frames and
+ENERGY OVERFLOW's aura shell (one extra skinned draw per Toaku mesh while it shows) —, the feel of the
+touch controls against the over-the-shoulder camera (DODGE and OVERFLOW are new buttons), audio, the
+hardware back button (simulated here), and overlay timings in real time (the harness steps game time
+faster than the CSS transitions run).
 
 ## Known limits
 
 - No dedicated victory clips: Dreadnought roars (his Scream clip), Toaku raises a fist (key pose), Super
   Tahu stays calm. INFERNO SLAM is Super Tahu's existing `Charged_Ground_Slam` clip plus a fire column.
-- Toaku has no dodge move: he evades by stepping out of range (sometimes jumping).
+- The ragdoll has no self-collision (a limb can pass through the body for a moment) and does not simulate
+  hands and toes (they keep their animated rotation; a tip under the sand turns them up to rest on it).
+  The turn-over is procedural (no clip): the torso is carried, the limbs follow physically.
+- The get-up clips are used as authored: Stand_Up1 has Dreadnought's fingertips in the sand mid-rise.
 - Dreadnought beats Toaku in every measured CPU VS CPU match: the stats the game gives him (see the brief's
   Matchups line and its tuning knobs).

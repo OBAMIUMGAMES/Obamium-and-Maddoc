@@ -79,8 +79,8 @@ loaded at start-up (behind the main menu's LOADING), so FIGHT needs no loading s
 |---|---|---|---|
 | Height | 3.6 m | 1.75 m | 1.74 m (Tonua's measured standing height) |
 | HP | 400 | 60 | 60 |
-| Damage | 12 / 13 / 14 / 26 punch combo, 32 flying kick, grab 6 + swing 16 + thrown body 30 (crash 45), 30 slam, 5×~42 + 40 special | 2 ("tink") | 10 head thrust; elemental special 6–15 + effect |
-| Style | Heavy, aim-assisted combos, kick, grab-and-throw, thrusters | Hops, taunts, darts in, flees | Rolls in as a ball, unfolds, walks, head thrust, one elemental special per type |
+| Damage | 12 / 13 / 14 / 26 punch combo, 32 flying kick, grab 6 + swing 16 + thrown body 30 (crash 45), 30 slam, 5×~42 + 40 special; all × 1.3 in ENERGY OVERFLOW | 2 ("tink") | 10 head thrust; elemental special 6–15 + effect |
+| Style | Heavy, aim-assisted combos, kick, grab-and-throw, thrusters, a dive-roll DODGE, ENERGY OVERFLOW | Hops, taunts, darts in, flees | Rolls in as a ball, unfolds, walks, head thrust, one elemental special per type |
 
 | | Super Tahu (player) |
 |---|---|
@@ -111,17 +111,40 @@ loaded at start-up (behind the main menu's LOADING), so FIGHT needs no loading s
   smashes into enemies in its path and crashes down hard (45 damage: three quarters of a Bohrok).
   Nothing in reach: the grab whiffs and he recovers quickly.
 - **Double jump** — second jump fires the back thrusters.
-- **Thruster slam** — punch in mid-air: hang on the thrusters, dive fist-first into an AoE impact.
+- **Thruster slam** — punch in mid-air: hang on the thrusters, dive into an AoE impact and land with
+  the Dive_Down_and_Land_2 clip (its touchdown frame on the frame he hits the ground; once, feet planted).
+- **DODGE** (its own button, above JUMP; Shift on a keyboard) — a dive roll where the stick points
+  (ahead without the stick), carried by the clip's own root motion (the arena wall stops it). Blows miss
+  inside its evasion window (clip 0.35–1.3 s, about 0.6 s of the 1.3 s roll), not at its start or end;
+  0.5 s before the next roll, so mashing it never makes him untouchable. No attack starts mid-roll.
 - **MACHINEGUN IMPACT** — when the core is fully charged: ~42 piston punches in 1.9 s
-  with after-images, ending in a launching straight. Toaku is invulnerable during it.
+  with after-images, ending in a launching straight. Once started, ordinary blows and grabs cannot
+  interrupt it: he still takes their damage (no invulnerability), a grab on him whiffs; a knockout and
+  Super Tahu's ultimate still win; the protection ends with the move. Its name shows as
+  MACHINEGUN IMPACT in every mode.
+- **ENERGY OVERFLOW** (OVERFLOW, when its green bar under his health is full; O on a keyboard) — the bar
+  fills with the damage his blows and grabs land, horde kills and a blow dodged inside a roll's evasion
+  window (once a roll); never from whiffs, never by itself, never while the mode runs. He plays the
+  uploaded Charged_Spell_Cast emote once and whole (2.67 s, its own length), planted: no moves or
+  attacks, blows hurt but do not interrupt, grabs whiff. At the emote's peak (1.9 s, both hands highest)
+  green energy bursts out of him (shock rings, sparks, flash, banner); the aura gathered through the
+  charge before it. Then 30 s of play: movement × 1.25, attack animations × 1.2, damage × 1.3, a green
+  aura, embers and a blazing core and eyes; no health back. Over: everything back to normal, the bar
+  refills from empty. A knockout ends it at once (mid-emote: it never starts). The CPU uses it too, from
+  a safe moment, through the same function, with the same emote. Tuning: `CONFIG.toaku.overflow`.
+- **Cooldowns** (every fighter, player and CPU; `CONFIG.<fighter>.cooldowns`): normal 0.35 s (a new
+  combo; the combo's own follow-ups are not delayed), heavy 0.8 s (kick, slam, uppercut), grab 2.0 s
+  (after a grab ends, caught or missed), special 1.5 s. They count real seconds: ENERGY OVERFLOW's faster
+  animations do not shorten them.
 
 ## Toaku model & animation
 `assets/models/toaku.glb` is built by `tools/build-character.mjs` from Meshy's rigged exports of the
-Toaku character sheet: run_fast_7_inplace, Punch Combo 1, Rising Flying Kick and Skill 02. All four
+Toaku character sheet: run_fast_7_inplace, Punch Combo 1, Rising Flying Kick and Skill 02, then Fall3,
+Stand_Up4, Roll_Dodge_2, Dive_Down_and_Land_2 and Charged_Spell_Cast (the combat update). All nine
 were verified before use — same 66-bone Mixamo skeleton, identical rest pose, same 11,518-vertex
 mesh (the build refuses anything else) — and every clip was played back on the optimised file
-(`production/qa/evidence/toaku-rig-verify.jpg`). Texture 2048² PNG → 1024² WebP: 22 MB of exports →
-0.68 MB. The export's material is fully matte, so `config.js` gives it a gunmetal look
+(`production/qa/evidence/toaku-rig-verify.jpg`). Texture 2048² PNG → 1024² WebP: 0.87 MB with all nine
+clips. The export's material is fully matte, so `config.js` gives it a gunmetal look
 (metalness 0.5, roughness 0.45). Clip times below were measured from the bone trajectories.
 
 | Move (button) | Animation |
@@ -132,9 +155,13 @@ mesh (the build refuses anything else) — and every clip was played back on the
 | Kick (KICK) | Rising Flying Kick: take-off 0.07 s, left foot at full extension 0.36–0.52 s, landing 0.74 s; its hip root motion is stripped and replayed as movement (walls stop it) |
 | Grab (GRAB) | Skill 02: the hands clasp in front at 0.13 s (the catch), two full turns with the hands together (the swing), the hands fly open at 1.25 s (the release) |
 | Jump / double jump | key poses baked from the kick's take-off: crouch, knee drive with a fist thrown up, a tight tuck for the thruster boost, arms out while falling, landing squash |
-| Thruster slam | fist-up hang on the thrusters → the extended power straight, pitched into a dive → crouch and rise |
+| Thruster slam | Dive_Down_and_Land_2: its first frames while he hangs on the thrusters, its dive timed by his altitude, its touchdown (0.5 s) on the impact frame, the landing played once at 2× to standing (2.1 s). The clip's own height is re-anchored at load (gameplay owns the fall) |
+| Dodge (DODGE) | Roll_Dodge_2 at 1.5×, carried by its own root motion (it rolls diagonally, so he is turned to roll where the stick points) |
 | MACHINEGUN IMPACT | the four punches of Punch Combo 1 looped at 3.2× speed, green after-images, the power straight as finisher |
-| Hurt / death | flinch tilt / falls on his back |
+| ENERGY OVERFLOW (OVERFLOW) | Charged_Spell_Cast, whole and once: wind-up, a crouched charge (0.6–1.5 s), the release with both hands up (1.9 s, the surge), back to the stance it began in (2.67 s). In place (≤ 0.35 m of sway that returns): no root motion to extract |
+| Launched / thrown (VS) | Fall3, timed by the predicted time to the ground so its touchdown (0.55 s) meets the landing; its height re-anchored at load |
+| Knockdown (VS) | ragdoll on impact, then the body gathers into Stand_Up4's first frame and Stand_Up4 gets him up (below, VS MODE) |
+| Hurt / death | flinch tilt / falls on his back (horde); VS: a knockout lands as a ragdoll and stays down |
 
 The back thrusters (nozzles, flames, turbine glow) and the glowing core and eyes are attached to
 his bones at points measured on the mesh (raycasting the bind pose and sampling the texture for
@@ -184,15 +211,16 @@ an avenue climbing the ridge to a far monument, peach-pink sunset haze.
 ## DREADNOUGHT model & animation
 `assets/models/dreadnought.glb` is built by `tools/build-character.mjs` from Meshy's Mixamo exports of
 the overhauled character: walking_2, Run_03, Punch_Combo, Charged_Upward_Slash, Grip_and_Throw_Down,
-Roll_Dodge_2, Sit_to_standTransition_Female_2 and Skill_01 (the scream). They are Draco-compressed; the
+Roll_Dodge_2, Sit_to_standTransition_Female_2 and Skill_01 (the scream), then Fall3_1 and Stand_Up1_1
+(VS knockdowns, the combat update). They are Draco-compressed; the
 build decodes them and **refuses to build if any skeleton differs** — all share one 66-joint Mixamo
 rig and one mesh (46 k vertices, 29.5 k triangles). This model replaces the previous one outright:
 its clips (run_fast_10_inplace, Roll_Behind_Cover, Sit_to_Stand_Transition_M) and the baked jump poses
 are gone. The one move without a new clip, the Spartan kick, is the previous model's Spartan_Kick
 **retargeted** onto the new rig by `tools/retarget-clip.mjs` (each joint's world rotation away from the
 source rest pose is applied to the new rest pose; the hips' travel is scaled by the hip heights), so
-KICK still works. Constant channels are dropped (67 per clip remain). 9 clips, three 1024² WebP
-textures: 1.99 MB. The rig is never altered (no bone is scaled); the game scales the whole model to
+KICK still works. Constant channels are dropped (67 per clip remain). 11 clips, three 1024² WebP
+textures: 2.18 MB. The rig is never altered (no bone is scaled); the game scales the whole model to
 **5.2 m — 1.44 × Toaku's 3.6 m**.
 
 **Idle.** Baked at load (`src/js/clipPose.js`, `dreadnought.idle` in `config.js`): the upright frame his
@@ -212,6 +240,8 @@ baked the same way (the stand-up's first frame).
 | Crushing grab (GRAB) | Grip_and_Throw_Down at 1.45×: grips at 0.88 s, squeezes at 1.6 / 2.25 / 2.9 s, slams at 3.42 s |
 | Dodge (DODGE) | Roll_Dodge_2, carried by its own root motion (walls stop it) |
 | WARLORD RAGE (RAGE) | Skill_01, the scream: the roar at 0.45 s, its last frame held 0.6 s |
+| Launched / thrown (VS) | Fall3_1, timed to touch down (0.6 s) on the landing; its height re-anchored at load |
+| Knockdown (VS) | a heavy ragdoll (bulkier, more damping and friction: no bounce; his cape only follows), then he gathers into the start of Stand_Up1's rise (1.3 s, on his back) and Stand_Up1 1.3–6.2 s at 1.4× gets him up |
 | Throne intro | Sit_to_standTransition_Female_2 (recentred where he ends up standing) |
 
 **Analog movement** (`dreadnought.locomotion`). How far the stick is pushed picks the gait: under 15 %
@@ -344,15 +374,33 @@ VS MODE refuses to open and says why). Code: `src/js/vsMode.js` (flow, HUD, resu
   stays calm) under a slow orbit; the loser falls.
 - **Arena:** fighter 1 and 2 start on the centre line, 10 m between their bodies (plus their radii),
   facing each other; the arena wall is the boundary for both.
-- **Duel combat** (the fighters' own moves, unchanged): blows land on the opponent with damage,
-  knockback by mass (Toaku 1, Dreadnought 0.55, Super Tahu 0), hitstun; launchers (lift × mass ≥ 7:
-  uppercuts, finishers, slams) send him flying → knocked down 0.55 s → getting up (invulnerable) →
-  back in control; armoured moves keep going (damage only); dodge / special invulnerability makes a blow
-  miss; grabs hold and throw the opponent fighter (the crash credited to the thrower). Duel-only values:
-  0.12 s after a blow before another lands (the horde's 0.5 s would swallow combos), and Dreadnought's
-  WARLORD RAGE meter fills after ~250 damage dealt (the horde needs 1000 plus kills).
+- **Duel combat** (the fighters' own moves): blows land on the opponent with damage, knockback by mass
+  (Toaku 1, Dreadnought 0.55, Super Tahu 0), hitstun; armoured moves keep going (damage only); a dodge's
+  evasion window makes a blow miss; grabs hold and throw the opponent fighter (the crash credited to the
+  thrower). Duel-only values: 0.12 s after a blow before another lands (the horde's 0.5 s would swallow
+  combos); Dreadnought's WARLORD RAGE meter fills after ~250 damage dealt (the horde needs 1000 plus
+  kills), Toaku's ENERGY OVERFLOW after ~100 (horde: ~8 Bohrok).
+- **Knockdowns (Toaku, Dreadnought):** only a launcher (lift × mass ≥ 7: uppercuts, finishers, slams)
+  or a throw — never an ordinary hit — runs LAUNCHED → AIRBORNE → GROUND IMPACT → RAGDOLL → GATHER →
+  GETTING UP → fighting. Flying, the Fall3 clip plays, timed by the predicted time to the ground; the
+  trajectory is the existing physics (walls included); no control, no attack, the CPU waits. On the
+  frame the body meets the sand: dust, a thud, and a **real skeletal ragdoll** (`src/js/ragdoll.js`, no
+  library: Verlet point masses at 20 Mixamo joints, rigid bone links, compliant torso braces, fold
+  limits, a knee hinge, ground and wall contact with friction; ~45 constraints, 2 substeps × 6
+  iterations) carrying the flight's motion (most of its speed along the ground absorbed). It settles
+  (calm 0.3 s, or 2.4–2.6 s at most: never stuck). Then the body **gathers** into the get-up clip's first
+  frame: the torso carried as one piece — turning over if it lies on the wrong side (Toaku's Stand_Up4
+  starts on his front, Dreadnought's Stand_Up1 on his back) — the limbs drawn along the sand by the
+  physics. The clip then takes over from where the body lies (no teleport, no spin, ≤ 4° left to blend
+  per bone) and gets him up; its drift moves him, walls stop it. Untouchable and unable to act from
+  impact to standing; one knockdown per impact. A knockout lands the same way and stays down.
+- **MACHINEGUN IMPACT** (Toaku): cannot be interrupted by blows or grabs once started (damage still
+  lands); its name shows in the banner. **ENERGY OVERFLOW** (Toaku): above (Moves); in the duel his side
+  bar glows green with its seconds, and the emote is an opening the opponent's CPU will punish.
+- **Cooldowns** (above, Moves) hold for the CPU too: it never picks an attack that is cooling down.
 - **CPU (Toaku, Dreadnought):** a virtual controller pressing the same buttons as the pad (so only real
-  moves, with their timings, cooldowns and restrictions — Dreadnought never jumps): sees the opponent
+  moves, with their timings, cooldowns and restrictions — Dreadnought never jumps; ENERGY OVERFLOW is
+  started through the fighter's own activation function, from a safe moment): sees the opponent
   through a reaction delay, decides every think tick by utility over approach / retreat / circle / wait
   / punch combo / heavy / kick / grab / jump-slam / special or RAGE, turns to face before striking,
   dodges (or side-steps) perceived attacks once each, avoids the wall, varies its attacks, presses on
@@ -384,9 +432,10 @@ VS MODE refuses to open and says why). Code: `src/js/vsMode.js` (flow, HUD, resu
   ENERGY OVERFLOW, Dreadnought's WARLORD RAGE with its seconds; Super Tahu has none), the player's own
   buttons in PvC only.
 - **Matchups (CPU VS CPU, seeded matches):** mirror matches split (either slot wins; ~20–40 s);
-  Dreadnought beats Toaku every time (24 of 24) — by design he has 150% health, 140% damage, armour on
-  his heavy moves and far more reach; Toaku fights back (on average ~125 of Dreadnought's 600 health,
-  up to ~320 in the real game) but loses the race. Knobs if that should change: `CONFIG.vs.overrides`
+  Dreadnought beats Toaku every time (24 of 24; after the combat update still 6 of 6 sampled, Toaku
+  using ENERGY OVERFLOW in 4 of them) — by design he has 150% health, 140% damage, armour on his heavy
+  moves and far more reach; Toaku fights back (on average ~125 of Dreadnought's 600 health, up to ~500
+  with ENERGY OVERFLOW) but loses the race. Knobs if that should change: `CONFIG.vs.overrides`
   (duel-only stats), `vs.knockMul`, `vs.launchFrom`, `vs.ai.<id>`.
 
 ## Bohrok (enemies): Tahnok, Gahlok, Lehvak, Pahrak, Nuhvok, Kohrak

@@ -276,6 +276,7 @@ export class Toaku extends ClipFighter {
   updateOverflow(dt, world) {
     const O = this.cfg.overflow, E = O.emote;
     this.vel.x = 0; this.vel.z = 0;
+    if (this.vel.y > 0) this.vel.y = 0; // planted: a blow's lift (Sidorak's charge) does not toss him mid-emote
     this.clipT = Math.min(this.emoteLen, this.clipT + dt * E.speed);
     if (!this.surged && this.clipT >= E.surge) this.surge(world);
     else if (!this.surged && this.clipT >= E.charge) {

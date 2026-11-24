@@ -106,6 +106,17 @@ test('OVERFLOW plays the uploaded emote once and whole, at its own length, plant
   assert.deepEqual(D.log.overflow.map(([, p]) => p), ['charge', 'surge', 'on'], 'one activation');
 });
 
+test('a blow\'s lift does not toss him mid-emote (Sidorak\'s charge sets the player\'s upward speed directly)', () => {
+  const { D, T } = setup('dreadnought', 20);
+  activate(D, T);
+  D.step(secs(0.5));
+  T.vel.y = 9; T.onGround = false; // what Sidorak.strike does to the player it hits
+  let top = 0;
+  for (let k = 0; k < secs(1); k++) { D.step(1); top = Math.max(top, T.pos.y); }
+  assert.ok(top < 0.05, `stayed on the ground (rose ${top.toFixed(2)} m)`);
+  assert.equal(T.state, 'overflow', 'and the emote played on');
+});
+
 test('the green surge bursts at the emote\'s peak: the aura gathers from the charge point, full from the surge on', () => {
   const { D, T } = setup('dreadnought', 20);
   activate(D, T);
