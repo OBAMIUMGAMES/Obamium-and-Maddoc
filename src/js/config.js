@@ -147,7 +147,12 @@ export const CONFIG = {
       whiffEnd: 0.32, // nothing caught: recover from here
       releaseAt: 1.25, // after two full turns the hands fly open
       end: 1.283,
-      range: 3.4, cone: 2.0, lungeSpeed: 6,
+      lungeSpeed: 6,
+      catchGap: 1.3, // m body to body at which the clasping hands catch (the hitbox)
+      // grab magnetism (grabAssist.js): targets up to `select` m body to body, within `cone` rad of his
+      // facing (never behind), in sight; during the reach a turn of at most turnRate rad/s and a slide of
+      // at most maxSlide m in all; the catch accepts catchGap + tolerance
+      assist: { select: 2.4, tolerance: 0.5, cone: 1.05, turnRate: 14, maxSlide: 0.85, angleWeight: 1.5 },
       grabDamage: 6,
       swingDamage: 16, swingKnock: 13, swingLift: 6, // anyone the swung body sweeps through
       throwSpeed: 28, throwUp: 3, // a low, hard hurl: stays at body height for its ~15 m flight
@@ -324,7 +329,10 @@ export const CONFIG = {
     // by its upper body (`hold` x its height), and turns with his hand. Sidorak can be grabbed too.
     grab: {
       speed: 1.45, reachYaw: 1.34, catchAt: 0.88, whiffEnd: 1.25, crush: [1.6, 2.25, 2.9], releaseAt: 3.42, end: 4.3,
-      range: 5.4, cone: 2.4, lungeSpeed: 5, catchDist: 3.2, hold: 0.72, bossHold: 0.78,
+      lungeSpeed: 5, hold: 0.72, bossHold: 0.78,
+      catchGap: 2.4, // m from his open palm to the target's body at which the grip closes (the hitbox)
+      // grab magnetism (grabAssist.js), sized for his reach: see Toaku's grab
+      assist: { select: 4.0, tolerance: 0.6, cone: 1.2, turnRate: 9, maxSlide: 2.4, angleWeight: 1.5 },
       crushDamage: 12, throwDown: 14, throwOut: 4,
       landDamage: 51, // the slam into the ground (crush 3 x 12 + 51 = 87: Toaku's 51 x 1.7)
       impactDamage: 30, impactKnock: 14, impactLift: 6, // anyone the slammed body lands on

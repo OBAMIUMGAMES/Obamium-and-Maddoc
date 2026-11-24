@@ -30,6 +30,7 @@ import { sampleRoot } from './clipUtils.js';
 import { smooth } from './pose.js';
 import { glowSpriteTexture } from './characterModel.js';
 import { createRageAura } from './rageAura.js';
+import { pickGrabTarget, assistReach, offAngle, clearLine } from './grabAssist.js';
 
 /** Enemy states that cannot be grabbed. */
 const UNGRABBABLE = new Set(['spawn', 'dying', 'grabbed', 'thrown']);
@@ -75,7 +76,6 @@ export class Dreadnought extends ClipFighter {
     this.held = null;         // enemy in his grip
     this.grabTarget = null;
     this.grabPhase = 'reach'; // reach -> hold -> slammed, or reach -> miss
-    this.grabYaw = 0;
     this.crushIdx = 0;
     this.holdT = 0;
     this.gripYaw = 0; this.gripPitch = 0; this.heldFacing0 = 0;
@@ -488,21 +488,9 @@ export class Dreadnought extends ClipFighter {
     return true;
   }
 
-  /** Closest grabbable enemy in front (or right next to him in any direction), in reach, in sight. */
+  /** The enemy his grab goes for (grabAssist: the locked-on one if in reach, else the closest in front). */
   findGrabTarget(world) {
-    const G = this.cfg.grab;
-    let best = null, bd = 1e9;
-    for (const e of world.enemies) {
-      if (!this.grabbable(e, world)) continue;
-      const dx = e.pos.x - this.pos.x, dz = e.pos.z - this.pos.z, d = Math.hypot(dx, dz) - e.radius;
-      if (d > G.range) continue;
-      const ang = Math.abs(angleDiff(Math.atan2(dx, dz), this.facing));
-      if (ang > G.cone / 2 && d > this.radius + 0.8) continue;
-      const score = d + ang * 1.5;
-      if (score >= bd || !this.clearPath(world, e)) continue;
-      bd = score; best = e;
-    }
-    return best;
+    return pickGrabTarget(this, world, this.cfg.grab.assist);
   }
 
   startGrab(world) {
@@ -511,35 +499,32 @@ export class Dreadnought extends ClipFighter {
     this.held = null;
     this.grabPhase = 'reach';
     this.crushIdx = 0;
+    this.grabSlid = 0;
     this.grabTarget = this.findGrabTarget(world);
     this.grabHit.landDamage = Math.round(this.cfg.grab.landDamage * this.dmgMul);
-    // the grip reaches out to his right: he turns his right side to the enemy
-    this.grabYaw = this.grabTarget ? Math.atan2(this.grabTarget.pos.x - this.pos.x, this.grabTarget.pos.z - this.pos.z) + this.cfg.grab.reachYaw : this.facing;
     world.audio.whoosh();
   }
 
   updateGrab(dt, ctl, world) {
-    const G = this.cfg.grab;
+    const G = this.cfg.grab, A = G.assist;
     this.clipT += dt * G.speed;
     const tgt = this.grabTarget;
     if (this.grabPhase === 'reach') {
       const live = tgt && this.grabbable(tgt, world);
-      if (live) {
-        const dx = tgt.pos.x - this.pos.x, dz = tgt.pos.z - this.pos.z, d = Math.hypot(dx, dz) || 1;
-        this.grabYaw = Math.atan2(dx, dz) + G.reachYaw;
-        this.turnTowards(this.grabYaw, 9, dt);
-        // step in so the open hand closes right on it
-        const gap = d - (this.radius + tgt.radius + 0.1);
-        const left = Math.max(dt, (G.catchAt - this.clipT) / G.speed);
-        const v = this.clipT < G.catchAt ? Math.min(G.lungeSpeed, Math.max(0, gap / left)) : 0;
-        this.vel.x = (dx / d) * v; this.vel.z = (dz / d) * v;
+      if (live && this.clipT < G.catchAt) {
+        // the grip reaches out to his right: he turns his right side to the enemy and steps in so the open
+        // hand closes right on it - a capped turn and slide (grabAssist), no teleport
+        const left = (G.catchAt - this.clipT) / G.speed;
+        this.grabSlid += assistReach(this, tgt, dt, A, { want: 0.1, timeLeft: left, speed: G.lungeSpeed, slid: this.grabSlid, faceOffset: G.reachYaw });
       } else { this.vel.x *= 0.6; this.vel.z *= 0.6; }
       if (this.clipT >= G.catchAt) {
-        // judged on the ground plane: his hand closes at his own height, the body is lifted into it
+        // judged on the ground plane, palm to body: his hand closes at his own height, the body is lifted into it
         const palm = this.palmWorld(tmpH);
         const c = live ? tgt.center(tmpV) : null;
+        const ok = c && Math.hypot(palm.x - c.x, palm.z - c.z) - tgt.radius <= G.catchGap + A.tolerance
+          && offAngle(this, tgt) <= A.cone + G.reachYaw && clearLine(world, this, tgt);
         // (VS MODE: Super Tahu shrugs a grab off — his counter answers it instead)
-        if (c && Math.hypot(palm.x - c.x, palm.z - c.z) < G.catchDist && !(tgt.refuseGrab && tgt.refuseGrab(this, world))) { this.seize(tgt, world); this.grabPhase = 'hold'; } else this.grabPhase = 'miss';
+        if (ok && !(tgt.refuseGrab && tgt.refuseGrab(this, world))) { this.seize(tgt, world); this.grabPhase = 'hold'; } else this.grabPhase = 'miss';
       }
     } else {
       this.vel.x *= 0.5; this.vel.z *= 0.5; // planted

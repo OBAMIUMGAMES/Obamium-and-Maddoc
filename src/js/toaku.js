@@ -17,6 +17,7 @@ import { sampleRoot } from './clipUtils.js';
 import { smooth } from './pose.js';
 import { attachAtBindPose, glowSprite } from './characterModel.js';
 import { createRageAura } from './rageAura.js';
+import { pickGrabTarget, assistReach, bodyGap, offAngle, clearLine } from './grabAssist.js';
 
 const tmpV = new THREE.Vector3(), tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
 /** Enemy states that cannot be grabbed. */
@@ -475,19 +476,9 @@ export class Toaku extends ClipFighter {
     return e.alive && e.targetable && !e.heavy && !UNGRABBABLE.has(e.state) && e.altitude() < 1.6 && world.map.sameLevel(this.pos, e.pos);
   }
 
-  /** Closest grabbable enemy in front (or right next to him in any direction). */
+  /** The enemy his grab goes for (grabAssist: the locked-on one if in reach, else the closest in front). */
   findGrabTarget(world) {
-    const G = this.cfg.grab;
-    let best = null, bd = 1e9;
-    for (const e of world.enemies) {
-      if (!this.grabbable(e, world)) continue;
-      const dx = e.pos.x - this.pos.x, dz = e.pos.z - this.pos.z, d = Math.hypot(dx, dz);
-      if (d > G.range) continue;
-      const ang = Math.abs(angleDiff(Math.atan2(dx, dz), this.facing));
-      if (ang > G.cone / 2 && d > this.radius + e.radius + 0.4) continue;
-      if (d + ang * 1.5 < bd) { bd = d + ang * 1.5; best = e; }
-    }
-    return best;
+    return pickGrabTarget(this, world, this.cfg.grab.assist);
   }
 
   startGrab(world) {
@@ -495,33 +486,29 @@ export class Toaku extends ClipFighter {
     this.clipT = 0;
     this.held = null;
     this.grabPhase = 'reach';
+    this.grabSlid = 0;
     this.grabTarget = this.findGrabTarget(world);
-    if (this.grabTarget) this.facing = Math.atan2(this.grabTarget.pos.x - this.pos.x, this.grabTarget.pos.z - this.pos.z);
     world.audio.whoosh();
   }
 
   updateGrab(dt, ctl, world) {
-    const G = this.cfg.grab;
+    const G = this.cfg.grab, A = G.assist;
     this.clipT += dt * G.speed * this.atkSpeed;
     const tgt = this.grabTarget;
     if (this.grabPhase === 'reach') {
       const live = tgt && this.grabbable(tgt, world);
       if (live && this.clipT < G.catchAt) {
-        // lunge so the hands close right on the target
-        const dx = tgt.pos.x - this.pos.x, dz = tgt.pos.z - this.pos.z, d = Math.hypot(dx, dz) || 1;
-        this.facing = Math.atan2(dx, dz);
-        const gap = d - (this.radius + tgt.radius + 0.3);
-        const left = Math.max(dt, (G.catchAt - this.clipT) / G.speed);
-        const v = Math.min(G.lungeSpeed, Math.max(0, gap / left));
-        this.vel.x = (dx / d) * v;
-        this.vel.z = (dz / d) * v;
+        // the reach: a small capped turn and slide so the hands close right on it (no teleport)
+        const left = (G.catchAt - this.clipT) / (G.speed * this.atkSpeed);
+        this.grabSlid += assistReach(this, tgt, dt, A, { want: 0.3, timeLeft: left, speed: G.lungeSpeed, slid: this.grabSlid });
       } else {
         this.vel.x *= 0.6; this.vel.z *= 0.6;
       }
       if (this.clipT >= G.catchAt) {
-        const reach = live ? Math.hypot(tgt.pos.x - this.pos.x, tgt.pos.z - this.pos.z) - this.radius - tgt.radius : Infinity;
+        // the hands close: within catchGap (+ the magnetism's tolerance), in front, in sight
+        const ok = live && bodyGap(this, tgt) <= G.catchGap + A.tolerance && offAngle(this, tgt) <= A.cone + 0.3 && clearLine(world, this, tgt);
         // (VS MODE: Super Tahu shrugs a grab off — his counter answers it instead)
-        if (reach < 1.3 && !(tgt.refuseGrab && tgt.refuseGrab(this, world))) { this.seize(tgt, world); this.grabPhase = 'hold'; } else this.grabPhase = 'miss';
+        if (ok && !(tgt.refuseGrab && tgt.refuseGrab(this, world))) { this.seize(tgt, world); this.grabPhase = 'hold'; } else this.grabPhase = 'miss';
       }
     } else {
       this.vel.x *= 0.5; this.vel.z *= 0.5; // planted for the spin

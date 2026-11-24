@@ -91,7 +91,8 @@ export function movesOf(f, buttons) {
     heavy: c.uppercut ? { reach: c.uppercut.reach } : null,
     // the flying kick carries its kicker forward before it lands
     kick: B.kick && c.kick ? { reach: c.kick.reach + (c.rootMotion && c.rootMotion.includes('Kick') ? 1.5 : 0) } : null,
-    grab: B.grab && c.grab ? { reach: c.grab.range } : null,
+    // the grab's reach from the grabber's centre to the target's body (grabAssist: select is body to body)
+    grab: B.grab && c.grab ? { reach: c.grab.assist ? c.grab.assist.select + c.radius : c.grab.range } : null,
     special: B.special ? (c.rage ? 'rage' : 'meter') : null,
     specialReach: c.special && c.special.reach ? c.special.reach + (c.special.advanceSpeed || 0) * 0.6 : 0,
     dodge: B.dodge ? 'dodge' : null,

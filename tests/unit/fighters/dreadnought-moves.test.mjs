@@ -118,7 +118,8 @@ test('he towers over Toaku: about 1.45 x his height, with matching body, reach a
   const tPunch = Math.max(...T.punch.hits.map((h) => h.reach));
   for (const h of [...C.punch.hits, C.uppercut]) assert.ok(h.reach >= tPunch * 1.4, `punch reach ${h.reach} vs ${tPunch}`);
   assert.ok(C.kick.reach >= T.kick.reach * 1.4, 'kick reach');
-  assert.ok(C.grab.range > T.grab.range * 1.4);
+  assert.ok(C.grab.assist.select > T.grab.assist.select * 1.4, 'grab reach (body to body)');
+  assert.ok(C.grab.catchGap > T.grab.catchGap * 1.4, 'grip reach');
   assert.ok(C.camera.distance > 1.3 && C.camera.height > 1.4, 'framed from further back and higher');
 });
 
