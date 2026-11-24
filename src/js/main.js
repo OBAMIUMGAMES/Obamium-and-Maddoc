@@ -1155,6 +1155,7 @@ function stepGame(dt, inp) {
       lockOn.next(inp.lockNext ? 1 : -1, p, G.enemies, Math.atan2(camScript.x, camScript.z), camera.position);
     }
   }
+  if (!p.alive && lockOn.on) lockOn.release(); // the player is down: nothing to aim at any more
   const lockT = lockOn.update(p, G.enemies, viewYaw);
   p.lockTarget = lockT;
   p.lockTurn = cfg.lockOn.faceTurn;

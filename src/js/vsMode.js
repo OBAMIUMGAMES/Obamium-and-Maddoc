@@ -553,6 +553,7 @@ export function createVsMode(d) {
           lock.next(inp.lockNext ? 1 : -1, a, foes, Math.atan2(tmp.x, tmp.z), d.camera.position);
         }
       }
+      if (!fighting && lock.on) lock.release(); // the match is decided: the results need no reticle
       a.lockTarget = lock.update(a, foes, viewYaw);
       a.lockTurn = cfg.lockOn.faceTurn;
       d.reticle.update(a.lockTarget, dt);
