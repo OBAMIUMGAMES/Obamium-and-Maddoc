@@ -241,3 +241,35 @@ test('the CPU does not choose an attack that is cooling down: it picks another o
   assert.ok(total > 20, `${total} attack decisions over the matches`);
   assert.equal(bad, 0, `${bad} of ${total} attack decisions were for a move still cooling down`);
 });
+
+test('the KICK / GRAB / DODGE buttons show the cooldowns the logic enforces: full while the move runs, then unwinding to ready', async () => {
+  const { updateCooldownButtons } = await import('../../../src/js/cooldownHud.js');
+  const el = () => ({ cd: 0, cls: false, style: { setProperty(k, v) { this.owner.cd = +v; } }, classList: { toggle(c, on) { this.owner.cls = on; } } });
+  const els = { kick: el(), grab: el(), dodge: el() };
+  for (const e of Object.values(els)) { e.style.owner = e; e.classList.owner = e; }
+  const shown = {};
+  const put = (k, v, w) => { if (shown[k] !== v) { shown[k] = v; w(v); } };
+  const D = duel(['toaku', 'dreadnought'], { scripted: [true, true] });
+  const T = D.fighters[0];
+  D.place(0, 0, 0, 0).place(1, 30, 30, 0);
+  updateCooldownButtons(T, put, els);
+  assert.deepEqual([els.kick.cd, els.grab.cd, els.dodge.cd], [0, 0, 0], 'all ready');
+  D.step(1, [{ kick: true }]);
+  updateCooldownButtons(T, put, els);
+  assert.equal(els.kick.cd, 1, 'full while the kick runs');
+  assert.ok(els.kick.cls);
+  untilIdle(D, T);
+  D.step(secs(T.cfg.cooldowns.kick / 2));
+  updateCooldownButtons(T, put, els);
+  assert.ok(els.kick.cd > 0.4 && els.kick.cd < 0.6, `half unwound halfway through (${els.kick.cd})`);
+  assert.equal(els.kick.cd > 0, !T.canAttack('kick'), 'shown cooling exactly when the logic refuses it');
+  D.step(secs(T.cfg.cooldowns.kick / 2 + 0.05));
+  updateCooldownButtons(T, put, els);
+  assert.equal(els.kick.cd, 0, 'ready');
+  assert.equal(els.kick.cls, false);
+  assert.ok(T.canAttack('kick'));
+  // the dodge: full while rolling, then its cooldown
+  D.step(1, [{ dodge: true }]);
+  updateCooldownButtons(T, put, els);
+  assert.equal(els.dodge.cd, 1);
+});

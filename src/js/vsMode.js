@@ -6,6 +6,7 @@
  * intro in vsIntro.js, the cameras in vsCamera.js / cineCam.js.
  */
 import * as THREE from 'three';
+import { updateCooldownButtons } from './cooldownHud.js';
 import { VS, VsFlow, MATCH_TYPES, slotCheck, pairingOk, defaultPicks, vsRoster, vsSpawns, slotLabel, cyclePick } from './vsRules.js';
 import { makeVsWorld, vsFighterConfig, vsRulesFor, separate } from './vsCombat.js';
 import { CombatAI, SuperTahuCounter, idleInput, rngFrom, COUNTER } from './vsAI.js';
@@ -23,6 +24,7 @@ export function createVsMode(d) {
   const V = cfg.vs;
   const flow = new VsFlow();
   const rosterOf = (id) => d.ROSTER.find((c) => c.id === id);
+  const cdButtons = { kick: $('#btn-kick'), grab: $('#btn-grab'), dodge: $('#btn-dodge') }; // their cooldown wipes
   let picks = [null, null];
   let m = null;            // the match in progress
   let paused = false;
@@ -472,6 +474,7 @@ export function createVsMode(d) {
       }
       put('spReady', p.specialReady !== undefined ? p.specialReady : mf >= 1, (v) => sp.classList.toggle('ready', v));
       put('spRaging', !!(p.rageT > 0), (v) => sp.classList.toggle('raging', v));
+      updateCooldownButtons(p, put, cdButtons);
       const ch = p.charge || 0;
       put('charge', Math.round(ch * 50) / 50, (v) => { punch.style.setProperty('--charge', v * 360 + 'deg'); punch.classList.toggle('charging', v > 0); });
       put('charged', ch >= 1, (v) => punch.classList.toggle('charged', v));

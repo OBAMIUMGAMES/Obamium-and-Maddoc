@@ -186,6 +186,12 @@ export class ClipFighter extends Fighter {
     const C = this.cfg.cooldowns, c = this.cool[kind] || 0;
     return C && C[kind] > 0 ? Math.min(1, c / C[kind]) : 0;
   }
+  /** How unavailable the dodge is, for its HUD button: 1 while rolling, then the share of its cooldown left. */
+  dodgeCooldownFrac() {
+    if (this.state === 'dodge') return 1;
+    const c = this.cfg.dodge && this.cfg.dodge.cooldown;
+    return c > 0 ? Math.min(1, Math.max(0, this.dodgeCool) / c) : 0;
+  }
   /** A move of `kind` is over (hit or miss): its cooldown starts (game time; cfg.cooldowns). */
   coolDown(kind) {
     const C = this.cfg.cooldowns;

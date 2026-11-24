@@ -242,6 +242,13 @@ body.has-overflow #btn-overflow { display: flex; right: 112px; bottom: 184px; wi
 /* the screen edges glow green while it runs (the player's own fighter) */
 body.overflowing #hud::before { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 70px rgba(57, 255, 106, .32); animation: rage-edge 1.2s ease-in-out infinite alternate; }
 #banner.overflow { top: 13%; color: #eaffd8; -webkit-text-stroke-color: #032810; font-size: clamp(24px, 5.4vw, 52px); text-shadow: 0 4px 0 #021a08, 0 0 26px rgba(57, 255, 106, 1); --acc: #39ff6a; --acc-rgb: 57, 255, 106; }
+/* attack cooldowns on their buttons (KICK, GRAB, DODGE): a dark wedge that unwinds as the cooldown runs out
+   (full while the move runs); the icon dims until the move is ready again */
+#btn-kick::before, #btn-grab::before, #btn-dodge::before { content: ''; position: absolute; inset: 0; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .12s;
+  background: conic-gradient(rgba(0, 0, 0, .62) calc(var(--cd, 0) * 360deg), transparent 0); }
+#btn-kick.cooling::before, #btn-grab.cooling::before, #btn-dodge.cooling::before { opacity: 1; }
+#btn-kick.cooling .ic, #btn-grab.cooling .ic, #btn-dodge.cooling .ic { opacity: .4; }
+#btn-kick.cooling span, #btn-grab.cooling span, #btn-dodge.cooling span { opacity: .55; }
 /* per-theme tints for the secondary buttons */
 body[data-fighter="toaku"] #btn-kick { --btn-rgb: 140, 150, 160; }
 body[data-fighter="toaku"] #btn-jump { --btn-rgb: 120, 200, 255; }

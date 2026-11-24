@@ -25,6 +25,7 @@ import { waveComposition, killScore, waveClearHp } from './combat.js';
 import { loadCharacterTemplate, buildCharacterInstance } from './characterModel.js';
 import { ROSTER, nextSelectable, fighterStats } from './characters.js';
 import { createVsMode } from './vsMode.js';
+import { updateCooldownButtons } from './cooldownHud.js';
 import toakuGlb from '../../assets/models/toaku.glb'; // bundled as bytes (esbuild binary loader)
 import tahuGlb from '../../assets/models/tahu.glb';
 import dreadnoughtGlb from '../../assets/models/dreadnought.glb'; // tools/build-character.mjs (7 Mixamo exports)
@@ -525,7 +526,7 @@ function banner(text, kind) {
   clearTimeout(bannerTimer);
   bannerTimer = setTimeout(() => { el.className = kind; }, 1600);
 }
-const hud = { hp: $('#hp-fill'), hpLag: $('#hp-lag'), meter: $('#meter'), meterLabel: $('#meter-label'), sp: $('#btn-special'), of: $('#btn-overflow'), punch: $('#btn-punch'), wave: $('#wave'), score: $('#score'), left: $('#left'), boss: $('#boss-fill'), combo: $('#combo') };
+const hud = { hp: $('#hp-fill'), hpLag: $('#hp-lag'), meter: $('#meter'), meterLabel: $('#meter-label'), sp: $('#btn-special'), of: $('#btn-overflow'), punch: $('#btn-punch'), kick: $('#btn-kick'), grab: $('#btn-grab'), dodge: $('#btn-dodge'), wave: $('#wave'), score: $('#score'), left: $('#left'), boss: $('#boss-fill'), combo: $('#combo') };
 let hpLag = 1;
 /** Last values written to the DOM: the HUD only touches an element when its value changes. */
 const shown = {};
@@ -557,6 +558,8 @@ function updateHud(dt) {
     put('raging', p.rageT > 0, (v) => { hud.meter.classList.toggle('raging', v); hud.sp.classList.toggle('raging', v); });
     put('rageSecs', p.rageT > 0 ? Math.ceil(p.rageT) : 0, (v) => { hud.meterLabel.textContent = v ? `${rosterOf(G.charId).meterLabel} · ${v}s` : rosterOf(G.charId).meterLabel; });
   }
+  // KICK / GRAB / DODGE: their cooldowns (enforced by the combat logic) shown on the buttons
+  updateCooldownButtons(p, put, hud);
   // DREADNOUGHT's hold-PUNCH charge: the ring around PUNCH fills, flashes gold at the threshold
   const ch = p.charge || 0;
   put('charge', Math.round(ch * 50) / 50, (v) => { hud.punch.style.setProperty('--charge', v * 360 + 'deg'); hud.punch.classList.toggle('charging', v > 0); });
