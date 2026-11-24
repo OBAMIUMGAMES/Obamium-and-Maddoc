@@ -30,23 +30,23 @@ test('nothing hurts outside FIGHTING (the intro): the same blows do no damage', 
   assert.equal(D.log.hits.length, 0);
 });
 
-test('a launcher floors the opponent: launched -> down -> getting up (blows miss meanwhile) -> back in control', () => {
+test('a launcher floors the opponent: launched -> ragdoll -> getting up (blows miss meanwhile) -> back in control', () => {
   const D = duel(['dreadnought', 'toaku'], { controllers: false });
   D.place(0, 0, 0, 0).place(1, 0, 4.6, Math.PI);
   const T = D.fighters[1];
   D.step(1, [{ punch: true, punchHeld: true }], [{ punchHeld: true }, {}]); // hold PUNCH: the heavy uppercut
   const seen = new Set();
-  for (let k = 0; k < secs(3.5); k++) { D.step(1, [], [k < secs(0.7) ? { punchHeld: true } : {}, {}]); seen.add(T.state); }
-  assert.ok(seen.has('launched') && seen.has('down') && seen.has('getup'), [...seen].join(','));
+  for (let k = 0; k < secs(6); k++) { D.step(1, [], [k < secs(0.7) ? { punchHeld: true } : {}, {}]); seen.add(T.state); }
+  assert.ok(seen.has('launched') && seen.has('ragdoll') && seen.has('getup'), [...seen].join(','));
   assert.equal(dmgTo(D, 1), CONFIG.dreadnought.uppercut.damage);
-  D.step(secs(1.5));
+  D.until(() => T.state === 'idle', 3);
   assert.equal(T.state, 'idle');
-  // while down, a blow does not land
+  // while floored, a blow does not land
   const D2 = duel(['toaku', 'toaku'], { controllers: false });
   D2.place(0, 0, 0, 0).place(1, 0, 3.0, Math.PI);
   D2.fighters[1].vel.y = 6; D2.fighters[1].onGround = false; D2.fighters[1].setState('launched');
   D2.step(secs(0.6));
-  assert.equal(D2.fighters[1].state, 'down');
+  assert.equal(D2.fighters[1].state, 'ragdoll');
   const hp = D2.fighters[1].hp;
   D2.step(14, [{ punch: true }]);
   assert.ok(D2.log.misses >= 1, 'the punch reached him and was rejected');
@@ -87,11 +87,11 @@ test('Dreadnought grabs Toaku: held in his palm, crushed three times, slammed do
   D.step(1, [{ grab: true }]);
   const states = new Set();
   for (let k = 0; k < secs(4.5); k++) { D.step(1); states.add(T.state); }
-  assert.ok(states.has('grabbed') && states.has('thrown') && states.has('down'), [...states].join(','));
+  assert.ok(states.has('grabbed') && states.has('thrown') && states.has('ragdoll'), [...states].join(','));
   const G = CONFIG.dreadnought.grab;
   assert.equal(hp0 - T.hp, G.crush.length * G.crushDamage + G.landDamage);
   assert.ok(D.fighters[0].meter > 0, 'the WARLORD RAGE meter filled from it');
-  D.step(secs(1.5));
+  D.until(() => T.state === 'idle', 5);
   assert.equal(T.state, 'idle');
   assert.ok(T.alive);
 });

@@ -77,6 +77,17 @@ export const CONFIG = {
     // DODGE: Roll_Dodge_2 (the same Mixamo roll as Dreadnought's, a lighter body: played faster); a short
     // evasion window, then a cooldown so rolls cannot chain into permanent invulnerability
     dodge: { start: 0.05, end: 1.95, speed: 1.5, invuln: [0.35, 1.3], thud: 1.0, cancelAfter: 1.7, cooldown: 0.6 },
+    // VS knockdowns (launchers, throws, knockouts): Fall3 while flying, timed so its touchdown (contact,
+    // clip s) meets the landing; on impact a ragdoll (ragdoll.js: point masses at his joints, bone links,
+    // joint limits, ground friction) until it settles; then the body gathers itself into the first frame
+    // of Stand_Up4 (a crouch on his front: a body on its back turns over) over `gather` s (up to `roll` s
+    // for a full turn), and the clip takes over, blended over `blend` s
+    launch: { contact: 0.55, minRate: 0.3, maxRate: 3 },
+    // impactKeep: share of the flight's speed along the ground the body keeps on impact (the rest is
+    // absorbed: no somersaults or long slides); friction per contact; damping per substep; gatherPull:
+    // how hard (per substep) the limbs are drawn toward the get-up's first pose
+    ragdoll: { bulk: 1, impactKeep: 0.35, damping: 0.99, friction: 0.5, substeps: 2, iterations: 6, maxSpeed: 16, settleSpeed: 0.6, settleTime: 0.3, minTime: 0.6, maxTime: 2.4, impactShake: 0.25, gatherPull: 0.3 },
+    getUp: { from: 0, to: 1.667, speed: 1.25, blend: 0.25, gather: 0.4, roll: 0.65 },
     idle: { clip: 'Punch', from: 0, to: 0.4, speed: 0.45 }, // fight stance from the start of the punch combo
     // single frames held as key poses for the moves that have no clip of their own
     poses: {
@@ -299,6 +310,13 @@ export const CONFIG = {
     // DODGE: Roll_Dodge_2 is a dive roll that travels diagonally (left-forward, ~46 deg) while he keeps
     // facing ahead; he is turned so that it travels toward the stick (his facing without input)
     dodge: { start: 0.05, end: 1.95, speed: 1.3, invuln: [0.35, 1.45], thud: 1.0, cancelAfter: 1.75, cooldown: 0.5 },
+    // VS knockdowns: Fall3 while flying, a heavy ragdoll on impact (bulkier body, more damping and
+    // friction: he lands like a wall coming down, no bounce), then the part of Stand_Up1 where he rises
+    // (1.3-6.2 s of the 8.3 s clip: before it he lies still, after it he only breathes), from his back
+    // (the body gathers into its first frame first, turning over if it lies on its front)
+    launch: { contact: 0.6, minRate: 0.3, maxRate: 3 },
+    ragdoll: { bulk: 1.15, impactKeep: 0.25, damping: 0.985, friction: 0.6, substeps: 2, iterations: 6, maxSpeed: 14, settleSpeed: 0.6, settleTime: 0.35, minTime: 0.7, maxTime: 2.6, impactShake: 0.45, gatherPull: 0.3 },
+    getUp: { from: 1.3, to: 6.2, speed: 1.4, blend: 0.3, gather: 0.5, roll: 0.8 },
     // WARLORD RAGE: the meter fills with the damage he deals and his kills (never by itself, never while
     // raging); RAGE at 100%: the Skill_01 scream, a purple aura, +50% damage, 8% of his health back per
     // kill, for 30 s of play

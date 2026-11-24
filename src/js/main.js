@@ -1286,6 +1286,8 @@ window.__game = {
   programs() { return (renderer.info.programs || []).map((q) => `${q.name}#${q.id} x${q.usedTimes} ${q.cacheKey.replace(/\s+/g, "")}`); },
   /** The scene (leak hunting: which objects / geometries a mode leaves behind). */
   get scene() { return scene; },
+  /** The camera (close-up captures in tests). */
+  get camera() { return camera; },
   get skinned() { return !!toakuTpl; },
   get tahuLoaded() { return !!tahuTpl; },
   get dreadnoughtLoaded() { return !!dreadTpl; },

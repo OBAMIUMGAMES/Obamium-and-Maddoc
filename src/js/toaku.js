@@ -46,7 +46,7 @@ function thrusterGeometry() {
 }
 
 /** Every action Toaku blends (the instance must carry each). */
-export const TOAKU_CHANNELS = ['Idle', 'Run', 'Punch', 'Kick', 'Grab', 'Dodge', 'Land', 'Flurry', 'PoseSquat', 'PoseFall', 'PoseRise', 'PoseBoost', 'PoseDive'];
+export const TOAKU_CHANNELS = ['Idle', 'Run', 'Punch', 'Kick', 'Grab', 'Dodge', 'Land', 'Launch', 'GetUp', 'Flurry', 'PoseSquat', 'PoseFall', 'PoseRise', 'PoseBoost', 'PoseDive'];
 
 /** The player's heavyweight. Same public surface as SuperTahu (update, takeHit, meter, combo...). */
 export class Toaku extends ClipFighter {

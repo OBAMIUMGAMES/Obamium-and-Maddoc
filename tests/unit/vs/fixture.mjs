@@ -20,15 +20,56 @@ function shell(kind, channels, loops = {}) {
   const actions = Object.fromEntries(channels.map((n) => [n, action(loops[n] || 0.92)]));
   const root = new THREE.Group(), holder = new THREE.Group(), model = new THREE.Group();
   root.add(holder); holder.add(model);
-  const mixer = { update(d) { for (const [n, len] of Object.entries(loops)) actions[n].time = (actions[n].time + d * actions[n].timeScale) % len; } };
-  return { kind, root, holder, model, actions, mixer, scale: 1, flames: [], j: {} };
+  const s = { kind, root, holder, model, actions, scale: 1, flames: [], j: {}, restore: null };
+  // the fake mixer advances the looping clips' times and poses a rig standing (its rest pose)
+  s.mixer = { update(d) { for (const [n, len] of Object.entries(loops)) actions[n].time = (actions[n].time + d * actions[n].timeScale) % len; if (s.restore) s.restore(); } };
+  return s;
 }
 const bone = (parent, x, y, z) => { const b = new THREE.Object3D(); b.position.set(x, y, z); parent.add(b); return b; };
+
+/** Mixamo joints as fractions of the height (the rig stands facing +z, its left side at +x). */
+const JOINTS = {
+  Hips: [0, 0.53, 0], Spine: [0, 0.59, 0], Spine1: [0, 0.65, 0], Spine2: [0, 0.72, 0], Neck: [0, 0.83, 0], Head: [0, 0.88, 0.01], HeadTop_End: [0, 0.99, 0.01],
+  LeftShoulder: [0.04, 0.8, 0], LeftArm: [0.12, 0.8, 0], LeftForeArm: [0.14, 0.63, 0.02], LeftHand: [0.15, 0.47, 0.04],
+  RightShoulder: [-0.04, 0.8, 0], RightArm: [-0.12, 0.8, 0], RightForeArm: [-0.14, 0.63, 0.02], RightHand: [-0.15, 0.47, 0.04],
+  LeftUpLeg: [0.055, 0.5, 0], LeftLeg: [0.06, 0.27, 0.01], LeftFoot: [0.06, 0.04, -0.01], LeftToeBase: [0.06, 0.01, 0.07],
+  RightUpLeg: [-0.055, 0.5, 0], RightLeg: [-0.06, 0.27, 0.01], RightFoot: [-0.06, 0.04, -0.01], RightToeBase: [-0.06, 0.01, 0.07],
+};
+const PARENT = {
+  Spine: 'Hips', Spine1: 'Spine', Spine2: 'Spine1', Neck: 'Spine2', Head: 'Neck', HeadTop_End: 'Head',
+  LeftShoulder: 'Spine2', LeftArm: 'LeftShoulder', LeftForeArm: 'LeftArm', LeftHand: 'LeftForeArm',
+  RightShoulder: 'Spine2', RightArm: 'RightShoulder', RightForeArm: 'RightArm', RightHand: 'RightForeArm',
+  LeftUpLeg: 'Hips', LeftLeg: 'LeftUpLeg', LeftFoot: 'LeftLeg', LeftToeBase: 'LeftFoot',
+  RightUpLeg: 'Hips', RightLeg: 'RightUpLeg', RightFoot: 'RightLeg', RightToeBase: 'RightFoot',
+};
+/**
+ * A Mixamo skeleton (THREE.Bone hierarchy, 'mixamorig' names) of height H under `model`, joints at the
+ * default proportions or at `at` (model-space positions, m). Returns the bones by short name and a
+ * function restoring the rest pose (the fake mixer calls it: "the clip" poses the body standing).
+ */
+export function mixamoRig(model, H, at = {}) {
+  const world = {}, bones = {};
+  for (const [n, f] of Object.entries(JOINTS)) world[n] = at[n] ? new THREE.Vector3(...at[n]) : new THREE.Vector3(f[0] * H, f[1] * H, f[2] * H);
+  for (const n of Object.keys(JOINTS)) {
+    const b = new THREE.Bone();
+    b.name = 'mixamorig' + n;
+    const p = PARENT[n];
+    b.position.copy(world[n]).sub(p ? world[p] : new THREE.Vector3());
+    (p ? bones[p] : model).add(b);
+    bones[n] = b;
+  }
+  const rest = Object.values(bones).map((b) => [b, b.position.clone(), b.quaternion.clone()]);
+  const restore = () => { for (const [b, p, q] of rest) { b.position.copy(p); b.quaternion.copy(q); } };
+  return { bones, restore };
+}
 
 /** Toaku: hands clasped in front of the chest; the flying kick carries him ~2 m. */
 export function fakeToaku() {
   const s = shell('toaku', TOAKU_CHANNELS);
-  s.bones = { Spine2: bone(s.model, 0, 2.7, 0), Head: bone(s.model, 0, 3.3, 0.05), LeftHand: bone(s.model, 0.1, 2.3, 1.1), RightHand: bone(s.model, -0.1, 2.3, 1.1), LeftFoot: bone(s.model, 0.2, 0.3, 0.3) };
+  // a full Mixamo rig (the ragdoll needs it), with the joints the moves read where they always were
+  const rig = mixamoRig(s.model, 3.6, { Spine2: [0, 2.7, 0], Head: [0, 3.3, 0.05], LeftForeArm: [0.35, 2.45, 0.6], RightForeArm: [-0.35, 2.45, 0.6], LeftHand: [0.1, 2.3, 1.1], RightHand: [-0.1, 2.3, 1.1], LeftFoot: [0.2, 0.3, 0.3] });
+  s.bones = rig.bones;
+  s.restore = rig.restore;
   s.rootMotion = {
     Kick: { times: Float32Array.from([0, 0.5, 1.0, 1.5]), z: Float32Array.from([0, 1.0, 1.9, 2.0]) },
     Dodge: { times: Float32Array.from([0, 0.4, 1.4, 1.95]), x: Float32Array.from([0, 0.3, 3.0, 3.2]), z: Float32Array.from([0, 0.3, 2.9, 3.1]) },
@@ -46,8 +87,10 @@ export function fakeTahu() {
 /** Dreadnought: right hand out at his side, knuckles ahead of the wrist; the roll goes diagonally. */
 export function fakeDreadnought() {
   const s = shell('dreadnought', DREADNOUGHT_CHANNELS, { Walk: 1.167, Run: 0.8 });
-  const hand = bone(s.model, -1.9, 3.6, 0.4);
-  s.bones = { RightHand: hand, LeftHand: bone(s.model, 1.0, 3.2, 0.6), RightFoot: bone(s.model, -0.3, 0.3, 0), LeftFoot: bone(s.model, 0.3, 0.3, 0) };
+  const rig = mixamoRig(s.model, 5.2, { RightForeArm: [-1.3, 3.9, 0.2], RightHand: [-1.9, 3.6, 0.4], LeftForeArm: [0.9, 3.6, 0.3], LeftHand: [1.0, 3.2, 0.6], RightFoot: [-0.3, 0.3, 0], LeftFoot: [0.3, 0.3, 0] });
+  s.bones = rig.bones;
+  s.restore = rig.restore;
+  const hand = s.bones.RightHand;
   for (const [n, x] of [['RightHandIndex1', 0.04], ['RightHandMiddle1', 0.01], ['RightHandRing1', -0.02], ['RightHandPinky1', -0.05]]) s.bones[n] = bone(hand, x, -0.32, 0.12);
   s.rootMotion = {
     Dodge: { times: Float32Array.from([0, 0.4, 1.4, 1.95]), x: Float32Array.from([0, 0.3, 3.0, 3.2]), z: Float32Array.from([0, 0.3, 2.9, 3.1]) },

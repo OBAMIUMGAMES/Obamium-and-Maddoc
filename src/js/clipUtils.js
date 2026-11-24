@@ -109,3 +109,32 @@ export function groundAnchor(scene, clip, clearance = 0) {
 export function bakePose(clip, name, t) {
   return bakeSubclip(clip, name, t, t + 1 / 30, 30);
 }
+
+const _bound = new WeakMap(); // root -> clip -> [target property, interpolant][]
+
+/**
+ * Pose `root`'s bones as `clip` has them at time t, without a mixer: a mixer writes only the values that
+ * changed since its own last update, so it cannot be asked for the same frame twice (and it would not
+ * overwrite a pose set by hand). The tracks are bound once per root and clip. A clip without tracks
+ * leaves the pose as it is.
+ * @param {THREE.Object3D} root the mixer's root (the model)
+ * @param {THREE.AnimationClip} clip
+ * @param {number} t seconds
+ */
+export function poseFromClip(root, clip, t) {
+  if (!clip || !clip.tracks) return;
+  let byClip = _bound.get(root);
+  if (!byClip) _bound.set(root, (byClip = new Map()));
+  let bound = byClip.get(clip);
+  if (!bound) {
+    bound = [];
+    for (const track of clip.tracks) {
+      const { nodeName, propertyName } = THREE.PropertyBinding.parseTrackName(track.name);
+      const node = THREE.PropertyBinding.findNode(root, nodeName);
+      const target = node && node[propertyName];
+      if (target && typeof target.fromArray === 'function') bound.push([target, track.createInterpolant()]);
+    }
+    byClip.set(clip, bound);
+  }
+  for (const [target, interp] of bound) target.fromArray(interp.evaluate(t));
+}

@@ -12,13 +12,17 @@ import * as THREE from 'three';
 import { Fighter } from './fighters.js';
 import { inArc, angleDiff, applyDamage, addMeter } from './combat.js';
 import { smooth } from './pose.js';
-import { sampleRoot } from './clipUtils.js';
+import { sampleRoot, poseFromClip } from './clipUtils.js';
+import { Ragdoll } from './ragdoll.js';
 
 /**
  * VS MODE states in which a fighter is out of its own (or its CPU's) control: held in a grip, thrown,
  * launched, knocked down, getting up, pinned by Super Tahu's counter, or posing after a win.
  */
-export const VS_STATES = new Set(['grabbed', 'thrown', 'launched', 'down', 'getup', 'pinned', 'victory']);
+export const VS_STATES = new Set(['grabbed', 'thrown', 'launched', 'ragdoll', 'rollover', 'down', 'getup', 'pinned', 'victory']);
+/** Knocked down: on the ground (a ragdoll, turning over, the timed fallback) or getting up. Blows miss. */
+const FLOORED = new Set(['ragdoll', 'rollover', 'down', 'getup']);
+const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _q = new THREE.Quaternion();
 /** VS states that take damage only (no stagger, no knockback): held or flying through the air. */
 const CARRIED = new Set(['grabbed', 'thrown']);
 const NO_HIT = Object.freeze({ landed: false, killed: false });
@@ -65,6 +69,13 @@ export class ClipFighter extends Fighter {
     this.dodgeFacing = 0;
     this.atkSpeed = 1;  // attack clip playback multiplier (ENERGY OVERFLOW)
     this.speedMul = 1;  // movement speed multiplier (ENERGY OVERFLOW)
+    // VS knockdowns: launch clip -> ragdoll on impact -> get-up clip (when the rig and clips allow it)
+    this.ragdoll = cfg.ragdoll && cfg.getUp && inst.actions.Launch && inst.actions.GetUp && Ragdoll.supports(inst.bones)
+      ? new Ragdoll(inst.bones, cfg.height, cfg.ragdoll) : null;
+    this.launchT = 0;     // Launch clip time while flying
+    this.ragLast = null;  // the joints' world positions last frame (the ragdoll's starting motion)
+    this.koRest = false;  // a knocked-out body has come to rest
+    this.poseBlend = null; // ragdoll pose -> get-up clip blend
     this.weights = Object.fromEntries(channels.map((n) => [n, n === 'Idle' ? 1 : 0]));
     const A = inst.actions;
     const loops = new Set(['Run', 'Walk', ...Object.keys(cfg.breathLoops || {})]); // play on their own, looping
@@ -94,6 +105,7 @@ export class ClipFighter extends Fighter {
     if (this.state !== 'special' && this.alive) this.meter = addMeter(this.meter, cfg.special.meterPassive * dt, cfg.special.meterMax);
     this.tick(dt);
     if (this.vs && VS_STATES.has(this.state)) { this.vsStep(dt, world); return; } // VS: not in control
+    if (this.vs && this.state === 'dead' && this.ragdoll) { this.vsFall(dt, world); return; } // knocked out
 
     const mx = input.moveX || 0, my = input.moveY || 0;
     const mag = Math.min(1, Math.hypot(mx, my));
@@ -133,6 +145,11 @@ export class ClipFighter extends Fighter {
   /** Fill target weights for the current state; return the blend rate, or 0 for idle/run. */
   animTargets(T, A) {
     if (this.state === 'punch') { T.Punch = 1; A.Punch.time = this.clipT; return 22; }
+    if (this.ragdoll && this.vs) {
+      // flying (launched, thrown, knocked out): the launch clip; getting up: the get-up clip
+      if (this.state === 'launched' || this.state === 'thrown' || this.state === 'dead') { T.Launch = 1; A.Launch.time = this.launchT; return 14; }
+      if (this.state === 'getup') { T.GetUp = 1; A.GetUp.time = this.clipT; return 60; }
+    }
     if (VS_STATES.has(this.state)) { if (!this.vsPose(T, A)) T.Idle = 1; return 12; }
     return 0;
   }
@@ -334,12 +351,20 @@ export class ClipFighter extends Fighter {
     for (const n of this.channels) { this.weights[n] += (T[n] - this.weights[n]) * k; sum += this.weights[n]; }
     for (const n of this.channels) this.weights[n] /= sum || 1; // weights must total 1 or the bind pose leaks in
     this.applyWeights();
+    // the mixer only writes a bone whose value changed since its last update: give back the pose it
+    // wrote (the blend replaced it), or a held key would leave that bone in the blended pose
+    if (this.poseBlend) this.restoreClipPose();
     this.inst.mixer.update(dt);
+    if (this.poseBlend) this.applyPoseBlend(dt);
     this.hurtK = Math.max(0, this.hurtK - dt * 4);
     this.pitchSm += (this.pitch - this.pitchSm) * Math.min(1, dt * this.pitchRate);
     const holder = this.inst.holder;
     // a whole-body lean about the feet: falls, knockdowns and flinches
     const lean = (to, rate) => { holder.rotation.x += (to - holder.rotation.x) * Math.min(1, dt * rate); };
+    if (this.ragdoll && this.vs && (this.state === 'launched' || this.state === 'thrown' || this.state === 'dead' || this.state === 'getup')) {
+      holder.rotation.x = 0; // the launch / get-up clips and the ragdoll pose the whole body
+      return;
+    }
     switch (this.state) {
       case 'dead': lean(-1.45, 3); break;
       case 'down': lean(-1.45, 10); break;                       // flat on the sand
@@ -368,7 +393,7 @@ export class ClipFighter extends Fighter {
     const V = this.vs;
     if (!this.alive || !V) return NO_HIT;
     const carried = this.carried;
-    if (!carried && (this.invuln > 0 || this.state === 'down' || this.state === 'getup')) return NO_HIT;
+    if (!carried && (this.invuln > 0 || FLOORED.has(this.state))) return NO_HIT;
     const r = applyDamage(this.hp, dmg);
     this.hp = r.hp;
     this.hurtK = 1;
@@ -513,8 +538,8 @@ export class ClipFighter extends Fighter {
         return;
       case 'thrown': {
         this.physics(dt, world, 0);
-        this.tumble += dt * 9;
-        this.root.rotation.x = -(this.tumble % (Math.PI * 2));
+        this.advanceLaunch(dt, world);
+        if (!this.ragdoll) { this.tumble += dt * 9; this.root.rotation.x = -(this.tumble % (Math.PI * 2)); }
         if (this.onGround && this.stateT > 0.05) {
           // the crash: credited to the thrower by the VS world
           this.root.rotation.x = 0;
@@ -524,7 +549,7 @@ export class ClipFighter extends Fighter {
           const C = this.throwCfg, l = Math.hypot(this.vel.x, this.vel.z) || 1;
           this.throwCfg = null; this.thrower = null;
           if (C) world.hitEnemy(this, C.landDamage, this.vel.x / l, this.vel.z / l, 0, 0, 0.8, true);
-          if (this.alive) this.vsDown();
+          if (this.alive) this.knockDown();
         }
         break;
       }
@@ -532,14 +557,19 @@ export class ClipFighter extends Fighter {
         if (this.physics(dt, world, 0) || (this.onGround && this.stateT > 0.1)) {
           world.fx.dust(this.pos, 10, this.height * 0.6);
           world.audio.land();
-          this.vsDown();
+          if (this.ragdoll) { world.fx.dust(this.pos, 14, this.height * 0.8, 1.2); world.shake(this.cfg.ragdoll.impactShake); }
+          this.knockDown();
         }
+        this.advanceLaunch(dt, world);
         break;
+      case 'ragdoll': this.ragdollStep(dt, world); return;
+      case 'rollover': this.rollStep(dt, world); return;
       case 'down':
         this.physics(dt, world, 8);
         if (this.stateT >= V.downTime) { this.setState('getup'); this.invuln = V.getUpTime + V.getUpGrace; }
         break;
       case 'getup':
+        if (this.ragdoll) { this.getUpStep(dt, world); break; }
         this.physics(dt, world, 10);
         if (this.stateT >= V.getUpTime) this.setState('idle');
         break;
@@ -552,6 +582,224 @@ export class ClipFighter extends Fighter {
     }
     this.animate(dt);
     this.sync();
+    if (this.ragdoll && (this.state === 'launched' || this.state === 'thrown')) {
+      // the joints' motion this frame becomes the ragdoll's when the body hits the ground
+      this.root.updateMatrixWorld(true);
+      if (this.knockPending) { this.knockPending = false; this.startRagdoll(dt); }
+      else this.ragLast = Ragdoll.capture(this.inst.bones, this.ragLast);
+    }
+    this.postAnimate(dt, world);
+  }
+
+  /** Hit the ground after flying: the ragdoll takes over this frame (or the timed knockdown). */
+  knockDown() {
+    if (this.ragdoll) this.knockPending = true;
+    else this.vsDown();
+  }
+
+  setState(s) {
+    // a fresh launch clip for a new flight (a body already flying keeps its clip going)
+    if ((s === 'launched' || s === 'thrown' || s === 'dead') && this.state !== 'launched' && this.state !== 'thrown') this.launchT = 0;
+    super.setState(s);
+  }
+
+  /**
+   * Flying: the launch clip (Fall3), timed by the predicted time to the ground so its touchdown
+   * (launch.contact) meets the landing, whatever the height and speed of the flight.
+   */
+  advanceLaunch(dt, world) {
+    if (!this.ragdoll) return;
+    const L = this.cfg.launch, g = world.cfg.arena.gravity;
+    const h = Math.max(0, this.pos.y - this.groundY), vy = this.vel.y;
+    const disc = vy * vy + 2 * g * h;
+    const left = disc > 0 ? (vy + Math.sqrt(disc)) / g : 0;
+    const rate = Math.min(L.maxRate, Math.max(L.minRate, (L.contact - this.launchT) / Math.max(left, dt)));
+    this.launchT = Math.min(L.contact, this.launchT + rate * dt);
+  }
+
+  /** The ragdoll takes the body over from its animated pose (and the joints' motion since last frame). */
+  startRagdoll(dt) {
+    const inst = this.inst;
+    inst.holder.rotation.x = 0;
+    this.root.rotation.x = 0;
+    this.root.updateMatrixWorld(true);
+    if (!this.ragLast) {
+      // no flight to read the motion from (knocked out where he stood): the blow's push
+      this.ragLast = Ragdoll.capture(inst.bones);
+      for (const p of this.ragLast) { p.x -= this.vel.x * dt; p.z -= this.vel.z * dt; }
+    }
+    this.ragdoll.begin(this.ragLast, dt || 1 / 60);
+    this.ragLast = null;
+    this.vel.set(0, 0, 0);
+    this.targetable = this.alive;
+    this.koRest = false;
+    if (this.alive) this.setState('ragdoll');
+  }
+
+  /** On the ground, physics-driven; the root follows the body. Then recovery (or rest, knocked out). */
+  ragdollStep(dt, world) {
+    const R = this.ragdoll;
+    R.step(dt, world.map, world.cfg.arena.gravity);
+    this.followBody(world);
+    R.apply(world.map);
+    if (this.alive) this.invuln = Math.max(this.invuln, 0.1);
+    this.postAnimate(dt, world);
+    if (R.settled) {
+      if (!this.alive) { this.koRest = true; return; }
+      this.beginRecovery(world);
+    }
+  }
+
+  /** The fighter's position (camera, gameplay) is where the body lies; the whole body poses itself. */
+  followBody(world) {
+    const h = this.ragdoll.joint('hips');
+    this.pos.x = h.x; this.pos.z = h.z;
+    this.pos.y = this.groundY = world.map.groundHeight(h.x, h.z);
+    this.vel.set(0, 0, 0);
+    this.onGround = true;
+    this.sync();
+    this.inst.holder.rotation.x = 0;
+    this.root.updateMatrixWorld(true);
+  }
+
+  /**
+   * Settled: the body gathers itself into the get-up clip's first pose - turning over first if it lies on
+   * the wrong side (Toaku's get-up starts on his front, Dreadnought's on his back) - then rises.
+   */
+  beginRecovery(W) {
+    const G = this.cfg.getUp, R = this.ragdoll, B = this.inst.bones;
+    const bones = this.allBones || (this.allBones = collectBones(this.inst.model));
+    const save = bones.map((b) => b.quaternion.clone()), hips = B.Hips.position.clone();
+    this.alignToGetUp(R.joint('hips'), R.heading()); // the clip's first frame, lying where the body lies
+    const to = Ragdoll.capture(B);
+    const world = Object.fromEntries(['Hips', 'Spine', 'Spine1', 'Spine2'].map((n) => [n, B[n].getWorldQuaternion(new THREE.Quaternion())]));
+    const local = new Map(bones.map((b) => [b, b.quaternion.clone()]));
+    bones.forEach((b, i) => b.quaternion.copy(save[i]));
+    B.Hips.position.copy(hips);
+    const turn = R.gather(to, { local, world });
+    this.gatherTime = Math.max(G.gather, G.roll * turn / Math.PI);
+    this.setState('rollover');
+    this.followBody(W); // the root was moved to measure: pose the body where it lies again
+    R.apply(W.map);
+  }
+
+  /** Gathering (and turning over): procedural torso, simulated limbs; untouchable; then the clip. */
+  rollStep(dt, world) {
+    const R = this.ragdoll;
+    R.gatherTo(smooth(0, this.gatherTime, this.stateT), world.map);
+    R.step(dt, world.map, world.cfg.arena.gravity);
+    this.followBody(world);
+    R.apply(world.map);
+    this.invuln = Math.max(this.invuln, 0.1);
+    this.postAnimate(dt, world);
+    if (this.stateT >= this.gatherTime) { R.release(); this.startGetUp(); }
+  }
+
+  /**
+   * Pose the bones as the get-up clip's first frame (sampled, not mixed) and place the root so that body
+   * lies along `heading` (hips toward neck) with its hips over `hipsW`.
+   */
+  alignToGetUp(hipsW, heading) {
+    const B = this.inst.bones;
+    poseFromClip(this.inst.model, this.inst.actions.GetUp.getClip(), this.cfg.getUp.from);
+    this.root.updateMatrixWorld(true);
+    const h0 = B.Hips.getWorldPosition(_v), n0 = B.Neck.getWorldPosition(_w);
+    this.facing += angleDiff(heading, Math.atan2(n0.x - h0.x, n0.z - h0.z));
+    this.sync();
+    this.root.updateMatrixWorld(true);
+    const h1 = B.Hips.getWorldPosition(_v);
+    this.pos.x += hipsW.x - h1.x; this.pos.z += hipsW.z - h1.z;
+    this.sync();
+    this.root.updateMatrixWorld(true);
+  }
+
+  /**
+   * The get-up clip takes over from the ragdoll: the root is turned and moved so the clip's first frame
+   * lies where the body lies (no teleport, no spin), and the ragdoll's pose blends into the clip.
+   */
+  startGetUp() {
+    const G = this.cfg.getUp, R = this.ragdoll, inst = this.inst, B = inst.bones;
+    const bones = this.allBones || (this.allBones = collectBones(inst.model));
+    const from = bones.map((b) => b.quaternion.clone());
+    const hipsW = B.Hips.getWorldPosition(new THREE.Vector3()), hipsQ = B.Hips.getWorldQuaternion(new THREE.Quaternion());
+    const heading = R.heading();
+    R.active = false;
+    this.setState('getup');
+    this.clipT = G.from;
+    for (const n of this.channels) this.weights[n] = n === 'GetUp' ? 1 : 0;
+    this.applyWeights();
+    inst.actions.GetUp.time = G.from;
+    this.alignToGetUp(hipsW, heading);
+    // the blend starts at the ragdoll's pose: its hips re-expressed under the moved root
+    const pw = B.Hips.parent.matrixWorld;
+    pw.decompose(_w, _q, _v);
+    from[bones.indexOf(B.Hips)] = _q.clone().invert().multiply(hipsQ);
+    const fromPos = hipsW.clone().applyMatrix4(new THREE.Matrix4().copy(pw).invert());
+    const clip = bones.map((b) => b.quaternion.clone()), clipPos = B.Hips.position.clone(); // the clip's first frame
+    this.poseBlend = { bones, from, hips: B.Hips, fromPos, clip, clipPos, t: 0, dur: G.blend };
+    // this frame still shows the body as it lies (the clip's first frame was only measured)
+    bones.forEach((b, i) => b.quaternion.copy(from[i]));
+    B.Hips.position.copy(fromPos);
+    this.root.updateMatrixWorld(true);
+    this.invuln = (G.to - G.from) / G.speed + this.vs.getUpGrace;
+  }
+
+  /** Getting up: the clip plays (its drift moves the root, walls stop it); blows miss; then the stance. */
+  getUpStep(dt, world) {
+    const G = this.cfg.getUp, rm = this.inst.rootMotion.GetUp, s = this.inst.scale;
+    const prev = this.clipT;
+    this.clipT = Math.min(G.to, this.clipT + dt * G.speed);
+    if (rm) {
+      const dx = (sampleRoot(rm, this.clipT, 'x') - sampleRoot(rm, prev, 'x')) * s;
+      const dz = (sampleRoot(rm, this.clipT) - sampleRoot(rm, prev)) * s;
+      const f = this.facing, c = Math.cos(f), sn = Math.sin(f), inv = dt > 0 ? 1 / dt : 0;
+      this.vel.x = (dx * c + dz * sn) * inv;
+      this.vel.z = (-dx * sn + dz * c) * inv;
+    }
+    this.physics(dt, world, 0);
+    this.invuln = Math.max(this.invuln, 0.05);
+    if (this.clipT >= G.to) {
+      this.setState('idle');
+      this.vel.x = 0; this.vel.z = 0;
+      this.invuln = this.vs.getUpGrace;
+      this.poseBlend = null;
+    }
+  }
+
+  /** The bones as the mixer last posed them (before the blend moved them). */
+  restoreClipPose() {
+    const P = this.poseBlend;
+    for (let i = 0; i < P.bones.length; i++) P.bones[i].quaternion.copy(P.clip[i]);
+    P.hips.position.copy(P.clipPos);
+  }
+
+  /** Blend the bones from a captured pose into what the mixer just posed (the ragdoll -> get-up seam). */
+  applyPoseBlend(dt) {
+    const P = this.poseBlend;
+    P.t += dt;
+    const k = smooth(0, P.dur, P.t);
+    for (let i = 0; i < P.bones.length; i++) {
+      const b = P.bones[i];
+      P.clip[i].copy(b.quaternion);
+      b.quaternion.copy(P.from[i]).slerp(P.clip[i], k);
+    }
+    P.clipPos.copy(P.hips.position);
+    P.hips.position.copy(P.fromPos).lerp(P.clipPos, k);
+    if (k >= 1) this.poseBlend = null;
+  }
+
+  /** Knocked out (VS): flying with the launch clip, then a ragdoll that comes to rest (no getting up). */
+  vsFall(dt, world) {
+    if (this.ragdoll.active || this.koRest) { if (!this.koRest) this.ragdollStep(dt, world); else this.postAnimate(dt, world); return; }
+    const grounded = this.onGround && this.stateT < 0.02 && this.vel.y <= 0; // knocked out where he stood
+    if (grounded) { this.startRagdoll(dt); this.postAnimate(dt, world); return; }
+    const landed = this.physics(dt, world, 0) || (this.onGround && this.stateT > 0.05);
+    this.advanceLaunch(dt, world);
+    this.animate(dt);
+    this.sync();
+    this.root.updateMatrixWorld(true);
+    if (landed) { world.fx.dust(this.pos, 14, this.height * 0.8, 1.2); this.startRagdoll(dt); }
+    else this.ragLast = Ragdoll.capture(this.inst.bones, this.ragLast);
     this.postAnimate(dt, world);
   }
 
@@ -570,4 +818,11 @@ export class ClipFighter extends Fighter {
       a.setEffectiveWeight(this.weights[n]);
     }
   }
+}
+
+/** Every bone of a model (once per fighter). */
+function collectBones(model) {
+  const out = [];
+  model.traverse((o) => { if (o.isBone) out.push(o); });
+  return out;
 }

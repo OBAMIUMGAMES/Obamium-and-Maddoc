@@ -61,7 +61,7 @@ function palmPoint(inst) {
 
 /** The heavyweight warlord. Same public surface as Toaku / Super Tahu (update, takeHit, meter, combo...). */
 /** Every action Dreadnought blends (the instance must carry each). */
-export const DREADNOUGHT_CHANNELS = ['Idle', 'Walk', 'Run', 'Punch', 'Uppercut', 'Kick', 'Grab', 'Dodge', 'StandUp', 'Seated', 'Scream'];
+export const DREADNOUGHT_CHANNELS = ['Idle', 'Walk', 'Run', 'Punch', 'Uppercut', 'Kick', 'Grab', 'Dodge', 'StandUp', 'Seated', 'Scream', 'Launch', 'GetUp'];
 
 export class Dreadnought extends ClipFighter {
   /**

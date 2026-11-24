@@ -152,10 +152,9 @@ test('the mask close-ups aim at the rig\'s real head, which sits forward of the 
   const [a, b] = D.fighters;
   // head joints like the real rigs' in their stances: Toaku's 0.79 h up and 0.055 h forward
   const heads = [[a, 0.79, 0.055], [b, 0.8, 0.0]].map(([f, up, fwd]) => {
-    const bone = new THREE.Bone(); bone.name = 'mixamorigHead';
-    f.root.add(bone);
+    const bone = f.inst.bones.Head; // the rig's head joint, moved where a fighting stance carries it
     f.root.updateMatrixWorld(true);
-    const local = f.root.worldToLocal(new THREE.Vector3(f.pos.x + Math.sin(f.facing) * f.height * fwd, f.pos.y + f.height * up, f.pos.z + Math.cos(f.facing) * f.height * fwd));
+    const local = bone.parent.worldToLocal(new THREE.Vector3(f.pos.x + Math.sin(f.facing) * f.height * fwd, f.pos.y + f.height * up, f.pos.z + Math.cos(f.facing) * f.height * fwd));
     bone.position.copy(local);
     f.root.updateMatrixWorld(true);
     return bone.getWorldPosition(new THREE.Vector3());

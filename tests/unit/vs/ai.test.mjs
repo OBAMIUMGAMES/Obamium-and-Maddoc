@@ -16,14 +16,10 @@ const ATTACK_KEYS = ['punch', 'kick', 'grab', 'special'];
 function fight(ids, seed, max = 240) {
   const D = duel(ids, { type: 'cvc', seed });
   const rec = [0, 1].map(() => ({ presses: [], jumps: 0, airborneNoKnock: 0, outOfRange: 0, dodgeEarly: 0 }));
-  const foeAttackStart = [-1, -1];
+  const attacking = [[], []]; // per frame: was each fighter attacking (the reaction check reads it back)
   let t = 0;
-  for (; t < max && D.flow.fighting; t += dt) {
-    // when did each fighter's current attack start (for the reaction check)
-    for (const i of [0, 1]) {
-      const f = D.fighters[i];
-      if (isAttacking(f)) { if (foeAttackStart[i] < 0) foeAttackStart[i] = t; } else foeAttackStart[i] = -1;
-    }
+  for (let frame = 0; t < max && D.flow.fighting; t += dt, frame++) {
+    for (const i of [0, 1]) attacking[i][frame] = isAttacking(D.fighters[i]);
     D.step(1);
     for (const i of [0, 1]) {
       const c = D.ctrls[i].ai, inp = c.input, f = D.fighters[i], o = D.fighters[1 - i];
@@ -34,7 +30,12 @@ function fight(ids, seed, max = 240) {
         if (k !== 'special' && dist > reach + o.radius + M.lunge + 1.2) rec[i].outOfRange++;
       }
       if (inp.jump) rec[i].jumps++;
-      if (inp.dodge && foeAttackStart[1 - i] >= 0 && t - foeAttackStart[1 - i] < c.p.reaction - 0.02) rec[i].dodgeEarly++;
+      // a dodge answers an attack the CPU has seen: the foe must have been attacking a reaction-delay ago
+      if (inp.dodge) {
+        const back = frame - Math.round(c.p.reaction / dt);
+        const seen = [back - 1, back, back + 1].some((k) => k >= 0 && attacking[1 - i][k]);
+        if (!seen) rec[i].dodgeEarly++;
+      }
     }
   }
   return { D, rec, t };
@@ -99,13 +100,15 @@ test('personalities: Dreadnought presses forward and hits heavy; Toaku moves, ev
   const time = runs.reduce((s, r) => s + r.t, 0);
   const W = (k) => sum(0, k, runs), T = (k) => sum(1, k, runs);
   const attacksW = W('punch') + W('heavy') + W('kick') + W('grab'), attacksT = T('punch') + T('kick') + T('grab') + T('slam');
-  // Dreadnought: aggressive, heavy blows and grabs, rarely backs off
+  // Dreadnought: aggressive, heavy blows and grabs, rarely backs off; attacks far more often than Toaku
+  // (absolute rates include the cooldowns and the time a floored opponent cannot be hit)
   assert.ok(W('heavy') > 0 && W('grab') > 0, `heavy ${W('heavy')} grab ${W('grab')}`);
   assert.ok(W('retreat') < T('retreat'), `retreats D ${W('retreat')} vs T ${T('retreat')}`);
-  assert.ok(attacksW / time > 0.3, `Dreadnought attacks ${(attacksW / time * 60).toFixed(0)} / min`);
-  // Toaku: circles and evades much more, dodges what he sees coming (rolls away from heavy blows,
-  // side-steps light ones to stay in punishing range)
-  assert.ok(T('circle') + T('evade') + T('dodge') > (W('circle') + W('dodge')) * 1.5, `T move ${T('circle') + T('evade') + T('dodge')} vs D ${W('circle') + W('dodge')}`);
+  assert.ok(attacksW > attacksT * 1.5 && attacksW / time > 10 / 60, `attacks / min: Dreadnought ${(attacksW / time * 60).toFixed(1)}, Toaku ${(attacksT / time * 60).toFixed(1)}`);
+  // Toaku: keeps his distance and evades far more: retreats, side-steps and rolls (rolls away from heavy
+  // blows, side-steps light ones to stay in punishing range)
+  const evasiveT = T('retreat') + T('evade') + T('dodge'), evasiveW = W('retreat') + W('evade') + W('dodge');
+  assert.ok(evasiveT > evasiveW * 3, `evasive moves: Toaku ${evasiveT}, Dreadnought ${evasiveW}`);
   assert.ok(T('evade') > 0, 'Toaku side-steps light blows');
   assert.ok(T('dodge') > 0, 'Toaku rolls away from heavy ones');
   assert.ok(attacksT > 0, 'and still fights');
