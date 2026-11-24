@@ -235,6 +235,12 @@ const world = {
     document.body.classList.toggle('raging', on);
     if (on) { banner('WARLORD RAGE!!', 'rage'); world.hitStop(0.1); }
   },
+  /** TOAKU's ENERGY OVERFLOW: the activation's green surge (banner, flash, glowing screen edges), its end. */
+  onOverflow(phase) {
+    if (phase === 'surge') { banner('ENERGY OVERFLOW!!', 'overflow'); flash(''); world.hitStop(0.08); }
+    if (phase === 'surge' || phase === 'on') document.body.classList.add('overflowing');
+    if (phase === 'off') document.body.classList.remove('overflowing');
+  },
   /** Health given back (WARLORD RAGE kills): the bar flashes and the amount pops beside it. */
   onPlayerHeal(amount) {
     if (!(amount > 0)) return;
@@ -519,7 +525,7 @@ function banner(text, kind) {
   clearTimeout(bannerTimer);
   bannerTimer = setTimeout(() => { el.className = kind; }, 1600);
 }
-const hud = { hp: $('#hp-fill'), hpLag: $('#hp-lag'), meter: $('#meter'), meterLabel: $('#meter-label'), sp: $('#btn-special'), punch: $('#btn-punch'), wave: $('#wave'), score: $('#score'), left: $('#left'), boss: $('#boss-fill'), combo: $('#combo') };
+const hud = { hp: $('#hp-fill'), hpLag: $('#hp-lag'), meter: $('#meter'), meterLabel: $('#meter-label'), sp: $('#btn-special'), of: $('#btn-overflow'), punch: $('#btn-punch'), wave: $('#wave'), score: $('#score'), left: $('#left'), boss: $('#boss-fill'), combo: $('#combo') };
 let hpLag = 1;
 /** Last values written to the DOM: the HUD only touches an element when its value changes. */
 const shown = {};
@@ -531,14 +537,22 @@ function updateHud(dt) {
   // bars scale on the compositor (transform) instead of re-laying out a width every frame
   put('hp', Math.round(hpf * 400) / 400, (v) => { hud.hp.style.transform = `scaleX(${v})`; hud.hp.classList.toggle('low', v < 0.3); });
   put('lag', Math.round(hpLag * 400) / 400, (v) => { hud.hpLag.style.transform = `scaleX(${v})`; });
-  // the bar under the health: the special meter (DREADNOUGHT: WARLORD RAGE, or its time left while raging)
+  // the bar under the health: the fighter's resource (DREADNOUGHT: WARLORD RAGE, TOAKU: ENERGY OVERFLOW,
+  // or their time left while on; otherwise the special meter); the special button's ring: its charge
   const mf = p.hudMeter !== undefined ? p.hudMeter : Math.min(1, p.meter / p.cfg.special.meterMax);
-  put('meter', Math.round(mf * 200) / 200, (v) => {
-    hud.meter.style.transform = `scaleX(${v})`;
-    hud.sp.style.setProperty('--fill', v * 360 + 'deg');
-  });
+  const sf = p.specialCharge !== undefined ? p.specialCharge : mf;
+  put('meter', Math.round(mf * 200) / 200, (v) => { hud.meter.style.transform = `scaleX(${v})`; });
+  put('spFill', Math.round(sf * 200) / 200, (v) => { hud.sp.style.setProperty('--fill', v * 360 + 'deg'); });
   const ready = p.specialReady !== undefined ? p.specialReady : mf >= 1;
-  put('ready', ready, (v) => { hud.meter.classList.toggle('ready', v); hud.sp.classList.toggle('ready', v); });
+  put('ready', ready, (v) => { hud.sp.classList.toggle('ready', v); });
+  put('barReady', p.hudReady !== undefined ? p.hudReady : ready, (v) => { hud.meter.classList.toggle('ready', v); });
+  if (p.overflowT !== undefined) {
+    // TOAKU's OVERFLOW button: its ring is the bar; ready at 100%; lit (burning down) while the mode runs
+    put('ofOn', p.overflowT > 0 || p.state === 'overflow', (v) => { hud.meter.classList.toggle('overflowing', v); hud.of.classList.toggle('active', v); });
+    put('ofFill', Math.round(mf * 200) / 200, (v) => { hud.of.style.setProperty('--fill', v * 360 + 'deg'); });
+    put('ofReady', p.overflowReady, (v) => { hud.of.classList.toggle('ready', v); });
+    put('ofSecs', p.overflowT > 0 ? Math.ceil(p.overflowT) : 0, (v) => { hud.meterLabel.textContent = v ? `${rosterOf(G.charId).meterLabel} · ${v}s` : rosterOf(G.charId).meterLabel; });
+  }
   if (p.rageT !== undefined) {
     put('raging', p.rageT > 0, (v) => { hud.meter.classList.toggle('raging', v); hud.sp.classList.toggle('raging', v); });
     put('rageSecs', p.rageT > 0 ? Math.ceil(p.rageT) : 0, (v) => { hud.meterLabel.textContent = v ? `${rosterOf(G.charId).meterLabel} · ${v}s` : rosterOf(G.charId).meterLabel; });
@@ -570,11 +584,14 @@ function configureHud(c) {
   document.body.classList.toggle('has-kick', !!B.kick);
   document.body.classList.toggle('has-grab', !!B.grab);
   document.body.classList.toggle('has-dodge', !!B.dodge);     // its own DODGE button (the JUMP slot when he cannot jump)
+  document.body.classList.toggle('has-overflow', !!B.overflow); // TOAKU: ENERGY OVERFLOW
   document.body.classList.toggle('no-special', !B.special);
   document.body.classList.toggle('no-jump', !B.jump);         // DREADNOUGHT: a grounded heavyweight
   document.body.classList.toggle('has-charge', !!cfg[c.id].uppercut); // hold PUNCH to charge
-  document.body.classList.remove('raging');
-  hud.meter.classList.remove('raging'); hud.sp.classList.remove('raging');
+  document.body.classList.remove('raging', 'overflowing');
+  hud.meter.classList.remove('raging', 'overflowing', 'ready'); hud.sp.classList.remove('raging');
+  hud.of.classList.remove('ready', 'active');
+  if (B.overflow) hud.of.innerHTML = `<svg class="ic"><use href="#${B.overflowIcon}"></use></svg><span>${B.overflow}</span>`;
   if (B.jump) $('#btn-jump').innerHTML = `<svg class="ic"><use href="#${B.jumpIcon}"></use></svg><span>${B.jump}</span>`;
   if (B.special) $('#btn-special').innerHTML = `<svg class="ic"><use href="#${B.specialIcon}"></use></svg><span>${B.special}</span>`;
   if (B.dodge) $('#btn-dodge').innerHTML = `<svg class="ic"><use href="#${B.dodgeIcon}"></use></svg><span>${B.dodge}</span>`;
@@ -594,7 +611,7 @@ function clearWorld() {
   encounter = null; G.bossRef = null;
   resetBossUi();
   $('#frost').classList.remove('on');
-  document.body.classList.remove('raging');
+  document.body.classList.remove('raging', 'overflowing');
 }
 /**
  * Start a fight: fighter `id` on map `mapId` (default: his home map). Spawns him on the map's start
@@ -1043,7 +1060,7 @@ window.addEventListener('keydown', (e) => {
 // ---------- loop ----------
 const clock = new THREE.Clock();
 const camPos = new THREE.Vector3(), look = new THREE.Vector3(), camScript = new THREE.Vector3(), menuLook = new THREE.Vector3();
-const idleInput = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, dodge: false, special: false, punchHeld: false };
+const idleInput = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, dodge: false, special: false, overflow: false, punchHeld: false };
 const NO_CAM = { distance: 1, height: 1, look: 1 }; // fighters without their own camera framing
 let titleT = 0;
 
@@ -1297,7 +1314,7 @@ window.__game = {
   step(frames = 1, inp = {}, fps = 60) {
     for (let i = 0; i < frames; i++) {
       const tickInput = { ...idleInput, ...inp };
-      if (i > 0) { tickInput.punch = false; tickInput.kick = false; tickInput.grab = false; tickInput.jump = false; tickInput.dodge = false; tickInput.special = false; }
+      if (i > 0) { tickInput.punch = false; tickInput.kick = false; tickInput.grab = false; tickInput.jump = false; tickInput.dodge = false; tickInput.special = false; tickInput.overflow = false; }
       if (G.mode === 'title') stepShowcase(1 / fps, true);
       else stepMode(1 / fps, tickInput);
     }

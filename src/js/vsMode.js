@@ -293,7 +293,7 @@ export function createVsMode(d) {
     disposeMatch();
     flow.exit();
     paused = false;
-    document.body.classList.remove('vs-pvc', 'vs-cvc', 'vs-fight', 'vs-intro', 'cine', 'raging');
+    document.body.classList.remove('vs-pvc', 'vs-cvc', 'vs-fight', 'vs-intro', 'cine', 'raging', 'overflowing');
   }
 
   /** Remove the match's fighters and effects (rematch, reselect, exit). */
@@ -306,7 +306,7 @@ export function createVsMode(d) {
     fightText(false);
     $('.vsi-vs').classList.remove('show');
     for (const p of document.querySelectorAll('.vsi-plate')) p.classList.remove('show');
-    document.body.classList.remove('raging', 'vs-fight', 'vs-intro', 'cine');
+    document.body.classList.remove('raging', 'overflowing', 'vs-fight', 'vs-intro', 'cine');
   }
 
   // ------------------------------------------------------------------ presentation hooks
@@ -357,6 +357,15 @@ export function createVsMode(d) {
       if (i >= 0) $(`#vs-side-${i}`).classList.toggle('raging', on);
       if (on) { d.banner('WARLORD RAGE!!', 'rage'); env.hitStop(0.1); }
       if (m && m.type === 'pvc' && i === 0) document.body.classList.toggle('raging', on);
+    },
+    /** TOAKU's ENERGY OVERFLOW: the surge's banner; his side (and the player's screen edges) glow green. */
+    overflow(f, phase) {
+      const i = m ? m.fighters.indexOf(f) : -1;
+      const on = phase === 'surge' || phase === 'on';
+      if (phase === 'surge') { d.banner('ENERGY OVERFLOW!!', 'overflow'); d.flash(''); env.hitStop(0.08); }
+      if (phase === 'charge') return;
+      if (i >= 0) $(`#vs-side-${i}`).classList.toggle('overflowing', on);
+      if (m && m.type === 'pvc' && i === 0) document.body.classList.toggle('overflowing', on);
     },
     heal(f, n) {
       const i = m ? m.fighters.indexOf(f) : -1;
@@ -414,7 +423,8 @@ export function createVsMode(d) {
     m.ids.forEach((id, i) => {
       const c = rosterOf(id), e = hudEls[i];
       e.s.dataset.fighter = id;
-      e.s.classList.remove('raging', 'hit');
+      e.s.classList.remove('raging', 'overflowing', 'hit');
+      e.res.classList.remove('raging', 'overflowing', 'ready');
       e.name.textContent = c.name;
       e.tag.textContent = type === 'pvc' ? (i === 0 ? 'P1' : 'CPU') : 'CPU';
       e.emb.classList.toggle('portrait', !c.emblem);
@@ -435,8 +445,14 @@ export function createVsMode(d) {
       if (rosterOf(m.ids[i]).vs.counter) return;
       const mf = f.hudMeter !== undefined ? f.hudMeter : Math.min(1, f.meter / f.cfg.special.meterMax);
       put(`res${i}`, Math.round(mf * 200) / 200, (v) => { e.resFill.style.transform = `scaleX(${v})`; });
-      const ready = f.specialReady !== undefined ? f.specialReady : mf >= 1;
+      const ready = f.hudReady !== undefined ? f.hudReady : f.specialReady !== undefined ? f.specialReady : mf >= 1;
       put(`rdy${i}`, ready, (v) => e.res.classList.toggle('ready', v));
+      if (f.overflowT !== undefined) {
+        // TOAKU's ENERGY OVERFLOW: the bar burns green with the time left while it runs
+        put(`of${i}`, f.overflowT > 0 || f.state === 'overflow', (v) => e.res.classList.toggle('overflowing', v));
+        const secs = f.overflowT > 0 ? Math.ceil(f.overflowT) : 0;
+        put(`ofs${i}`, secs, (v) => { e.resLabel.textContent = v ? `${rosterOf(m.ids[i]).meterLabel} · ${v}s` : rosterOf(m.ids[i]).meterLabel; });
+      }
       if (f.rageT !== undefined) {
         const secs = f.rageT > 0 ? Math.ceil(f.rageT) : 0;
         put(`rage${i}`, secs, (v) => { e.res.classList.toggle('raging', v > 0); e.resLabel.textContent = v ? `${rosterOf(m.ids[i]).meterLabel} · ${v}s` : rosterOf(m.ids[i]).meterLabel; });
@@ -446,7 +462,14 @@ export function createVsMode(d) {
       // the player's own buttons: special ready / the PUNCH charge ring (like the horde HUD)
       const p = m.fighters[0], sp = $('#btn-special'), punch = $('#btn-punch');
       const mf = p.hudMeter !== undefined ? p.hudMeter : Math.min(1, p.meter / p.cfg.special.meterMax);
-      put('spFill', Math.round(mf * 100) / 100, (v) => sp.style.setProperty('--fill', v * 360 + 'deg'));
+      const sf = p.specialCharge !== undefined ? p.specialCharge : mf;
+      put('spFill', Math.round(sf * 100) / 100, (v) => sp.style.setProperty('--fill', v * 360 + 'deg'));
+      if (p.overflowT !== undefined) {
+        const of = $('#btn-overflow');
+        put('ofFill', Math.round(mf * 100) / 100, (v) => of.style.setProperty('--fill', v * 360 + 'deg'));
+        put('ofReady', p.overflowReady, (v) => of.classList.toggle('ready', v));
+        put('ofActive', p.overflowT > 0 || p.state === 'overflow', (v) => of.classList.toggle('active', v));
+      }
       put('spReady', p.specialReady !== undefined ? p.specialReady : mf >= 1, (v) => sp.classList.toggle('ready', v));
       put('spRaging', !!(p.rageT > 0), (v) => sp.classList.toggle('raging', v));
       const ch = p.charge || 0;

@@ -4,8 +4,11 @@
  *  - PUNCH: the 4-punch combo; KICK: the Rising Flying Kick (its own root motion carries him forward)
  *  - GRAB: Skill_02 — the hands clasp an enemy, two full giant-swing turns (the swung body hits
  *    anyone it sweeps through), then the throw (the thrown body smashes into whoever it meets)
- *  - jump, thruster double jump, air slam and MACHINEGUN IMPACT have no clip of their own: they use
- *    key poses and a fast punch loop baked from the same clips, plus the back thrusters.
+ *  - jump, thruster double jump and MACHINEGUN IMPACT have no clip of their own: they use key poses
+ *    and a fast punch loop baked from the same clips, plus the back thrusters; the air slam lands
+ *    with Dive_Down_and_Land_2; DODGE rolls with Roll_Dodge_2
+ *  - ENERGY OVERFLOW (OVERFLOW, its green bar full): the Charged_Spell_Cast emote, whole and once, a
+ *    green surge at its peak, then 30 s faster, quicker and stronger in a green aura
  */
 import * as THREE from 'three';
 import { ClipFighter } from './clipFighter.js';
@@ -13,12 +16,14 @@ import { inArc, angleDiff } from './combat.js';
 import { sampleRoot } from './clipUtils.js';
 import { smooth } from './pose.js';
 import { attachAtBindPose, glowSprite } from './characterModel.js';
+import { createRageAura } from './rageAura.js';
 
 const tmpV = new THREE.Vector3(), tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
 /** Enemy states that cannot be grabbed. */
 const UNGRABBABLE = new Set(['spawn', 'dying', 'grabbed', 'thrown']);
-/** Moves a hit does not interrupt. */
-const ARMORED = new Set(['special', 'slam', 'grab', 'kick']);
+/** Moves a hit does not interrupt (the ENERGY OVERFLOW activation among them: blows still hurt). */
+const ARMORED = new Set(['special', 'slam', 'grab', 'kick', 'overflow']);
+const GREEN = 0x39ff6a, PALE = 0xeaffd8;
 
 /** Distance from point (px, pz) to the segment a-b on the ground plane. */
 export function segmentDistance(px, pz, ax, az, bx, bz) {
@@ -46,7 +51,7 @@ function thrusterGeometry() {
 }
 
 /** Every action Toaku blends (the instance must carry each). */
-export const TOAKU_CHANNELS = ['Idle', 'Run', 'Punch', 'Kick', 'Grab', 'Dodge', 'Land', 'Launch', 'GetUp', 'Flurry', 'PoseSquat', 'PoseFall', 'PoseRise', 'PoseBoost', 'PoseDive'];
+export const TOAKU_CHANNELS = ['Idle', 'Run', 'Punch', 'Kick', 'Grab', 'Dodge', 'Land', 'Launch', 'GetUp', 'Overflow', 'Flurry', 'PoseSquat', 'PoseFall', 'PoseRise', 'PoseBoost', 'PoseDive'];
 
 /** The player's heavyweight. Same public surface as SuperTahu (update, takeHit, meter, combo...). */
 export class Toaku extends ClipFighter {
@@ -73,8 +78,70 @@ export class Toaku extends ClipFighter {
     this.swingHits = new Set();
     this.specialHitT = 0;
     this.specialFinished = false;
+    this.specT = 0;             // MACHINEGUN IMPACT's own clock (runs faster in ENERGY OVERFLOW)
+    this.overflow = 0;          // ENERGY OVERFLOW meter, 0..overflow.max
+    this.overflowT = 0;         // s of ENERGY OVERFLOW left (0: not on)
+    this.overflowQueue = 0;     // s an activation request still waits for a free moment
+    this.surged = false;        // this activation's green surge has burst
+    this.ofW = 0;               // the green aura's visibility 0..1
+    this.ofOn = false;          // an activation or the mode is in progress (its end is announced once)
+    this.emberT = 0;
+    this.evaded = false;        // this roll already let a blow through (meter once per roll)
+    this.emoteLen = 0;          // the activation emote's real length (s), read from its clip
     this.dress(inst);
+    this.aura = createRageAura(inst, cfg.overflow.aura);
+    // the activation is the uploaded emote and nothing else: without it the mode cannot start
+    if (!inst.actions.Overflow) console.warn('ENERGY OVERFLOW: the activation emote (clips.Overflow, Charged_Spell_Cast) is missing from the model - the mode cannot be activated');
   }
+
+  /** Release his own GPU resources (the aura's material; geometry and skeleton are shared). */
+  dispose() {
+    super.dispose();
+    this.aura.dispose();
+  }
+
+  // ---------------------------------------------------------------- ENERGY OVERFLOW state (HUD)
+  /** ENERGY OVERFLOW is on: its bonuses apply. */
+  get overflowing() { return this.overflowT > 0; }
+  /** Damage multiplier of his blows right now. */
+  get dmgMul() { return this.overflowT > 0 ? this.cfg.overflow.damageMul : 1; }
+  /** The bar under his health: the meter while it charges, the time left while the mode runs (0..1). */
+  get hudMeter() {
+    const O = this.cfg.overflow;
+    if (this.overflowT > 0) return this.overflowT / O.duration;
+    return this.state === 'overflow' ? 1 : Math.min(1, this.overflow / O.max);
+  }
+  /** OVERFLOW can be pressed (the bar is full, the mode is not on, the emote is there). */
+  get overflowReady() {
+    return this.alive && this.overflowT <= 0 && this.state !== 'overflow' && this.overflow >= this.cfg.overflow.max && !!this.inst.actions.Overflow;
+  }
+  /** The bar's own "ready" glow. */
+  get hudReady() { return this.overflowReady; }
+  /** MACHINEGUN IMPACT's charge (the ring of its button), 0..1. */
+  get specialCharge() { return Math.min(1, this.meter / this.cfg.special.meterMax); }
+  /** MACHINEGUN IMPACT can be used. */
+  get specialReady() { return this.alive && this.meter >= this.cfg.special.meterMax; }
+
+  /** The bar fills with the damage his blows and grabs deal (never while the mode runs or emotes). */
+  onDealtDamage(dmg) { this.gainOverflow(dmg * this.cfg.overflow.perDamage); }
+  /** An enemy he defeated (horde). */
+  onKill() { this.gainOverflow(this.cfg.overflow.perKill); }
+  /** A blow went through his roll's evasion window: a little, once per roll. */
+  onEvade() {
+    if (this.evaded) return;
+    this.evaded = true;
+    this.gainOverflow(this.cfg.overflow.perEvade);
+  }
+  gainOverflow(n) {
+    if (!(n > 0) || !this.alive || this.overflowT > 0 || this.state === 'overflow') return;
+    this.overflow = Math.min(this.cfg.overflow.max, this.overflow + n);
+  }
+
+  /**
+   * ENERGY OVERFLOW's one entry point, the same for the player's OVERFLOW button and the CPU: the
+   * request waits (overflow.queue s) for a free moment on the ground, then the activation starts.
+   */
+  requestOverflow() { if (this.overflowReady) this.overflowQueue = this.cfg.overflow.queue; }
 
   /**
    * Back thrusters with flames, and the core / eye / turbine glows, fixed to his bones. The parts'
@@ -119,18 +186,42 @@ export class Toaku extends ClipFighter {
   }
 
   tick(dt) {
+    const O = this.cfg.overflow;
     this.age += dt;
     this.landT += dt;
     this.thrust = Math.max(0, this.thrust - dt);
     this.dodgeCool = Math.max(0, this.dodgeCool - dt);
+    this.overflowQueue = Math.max(0, this.overflowQueue - dt);
+    if (this.state !== 'dodge') this.evaded = false;
+    // the mode's 30 s are of play: the clock stands still while a scripted sequence holds the fight
+    const held = this.world && this.world.cinematic && this.world.cinematic();
+    if (this.overflowT > 0 && !held) {
+      this.overflowT -= dt;
+      if (this.overflowT <= 0) this.endOverflow(this.world);
+    }
+    // the bonuses: one switch, never stacked (multipliers set, not multiplied)
+    const on = this.overflowT > 0;
+    this.speedMul = on ? O.speedMul : 1;
+    this.atkSpeed = on ? O.attackSpeedMul : 1;
+    // the aura: gathering through the emote's charge, full from its surge, while the mode runs
+    const A = O.aura;
+    let want = on ? 1 : 0;
+    if (this.state === 'overflow') want = this.surged ? 1 : this.clipT >= O.emote.charge ? A.gather * smooth(O.emote.charge, O.emote.surge, this.clipT) : 0;
+    this.ofW = want > this.ofW ? Math.min(want, this.ofW + dt / A.fadeIn) : Math.max(want, this.ofW - dt / A.fadeOut);
   }
 
   armored() { return ARMORED.has(this.state); }
 
   think(ctl, world) {
     const cfg = this.cfg, B = this.buffer;
+    if (this.state === 'overflow') return; // the activation: no move, no attack, no second activation
     const afterImpact = (this.state === 'punch' || this.state === 'kick') && this.hitDone;
     const free = this.state === 'idle' || afterImpact;
+    // ENERGY OVERFLOW: the OVERFLOW button (the CPU calls requestOverflow() itself), at a free moment on
+    // the ground; a scripted sequence (boss warning, cinematic) drops a pending request
+    if (world.cinematic && world.cinematic()) this.overflowQueue = 0;
+    else if (ctl.input.overflow) this.requestOverflow();
+    if (this.overflowQueue > 0 && this.overflowReady && free && this.onGround) { this.startOverflow(world); return; }
     // DODGE: a roll toward the stick (or ahead), from a free moment or out of a flinch; on the ground
     if (B.dodge > 0 && this.dodgeCool <= 0 && this.onGround && (free || this.state === 'hurt')) {
       B.dodge = 0;
@@ -158,8 +249,74 @@ export class Toaku extends ClipFighter {
       case 'slam': this.updateSlam(dt, world); return 10;
       case 'special': this.updateSpecial(dt, world); return 4;
       case 'dodge': this.updateRoll(dt, world); return 0; // velocity comes from the clip's root motion
+      case 'overflow': this.updateOverflow(dt, world); return 20;
     }
     return 10;
+  }
+
+  // ---------------------------------------------------------------- ENERGY OVERFLOW
+  /**
+   * The activation (ENERGY_OVERFLOW_ACTIVATING): the meter is spent, the uploaded emote plays once,
+   * whole, at its own length; he stands planted, blows hurt but do not interrupt, grabs are refused.
+   */
+  startOverflow(world) {
+    this.setState('overflow');
+    this.clipT = 0;
+    this.overflowQueue = 0;
+    this.overflow = 0;
+    this.surged = false;
+    this.ofOn = true;
+    this.emberT = 0;
+    this.emoteLen = this.inst.actions.Overflow.getClip().duration;
+    this.vel.x = 0; this.vel.z = 0;
+    world.audio.whoosh();
+    if (world.onOverflow) world.onOverflow('charge');
+  }
+
+  updateOverflow(dt, world) {
+    const O = this.cfg.overflow, E = O.emote;
+    this.vel.x = 0; this.vel.z = 0;
+    this.clipT = Math.min(this.emoteLen, this.clipT + dt * E.speed);
+    if (!this.surged && this.clipT >= E.surge) this.surge(world);
+    else if (!this.surged && this.clipT >= E.charge) {
+      // energy gathering in his core and hands
+      this.emberT -= dt;
+      if (this.emberT <= 0) { this.emberT = O.emberEvery; world.fx.sparks(this.center(tmpV), 2, GREEN, 3); }
+    }
+    if (this.clipT >= this.emoteLen) {
+      // the emote is over: the mode is on (every bonus from this frame), back to the fight stance
+      this.overflowT = O.duration;
+      this.speedMul = O.speedMul;
+      this.atkSpeed = O.attackSpeedMul;
+      this.setState('idle');
+      if (world.onOverflow) world.onOverflow('on');
+    }
+  }
+
+  /** The emote's peak: the green energy bursts out of him. */
+  surge(world) {
+    const O = this.cfg.overflow;
+    this.surged = true;
+    const c = this.center(tmpV);
+    world.fx.shockwave(tmpA.set(this.pos.x, this.pos.y + 0.2, this.pos.z), O.surgeRadius, GREEN);
+    world.fx.shockwave(tmpA.set(this.pos.x, this.pos.y + this.height * 0.55, this.pos.z), O.surgeRadius * 0.55, PALE);
+    world.fx.sparks(c, 36, GREEN, 15);
+    world.fx.sparks(c, 16, PALE, 10);
+    world.shake(0.6);
+    world.hitStop(0.06);
+    world.audio.special();
+    if (world.onOverflow) world.onOverflow('surge');
+  }
+
+  /** The mode is over (time up, or knocked out): normal speed and damage, the aura fades, the bar refills from empty. */
+  endOverflow(world, now = false) {
+    const was = this.ofOn;
+    this.ofOn = false;
+    this.overflowT = 0;
+    this.speedMul = 1;
+    this.atkSpeed = 1;
+    if (now) { this.ofW = 0; this.aura.set(0, this.age); }
+    if (was && world && world.onOverflow) world.onOverflow('off');
   }
 
   // ---------------------------------------------------------------- jump / thrusters / slam
@@ -170,8 +327,8 @@ export class Toaku extends ClipFighter {
     if (this.stateT < cfg.jumpSquat) return;
     this.vel.y = cfg.jumpVelocity;
     if (ctl.mag > 0.15) {
-      this.vel.x = Math.sin(this.facing) * cfg.moveSpeed * ctl.mag;
-      this.vel.z = Math.cos(this.facing) * cfg.moveSpeed * ctl.mag;
+      this.vel.x = Math.sin(this.facing) * cfg.moveSpeed * this.speedMul * ctl.mag;
+      this.vel.z = Math.cos(this.facing) * cfg.moveSpeed * this.speedMul * ctl.mag;
     }
     this.jumps = 1;
     this.onGround = false;
@@ -189,8 +346,8 @@ export class Toaku extends ClipFighter {
     this.thrust = cfg.thrusterBurn;
     if (ctl.mag > 0.15) {
       this.facing = ctl.wishYaw;
-      this.vel.x = Math.sin(ctl.wishYaw) * cfg.moveSpeed * 1.3;
-      this.vel.z = Math.cos(ctl.wishYaw) * cfg.moveSpeed * 1.3;
+      this.vel.x = Math.sin(ctl.wishYaw) * cfg.moveSpeed * this.speedMul * 1.3;
+      this.vel.z = Math.cos(ctl.wishYaw) * cfg.moveSpeed * this.speedMul * 1.3;
     }
     if (this.state !== 'idle') this.setState('idle');
     world.audio.thruster();
@@ -268,7 +425,7 @@ export class Toaku extends ClipFighter {
       const dx = e.pos.x - this.pos.x, dz = e.pos.z - this.pos.z;
       const d = Math.hypot(dx, dz);
       if (d < S.radius + e.radius && e.altitude() < 2.5 && world.map.sameLevel(this.pos, e.pos)) {
-        world.hitEnemy(e, S.damage, dx / (d || 1), dz / (d || 1), S.knockback, S.lift, 0.8, true);
+        world.hitEnemy(e, Math.round(S.damage * this.dmgMul), dx / (d || 1), dz / (d || 1), S.knockback, S.lift, 0.8, true);
         hits++;
       }
     }
@@ -385,10 +542,12 @@ export class Toaku extends ClipFighter {
     this.holdT = 0;
     this.swingHits = new Set();
     e.grabbedBy(this);
-    e.hp = Math.max(1, e.hp - G.grabDamage);
+    const dmg = Math.min(Math.round(G.grabDamage * this.dmgMul), Math.max(0, e.hp - 1));
+    e.hp -= dmg;
+    this.onDealtDamage(dmg);
     const c = e.center(tmpV);
     world.fx.sparks(c, 10, 0xffd27a, 6);
-    world.fx.damageNumber(c.setY(c.y + 0.6), G.grabDamage, '');
+    world.fx.damageNumber(c.setY(c.y + 0.6), dmg, '');
     world.audio.hit(false);
     world.shake(0.15);
     this.registerHits(1, world);
@@ -398,7 +557,9 @@ export class Toaku extends ClipFighter {
     const G = this.cfg.grab, e = this.held;
     this.held = null;
     if (!e) return;
-    e.thrownBy(this, Math.sin(this.facing) * G.throwSpeed, G.throwUp, Math.cos(this.facing) * G.throwSpeed, G);
+    // the crash's damage this throw (ENERGY OVERFLOW multiplies it)
+    const hit = this.dmgMul === 1 ? G : { ...G, landDamage: Math.round(G.landDamage * this.dmgMul) };
+    e.thrownBy(this, Math.sin(this.facing) * G.throwSpeed, G.throwUp, Math.cos(this.facing) * G.throwSpeed, hit);
     world.audio.whoosh();
     world.audio.hit(true);
     world.shake(0.35);
@@ -432,14 +593,17 @@ export class Toaku extends ClipFighter {
       if (o === e || !o.alive || !o.targetable || this.swingHits.has(o) || !world.map.sameLevel(this.pos, o.pos)) continue;
       if (segmentDistance(o.pos.x, o.pos.z, e.pos.x, e.pos.z, bx, bz) < o.radius + 0.45) {
         this.swingHits.add(o);
-        world.hitEnemy(o, G.swingDamage, rx, rz, G.swingKnock, G.swingLift, 0.6, true);
+        world.hitEnemy(o, Math.round(G.swingDamage * this.dmgMul), rx, rz, G.swingKnock, G.swingLift, 0.6, true);
         this.registerHits(1, world);
       }
     }
   }
 
-  onDeath() {
+  onDeath(world) {
     if (this.held) { const e = this.held; this.held = null; e.release(); }
+    // knocked out mid-activation or mid-mode: it ends at once, cleanly
+    this.overflowQueue = 0;
+    this.endOverflow(world || this.world, true);
   }
 
   // ---------------------------------------------------------------- MACHINEGUN IMPACT
@@ -451,6 +615,7 @@ export class Toaku extends ClipFighter {
   startSpecial(world) {
     this.setState('special');
     this.meter = 0;
+    this.specT = 0;
     this.specialHitT = 0;
     this.specialFinished = false;
     this.vel.set(0, Math.min(this.vel.y, 0), 0);
@@ -463,7 +628,8 @@ export class Toaku extends ClipFighter {
 
   updateSpecial(dt, world) {
     const S = this.cfg.special, M = this.cfg.mgi;
-    const t = this.stateT;
+    this.specT += dt * this.atkSpeed; // its own clock: quicker in ENERGY OVERFLOW
+    const t = this.specT;
     const fwdX = Math.sin(this.facing), fwdZ = Math.cos(this.facing);
     if (t < M.windup) {
       // gather power: core flares
@@ -472,7 +638,7 @@ export class Toaku extends ClipFighter {
     } else if (t < M.windup + S.duration) {
       // the flurry: the punch loop at absurd speed, after-images everywhere
       this.vel.x = fwdX * S.advanceSpeed; this.vel.z = fwdZ * S.advanceSpeed;
-      this.specialHitT -= dt;
+      this.specialHitT -= dt * this.atkSpeed;
       while (this.specialHitT <= 0) {
         this.specialHitT += S.hitInterval;
         for (let k = 0; k < 2; k++) {
@@ -486,7 +652,7 @@ export class Toaku extends ClipFighter {
         for (const e of world.enemies) {
           if (!e.alive || !e.targetable || !world.map.sameLevel(this.pos, e.pos)) continue;
           if (inArc(this.pos, this.facing, e.pos, S.reach, S.arc, e.radius)) {
-            world.hitEnemy(e, S.damagePerHit, fwdX, fwdZ, 1.4, e.onGround ? 1.5 : 2.2, 0.3, false, true);
+            world.hitEnemy(e, Math.round(S.damagePerHit * this.dmgMul), fwdX, fwdZ, 1.4, e.onGround ? 1.5 : 2.2, 0.3, false, true);
             hits++;
           }
         }
@@ -502,7 +668,7 @@ export class Toaku extends ClipFighter {
         for (const e of world.enemies) {
           if (!e.alive || !e.targetable || !world.map.sameLevel(this.pos, e.pos)) continue;
           if (inArc(this.pos, this.facing, e.pos, S.reach + 0.8, S.arc + 0.3, e.radius)) {
-            world.hitEnemy(e, S.finisherDamage, fwdX, fwdZ, S.finisherKnockback, S.finisherLift, 1.0, true);
+            world.hitEnemy(e, Math.round(S.finisherDamage * this.dmgMul), fwdX, fwdZ, S.finisherKnockback, S.finisherLift, 1.0, true);
             hits++;
           }
         }
@@ -526,8 +692,9 @@ export class Toaku extends ClipFighter {
       case 'dodge': T.Dodge = 1; A.Dodge.time = this.clipT; return 18;
       case 'grab': T.Grab = 1; A.Grab.time = Math.min(this.clipT, cfg.grab.end); return 24;
       case 'slam': T.Land = 1; A.Land.time = this.clipT; return 30; // Dive_Down_and_Land_2
+      case 'overflow': T.Overflow = 1; A.Overflow.time = Math.min(this.clipT, this.emoteLen - 0.02); return 20;
       case 'special': {
-        const S = cfg.special, M = cfg.mgi, t = this.stateT;
+        const S = cfg.special, M = cfg.mgi, t = this.specT;
         if (t < M.windup) { T.Punch = 1; A.Punch.time = cfg.idle.to; this.pitch = -0.12; return 20; }
         if (t < M.windup + S.duration) {
           T.Flurry = 1;
@@ -579,9 +746,22 @@ export class Toaku extends ClipFighter {
     // getWorldPosition() refreshes just the bone's own parent chain; re-walking the whole
     // 66-bone hierarchy here every frame (the renderer does it again anyway) was wasted work
     if (flameOn) for (const fl of this.inst.flames) world.fx.exhaust(fl.getWorldPosition(tmpV));
-    // the core glows brighter as the special meter fills, and pulses when it is ready
+    // the core glows brighter as the special meter fills, and pulses when it is ready; ENERGY OVERFLOW
+    // floods the core and eyes
     const charge = this.meter / this.cfg.special.meterMax;
-    this.setCoreGlow(this.state === 'special' && this.stateT < this.cfg.mgi.windup ? 2.4 : charge >= 1 ? 1.4 + Math.sin(this.age * 12) * 0.5 : charge);
+    let glow = this.state === 'special' && this.specT < this.cfg.mgi.windup ? 2.4 : charge >= 1 ? 1.4 + Math.sin(this.age * 12) * 0.5 : charge;
+    if (this.ofW > 0) glow = Math.max(glow, this.ofW * (2.2 + Math.sin(this.age * 9) * 0.35));
+    this.setCoreGlow(glow);
+    this.aura.set(this.ofW, this.age);
+    if (this.overflowT > 0) {
+      // green energy rising off him
+      this.emberT -= dt;
+      if (this.emberT <= 0) {
+        this.emberT = this.cfg.overflow.emberEvery * 2;
+        const a = Math.random() * Math.PI * 2, r = this.radius * 0.7;
+        world.fx.sparks(tmpV.set(this.pos.x + Math.sin(a) * r, this.pos.y + this.height * (0.2 + Math.random() * 0.7), this.pos.z + Math.cos(a) * r), 1, GREEN, 2.5);
+      }
+    }
     if (this.held) this.holdUpdate(dt, world);
   }
 

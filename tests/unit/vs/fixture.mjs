@@ -70,6 +70,8 @@ export function fakeToaku() {
   const rig = mixamoRig(s.model, 3.6, { Spine2: [0, 2.7, 0], Head: [0, 3.3, 0.05], LeftForeArm: [0.35, 2.45, 0.6], RightForeArm: [-0.35, 2.45, 0.6], LeftHand: [0.1, 2.3, 1.1], RightHand: [-0.1, 2.3, 1.1], LeftFoot: [0.2, 0.3, 0.3] });
   s.bones = rig.bones;
   s.restore = rig.restore;
+  // the ENERGY OVERFLOW emote's real length (Charged_Spell_Cast, measured on the rig)
+  s.actions.Overflow.getClip = () => ({ duration: 2.667 });
   s.rootMotion = {
     Kick: { times: Float32Array.from([0, 0.5, 1.0, 1.5]), z: Float32Array.from([0, 1.0, 1.9, 2.0]) },
     Dodge: { times: Float32Array.from([0, 0.4, 1.4, 1.95]), x: Float32Array.from([0, 0.3, 3.0, 3.2]), z: Float32Array.from([0, 0.3, 2.9, 3.1]) },
@@ -130,7 +132,7 @@ export function duel(ids, o = {}) {
   const fighters = ids.map((id) => { const f = FAKES[id](); f.vs = vsRulesFor(CONFIG, id); return f; });
   const sp = vsSpawns(CONFIG.vs.gap, fighters[0].radius, fighters[1].radius, 0);
   fighters.forEach((f, i) => { f.pos.set(sp[i].x, 0, sp[i].z); f.facing = sp[i].facing; f.sync(); });
-  const log = { hits: [], kos: [], erupts: 0, specials: [], misses: 0 };
+  const log = { hits: [], kos: [], erupts: 0, specials: [], misses: 0, overflow: [] };
   const match = { get fighting() { return flow.fighting; }, ko: (f) => { const i = fighters.indexOf(f); if (flow.ko(i)) log.kos.push(i); } };
   const fx = new Proxy({}, { get: () => noop }), audio = new Proxy({}, { get: () => noop });
   const env = { cfg: CONFIG, fx, audio, map, shake: noop, hitStop: noop };
@@ -138,6 +140,7 @@ export function duel(ids, o = {}) {
     hit: (a, t, info) => log.hits.push({ from: fighters.indexOf(a), to: fighters.indexOf(t), dmg: info.dealt }),
     miss: () => { log.misses++; },
     special: (f, name) => log.specials.push(name),
+    overflow: (f, phase) => log.overflow.push([fighters.indexOf(f), phase]),
     specialImpact: (p) => { if (p.vsCounter) p.vsCounter.impact(); },
   };
   const worlds = fighters.map((f, i) => makeVsWorld(env, f, fighters[1 - i], match, hooks));

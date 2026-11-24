@@ -1,11 +1,11 @@
 /**
  * Touch controls (virtual joystick + action buttons + camera drag) with keyboard/mouse fallback.
- * Exposes a polled state: { moveX, moveY, camDX, punch, kick, grab, jump, dodge, special } where actions
+ * Exposes a polled state: { moveX, moveY, camDX, punch, kick, grab, jump, dodge, special, overflow } where actions
  * are edge-triggered "pressed this frame" flags consumed by `consume()`; punchHeld is true while PUNCH
  * is down (Dreadnought's hold-to-charge uppercut).
  */
 export function createInput(root) {
-  const state = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, dodge: false, special: false, punchHeld: false };
+  const state = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, dodge: false, special: false, overflow: false, punchHeld: false };
   const keys = new Set();
 
   // ---- joystick ----
@@ -73,6 +73,7 @@ export function createInput(root) {
   bind('#btn-grab', 'grab');
   bind('#btn-special', 'special');
   bind('#btn-dodge', 'dodge');
+  bind('#btn-overflow', 'overflow');
 
   // ---- keyboard (desktop testing) ----
   window.addEventListener('keydown', (e) => {
@@ -84,6 +85,7 @@ export function createInput(root) {
     if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { state.jump = true; state.dodge = true; } // Super Tahu dodges on jump; Dreadnought has both
     if (e.code === 'Space') state.jump = true;
     if (e.code === 'KeyL' || e.code === 'KeyE') state.special = true;
+    if (e.code === 'KeyO') state.overflow = true; // TOAKU: ENERGY OVERFLOW
   });
   window.addEventListener('keyup', (e) => {
     keys.delete(e.code);
@@ -105,6 +107,6 @@ export function createInput(root) {
     if (keys.has('KeyR')) state.camDX += 6;
     return state;
   }
-  function consume() { state.punch = false; state.kick = false; state.grab = false; state.jump = false; state.dodge = false; state.special = false; state.camDX = 0; }
+  function consume() { state.punch = false; state.kick = false; state.grab = false; state.jump = false; state.dodge = false; state.special = false; state.overflow = false; state.camDX = 0; }
   return { poll, consume, state };
 }

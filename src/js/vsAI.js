@@ -36,7 +36,7 @@ export function rngFrom(seed = 1) {
 
 /** A blank input frame (nothing pressed). */
 export function idleInput() {
-  return { moveX: 0, moveY: 0, camDX: 0, punch: false, punchHeld: false, kick: false, grab: false, jump: false, dodge: false, special: false };
+  return { moveX: 0, moveY: 0, camDX: 0, punch: false, punchHeld: false, kick: false, grab: false, jump: false, dodge: false, special: false, overflow: false };
 }
 
 /** Stick values that make a fighter updated with camYaw = 0 head for world yaw `yaw`. */
@@ -66,13 +66,16 @@ export function closingSpeed(f, g) {
 }
 
 /** Opponent states an evasive roll is worth spending on (heavy blows, grabs, specials). */
+/** An opponent on the floor (knocked down, getting up): a safe moment for a self-buff. */
+const FLOORED_STATES = new Set(['ragdoll', 'rollover', 'down', 'getup']);
 const HEAVY_STATES = new Set(['uppercut', 'charge', 'kick', 'grab', 'special', 'slam', 'scream']);
 
 /** Whether fighter f is in a recovery a counterattack can punish. */
 export function isRecovering(f) {
   if (STRIKES.has(f.state) && f.hitDone) return true;
   if (f.state === 'grab' && f.grabPhase === 'miss') return true;
-  return f.state === 'hurt' || f.state === 'launched';
+  // the ENERGY OVERFLOW activation: a long emote, blows land on it (it is not interrupted, but hurts)
+  return f.state === 'hurt' || f.state === 'launched' || f.state === 'overflow';
 }
 
 /**
@@ -92,6 +95,7 @@ export function movesOf(f, buttons) {
     special: B.special ? (c.rage ? 'rage' : 'meter') : null,
     specialReach: c.special && c.special.reach ? c.special.reach + (c.special.advanceSpeed || 0) * 0.6 : 0,
     dodge: B.dodge ? 'dodge' : null,
+    overflow: !!(B.overflow && c.overflow),
     jump: B.jump === 'JUMP',
     slam: !!c.slam && B.jump === 'JUMP',
     lunge,
@@ -141,7 +145,7 @@ export class CombatAI {
     this.hpSeen = [this.self.hp, this.foe.hp];
     this.circleDir = this.rng() < 0.5 ? 1 : -1;
     this.stuck = { t: 0, x: this.self.pos.x, z: this.self.pos.z };
-    this.stats = { approach: 0, retreat: 0, circle: 0, wait: 0, punch: 0, combo: 0, heavy: 0, kick: 0, grab: 0, slam: 0, special: 0, dodge: 0, evade: 0 };
+    this.stats = { approach: 0, retreat: 0, circle: 0, wait: 0, punch: 0, combo: 0, heavy: 0, kick: 0, grab: 0, slam: 0, special: 0, overflow: 0, dodge: 0, evade: 0 };
     Object.assign(this.input, idleInput());
   }
 
@@ -152,8 +156,10 @@ export class CombatAI {
    */
   update(dt, active = true) {
     const inp = this.input, S = this.self, F = this.foe;
-    inp.moveX = 0; inp.moveY = 0; inp.punch = false; inp.kick = false; inp.grab = false; inp.jump = false; inp.dodge = false; inp.special = false;
+    inp.moveX = 0; inp.moveY = 0; inp.punch = false; inp.kick = false; inp.grab = false; inp.jump = false; inp.dodge = false; inp.special = false; inp.overflow = false;
     if (!active || !S.alive || !F.alive) { inp.punchHeld = false; return inp; }
+    // its own ENERGY OVERFLOW activation plays out: no commands until it is over
+    if (S.state === 'overflow') { inp.punchHeld = false; this.intent = { kind: 'wait', at: this.t, until: this.t }; return inp; }
     this.t += dt;
     this.perceive();
     this.trackCalm(dt);
@@ -299,6 +305,12 @@ export class CombatAI {
     }
     // WARLORD RAGE: a self-buff, used when the fight is on (about to engage, not under attack)
     if (M.special === 'rage' && S.specialReady && dist < pref + 10 && !threat && ready('special')) U.special = P.special * 1.45;
+    // ENERGY OVERFLOW: a 2.7 s emote before 30 s of power, so only from a safe moment: out of the
+    // opponent's reach, or while the opponent is down / recovering, never into a coming blow
+    if (M.overflow && S.overflowReady && !threat) {
+      const safe = dist > this.foeReach + S.radius + 2.5 || opening || FLOORED_STATES.has(seen.state);
+      if (safe) U.overflow = P.special * 1.6;
+    }
     // variety: an attack used among the last few is less attractive (more so the more often); and no
     // endless retreating
     for (const k of this.history) if (U[k] !== undefined && k !== 'special') U[k] -= C.repeatPenalty * 0.6;
@@ -367,6 +379,8 @@ export class CombatAI {
       case 'kick': this.press('kick'); this.intent = { kind: 'busy', at: this.t }; this.lastAttack = 'kick'; return;
       case 'grab': this.press('grab'); this.intent = { kind: 'busy', at: this.t }; this.lastAttack = 'grab'; return;
       case 'special': this.press('special'); this.intent = { kind: 'busy', at: this.t }; this.lastAttack = 'special'; return;
+      // the fighter's own activation function, as the OVERFLOW button calls it (no simulated press)
+      case 'overflow': this.self.requestOverflow(); this.intent = { kind: 'wait', at: this.t, until: this.t + 0.5 }; return;
       case 'slam': this.press('jump'); this.intent = { kind: 'slam', at: this.t }; this.lastAttack = 'slam'; return;
       case 'circle':
         if (rng() < 0.18) this.circleDir *= -1;

@@ -93,6 +93,7 @@ export function makeVsWorld(env, self, other, match, hooks = {}) {
     onSpecial: (name, kind) => call('special', self, name, kind),
     onSpecialImpact: (p) => call('specialImpact', p, world),
     onRage: (on) => call('rage', self, on),
+    onOverflow: (phase) => call('overflow', self, phase),
     onPlayerHeal: (n) => call('heal', self, n),
     onPlayerHurt: (d) => call('hurt', self, d),
     onPlayerDead: () => match.ko(self),

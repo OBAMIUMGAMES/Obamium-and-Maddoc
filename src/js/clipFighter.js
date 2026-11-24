@@ -229,6 +229,9 @@ export class ClipFighter extends Fighter {
     }
   }
 
+  /** Damage multiplier of this fighter's blows (a mode like ENERGY OVERFLOW raises it). */
+  get dmgMul() { return 1; }
+
   /** Snap facing to the closest enemy in a forgiving cone on the same level. */
   aimAssist(world, range = 5.5, cone = 2.4) {
     let best = null, bd = 1e9;
@@ -253,7 +256,7 @@ export class ClipFighter extends Fighter {
       if (!e.alive || !e.targetable || !world.map.sameLevel(this.pos, e.pos)) continue;
       if (except && except.has(e)) continue;
       if (inArc(this.pos, this.facing, e.pos, h.reach, h.arc, e.radius)) {
-        world.hitEnemy(e, h.damage, fx, fz, h.knockback, h.lift, heavy ? 0.6 : 0.35, heavy);
+        world.hitEnemy(e, Math.round(h.damage * this.dmgMul), fx, fz, h.knockback, h.lift, heavy ? 0.6 : 0.35, heavy);
         if (except) except.add(e);
         hits++;
       }
@@ -272,7 +275,10 @@ export class ClipFighter extends Fighter {
 
   /** Called by the world when an enemy lands a blow. */
   takeHit(dmg, fromX, fromZ, world) {
-    if (!this.alive || this.invuln > 0) return false;
+    if (!this.alive || this.invuln > 0) {
+      if (this.alive && this.state === 'dodge' && this.onEvade) this.onEvade(); // dodged through it
+      return false;
+    }
     const r = applyDamage(this.hp, dmg);
     this.hp = r.hp;
     this.invuln = this.cfg.hurtInvuln;
@@ -393,7 +399,10 @@ export class ClipFighter extends Fighter {
     const V = this.vs;
     if (!this.alive || !V) return NO_HIT;
     const carried = this.carried;
-    if (!carried && (this.invuln > 0 || FLOORED.has(this.state))) return NO_HIT;
+    if (!carried && (this.invuln > 0 || FLOORED.has(this.state))) {
+      if (this.state === 'dodge' && this.onEvade) this.onEvade(); // the blow went through the roll
+      return NO_HIT;
+    }
     const r = applyDamage(this.hp, dmg);
     this.hp = r.hp;
     this.hurtK = 1;

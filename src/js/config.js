@@ -53,6 +53,22 @@ export const CONFIG = {
       finisherKnockback: 20,
       finisherLift: 9,
     },
+    // ENERGY OVERFLOW (OVERFLOW button at 100%): the green bar under his health fills with the damage his
+    // blows and grabs deal (a whiff gives nothing), his kills, and a blow dodged inside a roll's evasion
+    // window (once per roll) - never by itself, never while the mode runs. Activation: the uploaded
+    // Charged_Spell_Cast emote (clips.Overflow) plays once, whole (its own duration), planted and
+    // uninterruptible (blows still hurt; death and Super Tahu's ultimate still win); the green surge
+    // bursts at the emote's peak (`emote.surge`, clip s: both hands highest, measured on the rig) after
+    // a glow gathering from `emote.charge`; when the emote ends the bonuses run for `duration` s of play:
+    // movement x speedMul, attack animations x attackSpeedMul (cooldowns stay in real seconds), damage
+    // x damageMul. No regeneration. The meter is spent on activation: no stacking, no second activation.
+    overflow: {
+      max: 100, perDamage: 0.15, perKill: 4, perEvade: 6, queue: 1.0, // horde: ~8 Bohrok; queue: s a press waits
+      duration: 30, speedMul: 1.25, attackSpeedMul: 1.2, damageMul: 1.3,
+      emote: { speed: 1, charge: 0.6, surge: 1.9 },
+      surgeRadius: 9, emberEvery: 0.09,
+      aura: { color: 0x39ff6a, rim: 0xeaffd8, inflate: 0.03, opacity: 0.85, fadeIn: 0.25, fadeOut: 0.8, gather: 0.35 },
+    },
     hurtInvuln: 0.5,
     cooldowns: { ...ATTACK_COOLDOWNS }, // normal / heavy / grab / special
     hurtTime: 0.32,
@@ -558,6 +574,8 @@ export const CONFIG = {
     overrides: {
       // one duel is ~400-600 HP of damage: the WARLORD RAGE meter fills after ~250 dealt (horde: 1000 + kills)
       dreadnought: { rage: { perDamage: 0.4 } },
+      // ENERGY OVERFLOW: about one activation a duel (the bar fills after ~100 damage dealt, sooner with dodges)
+      toaku: { overflow: { perDamage: 1.0, perEvade: 12 } },
     },
     /**
      * CPU fighting personalities (src/js/vsAI.js). Weights 0..1 unless noted; they scale the utility of
