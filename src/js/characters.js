@@ -39,17 +39,17 @@ export const ROSTER = [
   {
     id: 'dreadnought',
     name: 'DREADNOUGHT',
-    title: 'THE WARLORD',
+    title: 'A MEANS TO ALL ENDS',
     map: 'glatorian',
-    special: 'WARLORD RAGE',
-    meterLabel: 'WARLORD RAGE', // fills with his damage and kills; RAGE when full
+    special: 'INSATIABLE DOMINION',     // his rage mode (shown as this; the code calls it rage)
+    meterLabel: 'INSATIABLE DOMINION', // fills with his damage and kills; DOMINION when full
     emblem: 'mask-dreadnought',
     stats: { defense: 5 },
-    moves: ['Hook + uppercut combo', 'Hold PUNCH: heavy uppercut', 'Crushing grab (even Sidorak)', 'Spartan kick', 'Dive-roll dodge', 'RAGE: +50% damage, kills heal'],
+    moves: ['Hook + uppercut combo', 'Hold PUNCH: heavy uppercut', 'Crushing grab (even Sidorak)', 'Spartan kick', 'Dive-roll dodge', 'Insatiable Dominion: +50% damage, kills heal'],
     color: '#a64dff',
     intro: true, // rises from his throne when chosen
-    // a grounded heavyweight: no jump. DODGE takes the JUMP slot, RAGE the special's
-    buttons: { jump: null, special: 'RAGE', specialIcon: 'i-rage', dodge: 'DODGE', dodgeIcon: 'i-dodge', kick: true, grab: true },
+    // a grounded heavyweight: no jump. DODGE takes the JUMP slot, DOMINION (his rage mode) the special's
+    buttons: { jump: null, special: 'DOMINION', specialIcon: 'i-rage', dodge: 'DODGE', dodgeIcon: 'i-dodge', kick: true, grab: true },
     vs: { player: true, cpu: true },
   },
   { id: 'locked-2', locked: true },

@@ -355,7 +355,7 @@ export function createVsMode(d) {
     rage(f, on) {
       const i = m ? m.fighters.indexOf(f) : -1;
       if (i >= 0) $(`#vs-side-${i}`).classList.toggle('raging', on);
-      if (on) { d.banner('WARLORD RAGE!!', 'rage'); env.hitStop(0.1); }
+      if (on) { d.banner(`${rosterOf(f.kind).special}!!`, 'rage'); env.hitStop(0.1); }
       if (m && m.type === 'pvc' && i === 0) document.body.classList.toggle('raging', on);
     },
     /** TOAKU's ENERGY OVERFLOW: the surge's banner; his side (and the player's screen edges) glow green. */

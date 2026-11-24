@@ -19,11 +19,11 @@ One visual language: angular metal frames, Oxanium display type, Rajdhani text (
 | Screen | Content |
 |---|---|
 | Main menu | the key art (`assets/branding/key-art.jpg`) at its own proportions, as tall as the screen allows, over a pre-blurred copy of itself; large **INIZIO** button (glow + shine) — the horde mode — and **VS MODE** under it (1v1 duels, see VS MODE); controls hint. The 3D scene is not rendered behind it. |
-| Character select | name plate, subtitle (Toaku: THE BUILDER; Super Tahu: none; Dreadnought: THE WARLORD), five animated stat bars, special, moves, home arena, roster strip with 3D-rendered portraits, **SELECT**, ◀ MENU; the fighter idles live in their home arena (Dreadnought sits on his throne) |
-| Fighter intro | DREADNOUGHT only: letterbox, front camera, he rises from his throne into his idle stance, name card **DREADNOUGHT / THE WARLORD**; TAP TO SKIP (also Enter, Esc, Android back) |
+| Character select | name plate, subtitle (Toaku: THE BUILDER; Super Tahu: none; Dreadnought: A MEANS TO ALL ENDS), five animated stat bars, special, moves, home arena, roster strip with 3D-rendered portraits, **SELECT**, ◀ MENU; the fighter idles live in their home arena (Dreadnought sits on his throne) |
+| Fighter intro | DREADNOUGHT only: letterbox, front camera, he rises from his throne into his idle stance, name card **DREADNOUGHT / A MEANS TO ALL ENDS**; TAP TO SKIP (also Enter, Esc, Android back) |
 | Select location | **SELECT LOCATION** heading, a large card (pre-rendered arena preview, tag, name, one-line description), a strip of location cards with ◀ ▶, **FIGHT**, ◀ FIGHTER; the chosen fighter idles live in the focused arena behind the menu |
-| Combat HUD | emblem (Toaku: his mask, Super Tahu: his portrait, Dreadnought: his horned mask), name, health bar, thinner/shorter energy bar under it (Toaku: ENERGY OVERFLOW, Super Tahu: INFERNO ENERGY, Dreadnought: WARLORD RAGE — fills with his damage and kills, then counts down his 30 s of rage with the seconds left), WAVE 0N panel, separate red enemies-left chip, score, pause |
-| Effects | wave announcement sweep, combo counter, banners, damage numbers (pop-in; heavy hits bigger and gold, 30+ largest with a red-orange glow), special-ready ring around the special button; Dreadnought's rage: **WARLORD RAGE!!** banner, a violet vignette while it lasts, a green **+N** pop and flash on his health bar for each healing kill |
+| Combat HUD | emblem (Toaku: his mask, Super Tahu: his portrait, Dreadnought: his horned mask), name, health bar, thinner/shorter energy bar under it (Toaku: ENERGY OVERFLOW, Super Tahu: INFERNO ENERGY, Dreadnought: INSATIABLE DOMINION — fills with his damage and kills, then counts down his 30 s of rage with the seconds left), WAVE 0N panel, separate red enemies-left chip, score, pause |
+| Effects | wave announcement sweep, combo counter, banners, damage numbers (pop-in; heavy hits bigger and gold, 30+ largest with a red-orange glow), special-ready ring around the special button; Dreadnought's rage: **INSATIABLE DOMINION!!** banner, a violet vignette while it lasts, a green **+N** pop and flash on his health bar for each healing kill |
 | Pause / defeat | framed panels; defeat lists wave, robots scrapped, best combo, score, personal best |
 
 Themes: **Toaku** dark gunmetal, neon green, metallic gray, black/silver. **Super Tahu** metallic gold,
@@ -41,7 +41,7 @@ design — note his real HP (340) is lower than Toaku's (400); the display does 
 **Touch controls:** the button and stick positions/sizes (their touch areas) are pixel-identical to
 v0.4 — verified by measuring every control in both builds at 915×412, 740×360 and 1024×768.
 Dreadnought cannot jump: he has no JUMP button, his **DODGE** button takes the jump button's place,
-and **RAGE** (purple and gold, lit with a gold ring when his meter is full) the special button's;
+and **DOMINION** (purple and gold, lit with a gold ring when his meter is full) the special button's;
 PUNCH, KICK and GRAB are where Toaku has them. Toaku and Super Tahu keep their JUMP.
 
 **App icon:** Toaku + logo artwork (`assets/branding/app-icon-source.jpg`), built by
@@ -93,13 +93,13 @@ loaded at start-up (behind the main menu's LOADING), so FIGHT needs no loading s
 | | Dreadnought (player) | vs Toaku |
 |---|---|---|
 | Height | 5.2 m (radius 1.35 m) | 1.44 × as tall |
-| HP | 600; **no health back between waves** (only WARLORD RAGE kills heal him) | 150 % |
+| HP | 600; **no health back between waves** (only INSATIABLE DOMINION kills heal him) | 150 % |
 | Speed | analog: walk 0.9–2.6 m/s, run 4.3–5.6 m/s | top speed 90 % |
 | Regular damage | hook 20, uppercut finisher 36; Spartan kick 45 | 140 % (jab 14 → 20, power straight 26 → 36, kick 32 → 45) |
 | Heavy uppercut | 44, launches (lift 15, knockback 12) | 220 % of his standard punch (20) |
 | Grab | 3 squeezes × 12 + slam 51 = 87; works on Sidorak too | 170 % of Toaku's grab and throw (6 + 45 = 51) |
 | Reach / knockback | 5.1–5.8 m reach (Toaku 3.2–3.7), grab 5.4 m; finisher knockback 14 (11), kick 23 (18) | more |
-| WARLORD RAGE | 30 s: × 1.5 damage, +8 % max HP per kill | — |
+| INSATIABLE DOMINION | 30 s: × 1.5 damage, +8 % max HP per kill | — |
 | Style | Heavy, armoured through his uppercut, kick, grab and scream; no jump; dive-roll dodge | |
 
 ## Moves (Toaku)
@@ -239,7 +239,7 @@ baked the same way (the stand-up's first frame).
 | Kick (KICK) | Spartan_Kick (retargeted), impact 0.6 s |
 | Crushing grab (GRAB) | Grip_and_Throw_Down at 1.45×: grips at 0.88 s, squeezes at 1.6 / 2.25 / 2.9 s, slams at 3.42 s |
 | Dodge (DODGE) | Roll_Dodge_2, carried by its own root motion (walls stop it) |
-| WARLORD RAGE (RAGE) | Skill_01, the scream: the roar at 0.45 s, its last frame held 0.6 s |
+| INSATIABLE DOMINION (DOMINION) | Skill_01, the scream: the roar at 0.45 s, its last frame held 0.6 s |
 | Launched / thrown (VS) | Fall3_1, timed to touch down (0.6 s) on the landing; its height re-anchored at load |
 | Knockdown (VS) | a heavy ragdoll (bulkier, more damping and friction: no bounce; his cape only follows), then he gathers into the start of Stand_Up1's rise (1.3 s, on his back) and Stand_Up1 1.3–6.2 s at 1.4× gets him up |
 | Throne intro | Sit_to_standTransition_Female_2 (recentred where he ends up standing) |
@@ -294,9 +294,9 @@ while already held. If Dreadnought is knocked out mid-grab, the enemy is let go.
 and to his left, so he is turned by that angle and the roll goes exactly where the stick points.
 Invulnerable 0.27–1.12 s, 0.5 s cooldown, cancellable into movement at its end.
 
-**WARLORD RAGE** (`dreadnought.rage`). The bar under his health fills with the damage he deals (1 per
+**INSATIABLE DOMINION** (formerly WARLORD RAGE; `dreadnought.rage` in the code). The bar under his health fills with the damage he deals (1 per
 10 damage) plus 2.5 per kill — about a dozen Bohrok — never by itself and never between waves. At 100 %
-the bar glows gold and the **RAGE** button lights up. Pressed, it waits up to 1.5 s for a free moment
+the bar glows gold and the **DOMINION** button lights up. Pressed, it waits up to 1.5 s for a free moment
 (a punch or kick landing; never in a grab, the throne intro or a boss cinematic — a press still
 pending when a cinematic starts is dropped), then he screams
 (Skill_01: armoured and invulnerable, a purple shock ring, the ground shakes), the meter is spent and a
@@ -312,7 +312,7 @@ along the normals, additive, a gold fresnel rim over a faint violet body with sl
 his own materials are never touched. It is hidden (no draw call) when he is not raging.
 
 **No health between waves.** The other fighters get +60 HP when a wave is cleared; Dreadnought keeps the
-health he finished the wave with (only WARLORD RAGE kills heal him). A new match starts him at full health.
+health he finished the wave with (only INSATIABLE DOMINION kills heal him). A new match starts him at full health.
 
 **Size and framing.** Collision radius 1.35 m (Toaku 0.9); his chase camera sits 1.42 × further back and
 1.55 × higher than the standard one, looking 1.45 × higher, so enemies at mid range and a boss stay
@@ -327,7 +327,7 @@ visible only in the menus while Dreadnought is shown. It is sized for him at 5.2
 2.4 m wide, his back against the backrest when seated). `src/js/throneIntro.js` times the 4.1 s shot:
 seated (breathing) 0.8 s → the stand-up 2.1 s (Sit_to_standTransition_Female_2 from 0.3 to 2.1 s, at
 0.85×) → his idle; front camera pushing in and rising with him (further back and higher for his new
-size), panning from 2.7 s so he ends right of centre as **DREADNOUGHT / THE WARLORD** shows on the left;
+size), panning from 2.7 s so he ends right of centre as **DREADNOUGHT / A MEANS TO ALL ENDS** shows on the left;
 then the camera eases into the location menu's view.
 
 ## Glatorian Arena
@@ -378,7 +378,7 @@ VS MODE refuses to open and says why). Code: `src/js/vsMode.js` (flow, HUD, resu
   (Toaku 1, Dreadnought 0.55, Super Tahu 0), hitstun; armoured moves keep going (damage only); a dodge's
   evasion window makes a blow miss; grabs hold and throw the opponent fighter (the crash credited to the
   thrower). Duel-only values: 0.12 s after a blow before another lands (the horde's 0.5 s would swallow
-  combos); Dreadnought's WARLORD RAGE meter fills after ~250 damage dealt (the horde needs 1000 plus
+  combos); Dreadnought's INSATIABLE DOMINION meter fills after ~250 damage dealt (the horde needs 1000 plus
   kills), Toaku's ENERGY OVERFLOW after ~100 (horde: ~8 Bohrok).
 - **Knockdowns (Toaku, Dreadnought):** only a launcher (lift × mass ≥ 7: uppercuts, finishers, slams)
   or a throw — never an ordinary hit — runs LAUNCHED → AIRBORNE → GROUND IMPACT → RAGDOLL → GATHER →
@@ -402,10 +402,10 @@ VS MODE refuses to open and says why). Code: `src/js/vsMode.js` (flow, HUD, resu
   moves, with their timings, cooldowns and restrictions — Dreadnought never jumps; ENERGY OVERFLOW is
   started through the fighter's own activation function, from a safe moment): sees the opponent
   through a reaction delay, decides every think tick by utility over approach / retreat / circle / wait
-  / punch combo / heavy / kick / grab / jump-slam / special or RAGE, turns to face before striking,
+  / punch combo / heavy / kick / grab / jump-slam / special or INSATIABLE DOMINION, turns to face before striking,
   dodges (or side-steps) perceived attacks once each, avoids the wall, varies its attacks, presses on
   when nothing happens. **Dreadnought** (aggression 0.92, heavy 0.62, grab 0.5, dodge 0.2, retreat
-  0.05): constant pressure, uppercuts and grabs, RAGE when full. **Toaku** (aggression 0.55, dodge 0.7,
+  0.05): constant pressure, uppercuts and grabs, INSATIABLE DOMINION when full. **Toaku** (aggression 0.55, dodge 0.7,
   moveFreq 0.9, counter 0.9): circles, side-steps, punishes recoveries; against a longer reach he
   waits just outside it (its reach plus his own radius), backs off when the opponent advances and
   sprints in on a whiffed blow — hit-and-run, the flying kick his main punish.
@@ -414,7 +414,7 @@ VS MODE refuses to open and says why). Code: `src/js/vsMode.js` (flow, HUD, resu
   or a grab closing on him, wakes him (that blow can never knock him out): the attacker is pinned,
   Super Tahu turns on him and performs **INFERNO SLAM** (his `Charged_Ground_Slam` clip, the fire in his
   fist, the crown of fire); at the slam's impact a fire column erupts under the attacker and **defeats
-  him outright** — health to zero whatever his health, armour, invulnerability or WARLORD RAGE. Once per
+  him outright** — health to zero whatever his health, armour, invulnerability or INSATIABLE DOMINION. Once per
   match; every match starts him waiting again.
 - **Intro (8 s, SKIP):** 0–2 s low angle pushing in on fighter 1 with his nameplate; 2–4 s orbit around
   fighter 2 with his; 4–6 s mask close-ups of both with a slight shake; 6–7 s wide standoff with the VS
@@ -429,7 +429,7 @@ VS MODE refuses to open and says why). Code: `src/js/vsMode.js` (flow, HUD, resu
   both in frame, pulling back as they part, keeping its side; or a steady wide shot. Both stay over the
   floor (the arena's spring arm).
 - **HUD:** both fighters' names, emblems, health (with the damage trail) and resource bars (Toaku's
-  ENERGY OVERFLOW, Dreadnought's WARLORD RAGE with its seconds; Super Tahu has none), the player's own
+  ENERGY OVERFLOW, Dreadnought's INSATIABLE DOMINION with its seconds; Super Tahu has none), the player's own
   buttons in PvC only.
 - **Matchups (CPU VS CPU, seeded matches):** mirror matches split (either slot wins; ~20–40 s);
   Dreadnought beats Toaku every time (24 of 24; after the combat update still 6 of 6 sampled, Toaku

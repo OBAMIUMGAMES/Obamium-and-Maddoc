@@ -13,7 +13,7 @@ Horde mode (waves, bosses, locations) is untouched.
 | Input | polled `{moveX, moveY, punch, punchHeld, kick, grab, jump, dodge, special}` | the player's pad for fighter 1; the CPU drives the **same input object** (virtual controller), so it can only do what the fighter can |
 | Attacks | strikes scan `world.enemies`, call `world.hitEnemy(e, dmg, dir, knock, lift, stun, heavy, rapid)`; grabs call `e.grabbedBy / thrownBy / release` | each fighter gets its own VS world whose only enemy is its opponent |
 | Being hit | fighters: `takeHit(dmg, fromX, fromZ)` (horde enemies); enemies: `receiveHit(...)` with knockback, launch, grabbed / thrown states | fighters gain the enemy side of that interface (VS only) |
-| Specials | Toaku MACHINEGUN IMPACT (meter), Dreadnought WARLORD RAGE (meter + scream), Super Tahu INFERNO SLAM (`Charged_Ground_Slam` clip + fire columns) | INFERNO SLAM is Super Tahu's ultimate counter |
+| Specials | Toaku MACHINEGUN IMPACT (meter), Dreadnought INSATIABLE DOMINION (meter + scream), Super Tahu INFERNO SLAM (`Charged_Ground_Slam` clip + fire columns) | INFERNO SLAM is Super Tahu's ultimate counter |
 | Arena | `maps.glatorian`: flat floor (y = 0), wall boundary `resolve/clamp`, `cameraReach`, `cameraFloor` | the only VS arena; spawns on its floor |
 | Cameras | chase cam + spring arm; scripted shots (throne intro, boss cinematic) | new reusable cinematic controller, versus + spectator cameras |
 | HUD | single-player panel, waves, score, touch buttons per fighter | VS HUD: two bars + resources; controls shown in PvC only |
@@ -51,7 +51,7 @@ Horde mode (waves, bosses, locations) is untouched.
   seconds) gate every attack for players and CPUs alike; failed and successful grabs both cool down.
 - **CPU (ordinary fighters)**: a virtual controller per fighter (`vsAI.js`): perception through a delay
   buffer (reaction time), utility scores over the fighter's real options (approach, retreat, strafe /
-  circle, hold, punch combo, heavy uppercut, kick, grab, special / RAGE, ENERGY OVERFLOW, dodge, jump)
+  circle, hold, punch combo, heavy uppercut, kick, grab, special / INSATIABLE DOMINION, ENERGY OVERFLOW, dodge, jump)
   decided every think tick, executed as button presses (ENERGY OVERFLOW through the fighter's own
   `requestOverflow()`, the OVERFLOW button's function); options still cooling down are not options;
   heavy blows are rolled away from (Toaku's DODGE), light ones side-stepped; nothing is issued while its
@@ -63,7 +63,7 @@ Horde mode (waves, bosses, locations) is untouched.
   that lands on him, or a grab closing on him — proximity never counts) → `ULTIMATE_COUNTER`: the
   attacker is pinned, Super Tahu turns to him and performs INFERNO SLAM; at the slam's impact a fire column
   erupts under the attacker and applies **instant defeat** (HP 0, AI stopped, KO — ignores health, armour,
-  invulnerability and WARLORD RAGE; ordinary damage rules unchanged) → `VICTORY`. Once per match; the
+  invulnerability and INSATIABLE DOMINION; ordinary damage rules unchanged) → `VICTORY`. Once per match; the
   triggering hit can never knock him out (HP floor 1); a new match builds a new controller.
 
 ## Files
@@ -103,7 +103,7 @@ each fighter's height. SKIP ends it at once and starts the fight (once).
   Toaku, applied at the slam's impact and not before; the triggering blow cannot knock him out; once per
   match; reset on rematch.
 - **CPU** (10): real fights to a knockout; mirrors — either slot wins; only legal moves (in range,
-  Dreadnought never jumps, reactions take their delay, no spam over three matches); personalities; RAGE
+  Dreadnought never jumps, reactions take their delay, no spam over three matches); personalities; INSATIABLE DOMINION
   when full; nothing pressed outside FIGHTING; wall avoidance; Toaku waits at the edge of a longer reach
   and punishes whiffs; an attack decided with the opponent behind is carried out after the turn.
 - **cameras / intro** (9): the 8 s timeline (plates, VS, FIGHT!), SKIP once; every shot framed by the
@@ -129,7 +129,7 @@ emulation, the real models, clips and arena (`dist/`); a harness steps the game 
   DEFEAT (as Toaku); no page errors.
 - **Selection**: Super Tahu refused as the PvC player, allowed as the CPU; refused in a CvC slot while
   the other holds him; mirror Toaku vs Toaku allowed.
-- **Super Tahu, frame by frame** (5 cases: CvC vs Dreadnought, vs Dreadnought in RAGE with 26 s left, vs
+- **Super Tahu, frame by frame** (5 cases: CvC vs Dreadnought, vs Dreadnought in INSATIABLE DOMINION with 26 s left, vs
   Toaku; PvC grabbed by a Dreadnought player, punched by a Toaku player): 0 m moved before the trigger;
   the attacker at full health right up to the column, 0 after it; one ultimate each. Circled for 14 s
   and stood beside for 6 s by a player: nothing.
@@ -140,7 +140,7 @@ emulation, the real models, clips and arena (`dist/`); a harness steps the game 
 - **Memory**: 24 consecutive matches — GPU geometries settle after three matches and stay flat; textures,
   programs and scene objects flat.
 - Evidence: `production/qa/evidence/114`–`119`.
-- **Combat update** (evidence `120`–`126`): knockdowns on the real rigs — Toaku launched 0.75 s →
+- **Combat update** (evidence `120`–`127`): knockdowns on the real rigs — Toaku launched 0.75 s →
   ragdoll 0.82 s → gather 0.47 s → get-up 1.35 s, Dreadnought 0.58 → 0.70 → 0.52 → 3.50 s; at the
   seam ≤ 4° per bone, no hips jump; nothing below the sand by more than 4 cm except fingertips inside
   the get-up clips' own frames (Dreadnought's Stand_Up1 dips a fingertip 0.26 m at 4.8 s: the asset);
@@ -148,7 +148,10 @@ emulation, the real models, clips and arena (`dist/`); a harness steps the game 
   OVERFLOW button starts the emote (weight 1.0, clip time only increasing, moved 0.000 m), the surge at
   clip 1.917 s, then x1.25 / x1.2 / x1.3 with the bar counting down; the CPU activates it (CvC) and
   fights on; a knockout and a rematch reset it; the horde HUD too. No button overlaps at 915 x 412 or
-  640 x 360.
+  640 x 360. MACHINEGUN IMPACT punched from behind: 20 damage taken, never interrupted, the grab
+  whiffs. GRAB mashed for 6 s: 2 grabs. Horde <-> VS cross-mode, 8 rematches (GPU objects flat), the
+  horde menu flow: all as before. The APK 0.13.0's packed files boot and play VS, ENERGY OVERFLOW, a
+  knockdown and the horde with no page errors.
 
 ## Needs an Android device
 

@@ -43,6 +43,20 @@ test('names and subtitles: TOAKU / THE BUILDER, SUPER TAHU with no subtitle', ()
   assert.equal(entry('toaku').special, 'MACHINEGUN IMPACT');
 });
 
+test('DREADNOUGHT: A MEANS TO ALL ENDS; his rage mode is shown as INSATIABLE DOMINION everywhere it is named', () => {
+  const d = entry('dreadnought');
+  assert.equal(d.name, 'DREADNOUGHT');
+  assert.equal(d.title, 'A MEANS TO ALL ENDS');
+  assert.equal(d.special, 'INSATIABLE DOMINION');
+  assert.equal(d.meterLabel, 'INSATIABLE DOMINION');
+  assert.equal(CONFIG.dreadnought.special.name, 'INSATIABLE DOMINION');
+  assert.equal(d.buttons.special, 'DOMINION');
+  assert.ok(d.moves.some((m) => m.startsWith('Insatiable Dominion')), 'in his move list');
+  // nothing he shows still says WARLORD RAGE (or RAGE); internal ids such as the icon's are not shown
+  const shown = JSON.stringify([d.title, d.special, d.meterLabel, d.moves, d.buttons.special, d.buttons.dodge, CONFIG.dreadnought.special.name]);
+  assert.ok(!/RAGE/i.test(shown), shown);
+});
+
 test('stat bars never overflow even past the cap', () => {
   const s = fighterStats({ stats: { defense: 9 } }, { maxHp: 9000, moveSpeed: 40, punch: { hits: [{ damage: 500 }] }, special: { meterPerHit: 99 } });
   for (const st of s) assert.ok(st.fill <= 1);

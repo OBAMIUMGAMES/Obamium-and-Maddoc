@@ -343,7 +343,7 @@ export const CONFIG = {
       aura: { color: 0x9b3dff, rim: 0xffd27a, inflate: 0.04, opacity: 0.85, fadeIn: 0.5, fadeOut: 0.8 },
     },
     // no meter special of the usual kind: the HUD's bar is WARLORD RAGE (managed by Dreadnought)
-    special: { name: 'WARLORD RAGE', meterMax: 100, meterPerHit: 0, meterPerHurt: 0, meterPassive: 0 },
+    special: { name: 'INSATIABLE DOMINION', meterMax: 100, meterPerHit: 0, meterPerHurt: 0, meterPassive: 0 },
     // multipliers of CONFIG.camera for his size: further back and higher (about 1.9 m above his head,
     // where Toaku's is 1 m) so enemies at mid range and a boss stay visible over his shoulders
     camera: { distance: 1.42, height: 1.55, look: 1.45 },

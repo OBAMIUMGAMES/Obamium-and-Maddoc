@@ -233,7 +233,7 @@ const world = {
   /** DREADNOUGHT's WARLORD RAGE starts / ends (HUD look, banner, screen-edge glow). */
   onRage(on) {
     document.body.classList.toggle('raging', on);
-    if (on) { banner('WARLORD RAGE!!', 'rage'); world.hitStop(0.1); }
+    if (on) { banner(`${rosterOf(G.charId).special}!!`, 'rage'); world.hitStop(0.1); }
   },
   /** TOAKU's ENERGY OVERFLOW: the activation's green surge (banner, flash, glowing screen edges), its end. */
   onOverflow(phase) {

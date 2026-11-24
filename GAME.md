@@ -2,7 +2,7 @@
 
 - **Play in a browser:** `npm install && npm run build:web`, open `dist/index.html`.
   Keys: WASD move (Dreadnought: a light push walks, a full one runs), J punch (hold: Dreadnought's heavy uppercut), K kick, G grab,
-  Space jump (not Dreadnought), Shift dodge, L special (Dreadnought: WARLORD RAGE when the meter is full),
+  Space jump (not Dreadnought), Shift dodge, L special (Dreadnought: INSATIABLE DOMINION when the meter is full),
   O ENERGY OVERFLOW (Toaku, when its green bar is full), Q/R camera,
   Enter confirm (start / select / skip the intro / fight), ←/→ browse fighters and locations, Esc back / pause.
   VS MODE: V on the main menu opens it; 1 / 2 (or Enter = 1) pick PLAYER VS CPU / CPU VS CPU; on the select screen
@@ -21,7 +21,7 @@
   ```
   He has no idle clip: `config.js` (`dreadnought.idle`) bakes one from the upright frame his stand-up reaches, with bone
   edits and a breathing loop (`src/js/clipPose.js`). Code: `src/js/dreadnought.js` (analog walk/run, palm grab, attack
-  tracking, WARLORD RAGE), the rage aura `src/js/rageAura.js`; his throne `src/js/throne.js` and the select-screen intro
+  tracking, INSATIABLE DOMINION), the rage aura `src/js/rageAura.js`; his throne `src/js/throne.js` and the select-screen intro
   `src/js/throneIntro.js`. Design: `design/game-brief.md` → Dreadnought.
 - **Glatorian Arena (default location):** `node tools/build-arena.mjs [source.glb]` decimates and rescales the Meshy model
   (`assets/source/glatorian/arena.meshy.glb`, 1.0 M triangles) into `assets/models/glatorian.glb` (90 k; the floor is
