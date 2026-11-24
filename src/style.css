@@ -249,6 +249,20 @@ body.overflowing #hud::before { content: ''; position: absolute; inset: 0; point
 #btn-kick.cooling::before, #btn-grab.cooling::before, #btn-dodge.cooling::before { opacity: 1; }
 #btn-kick.cooling .ic, #btn-grab.cooling .ic, #btn-dodge.cooling .ic { opacity: .4; }
 #btn-kick.cooling span, #btn-grab.cooling span, #btn-dodge.cooling span { opacity: .55; }
+/* TARGET LOCK-ON: the toggle above the stick, the arrows that switch targets either side of it (shown
+   while locked); lit while a target is held */
+#lock-ui { position: absolute; left: calc(110px + var(--safe-l)); bottom: 196px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; }
+#lock-ui .act { position: relative; }
+#btn-lock { width: 58px; height: 58px; --btn-rgb: 255, 120, 90; --btn-ic: #ffe6de; }
+#btn-lock .ic { width: 46%; height: 46%; }
+#btn-lock span { font-size: 8px; letter-spacing: 1.2px; }
+#btn-lock.on { box-shadow: 0 0 0 2px rgba(255, 110, 80, .95), 0 0 18px rgba(255, 90, 60, .85), 0 4px 0 rgba(0, 0, 0, .4); }
+#btn-lock.on .ic { color: #fff; filter: drop-shadow(0 0 6px #ff5a3c); }
+.lock-arrow { width: 38px; height: 38px; visibility: hidden; --btn-rgb: 255, 120, 90; --btn-ic: #ffe6de; }
+.lock-arrow .ic { width: 50%; height: 50%; }
+#lock-ui.on .lock-arrow { visibility: visible; }
+#lock-ui.on.single .lock-arrow { opacity: .35; }
+body.vs-fight.vs-cvc #lock-ui { display: none; }
 /* per-theme tints for the secondary buttons */
 body[data-fighter="toaku"] #btn-kick { --btn-rgb: 140, 150, 160; }
 body[data-fighter="toaku"] #btn-jump { --btn-rgb: 120, 200, 255; }
@@ -543,6 +557,7 @@ body.one-location #loc-row .arrow { display: none; }
 /* ======================= SMALL SCREENS ======================= */
 @media (max-height: 420px) {
   #buttons { transform: scale(.85); transform-origin: bottom right; }
+  #lock-ui { bottom: 184px; transform: translateX(-50%) scale(.9); transform-origin: bottom center; }
   .howto { font-size: 11px; }
   #sel-moves { font-size: 12px; margin: 3px 0; }
   .card { width: 70px; height: 88px; }

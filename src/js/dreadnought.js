@@ -336,6 +336,9 @@ export class Dreadnought extends ClipFighter {
    * forward cone of `cone` rad, on his level, with a clear line. Never one behind him.
    */
   acquire(world, range, cone) {
+    // locked on: the tracked enemy is the locked one when it is in range, ahead of him and in sight
+    const L = this.lockAim(world, range);
+    if (L && Math.abs(angleDiff(Math.atan2(L.pos.x - this.pos.x, L.pos.z - this.pos.z), this.facing)) <= cone * 0.75 && this.clearPath(world, L)) return L;
     let best = null, bd = 1e9;
     for (const e of world.enemies) {
       if (!e.alive || !e.targetable || !world.map.sameLevel(this.pos, e.pos)) continue;

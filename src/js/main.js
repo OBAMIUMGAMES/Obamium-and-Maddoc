@@ -21,7 +21,8 @@ import { buildGlatorian, GLATORIAN_ENV } from './glatorian.js';
 import { buildThrone } from './throne.js';
 import { ThroneIntro } from './throneIntro.js';
 import { LOCATIONS, availableLocations, defaultLocation, stepLocation } from './locations.js';
-import { waveComposition, killScore, waveClearHp } from './combat.js';
+import { waveComposition, killScore, waveClearHp, angleDiff } from './combat.js';
+import { LockOn, LockReticle, lockFraming, approachAngle } from './lockOn.js';
 import { loadCharacterTemplate, buildCharacterInstance } from './characterModel.js';
 import { ROSTER, nextSelectable, fighterStats } from './characters.js';
 import { createVsMode } from './vsMode.js';
@@ -78,6 +79,9 @@ for (const m of Object.values(maps)) scene.add(m.group);
 const fx = createFx(scene, camera, $('#numbers'));
 const fire = createFireFx(scene, fx);
 const elements = createBohrokElements(scene, cfg.bohrok.elements); // Bohrok specials (pooled)
+// TARGET LOCK-ON (lockOn.js): the horde's lock state, and the reticle every mode shares
+const lockOn = new LockOn(cfg.lockOn);
+const reticle = new LockReticle(scene, cfg.lockOn.reticle);
 let bossFx = null;      // Sidorak's projectiles and shockwave (pooled; created once the Rhotuka model is in)
 let sidorakTpl = null;  // the boss template (clips baked once)
 let encounter = null;   // the running boss encounter (warning, cinematic, fight, defeat)
@@ -134,6 +138,9 @@ const G = {
   wave: 0, score: 0, kills: 0, bestCombo: 0,
   toSpawn: [], spawnT: 0, breakT: 0, waveActive: false,
   hitStop: 0, shake: 0, camYaw: 0, camYawTarget: 0, specialCam: 0, camLift: 0,
+  // the lock-on camera's framing, blended in and out (lockW 0..1): how far to pull back, how far toward the
+  // target to look, and the (smoothed) point on the target it looks toward
+  lockW: 0, lockPull: 1, lockLook: 0, lockFocus: new THREE.Vector3(),
   enemies: [],
   player: null,
   tonuaRef: null,
@@ -526,7 +533,7 @@ function banner(text, kind) {
   clearTimeout(bannerTimer);
   bannerTimer = setTimeout(() => { el.className = kind; }, 1600);
 }
-const hud = { hp: $('#hp-fill'), hpLag: $('#hp-lag'), meter: $('#meter'), meterLabel: $('#meter-label'), sp: $('#btn-special'), of: $('#btn-overflow'), punch: $('#btn-punch'), kick: $('#btn-kick'), grab: $('#btn-grab'), dodge: $('#btn-dodge'), wave: $('#wave'), score: $('#score'), left: $('#left'), boss: $('#boss-fill'), combo: $('#combo') };
+const hud = { hp: $('#hp-fill'), hpLag: $('#hp-lag'), meter: $('#meter'), meterLabel: $('#meter-label'), sp: $('#btn-special'), of: $('#btn-overflow'), punch: $('#btn-punch'), kick: $('#btn-kick'), grab: $('#btn-grab'), dodge: $('#btn-dodge'), lock: $('#btn-lock'), lockUi: $('#lock-ui'), wave: $('#wave'), score: $('#score'), left: $('#left'), boss: $('#boss-fill'), combo: $('#combo') };
 let hpLag = 1;
 /** Last values written to the DOM: the HUD only touches an element when its value changes. */
 const shown = {};
@@ -560,6 +567,9 @@ function updateHud(dt) {
   }
   // KICK / GRAB / DODGE: their cooldowns (enforced by the combat logic) shown on the buttons
   updateCooldownButtons(p, put, hud);
+  // LOCK-ON: lit while a target is held; the switch arrows shown, dimmed when nobody else is in range
+  put('lockOn', !!lockOn.target, (v) => { hud.lock.classList.toggle('on', v); hud.lockUi.classList.toggle('on', v); });
+  if (lockOn.target && (G.lockScan = (G.lockScan || 0) + 1) % 15 === 0) put('lockSingle', !lockOn.pick(p, G.enemies, G.camYaw + Math.PI, lockOn.target), (v) => hud.lockUi.classList.toggle('single', v));
   // DREADNOUGHT's hold-PUNCH charge: the ring around PUNCH fills, flashes gold at the threshold
   const ch = p.charge || 0;
   put('charge', Math.round(ch * 50) / 50, (v) => { hud.punch.style.setProperty('--charge', v * 360 + 'deg'); hud.punch.classList.toggle('charging', v > 0); });
@@ -615,6 +625,8 @@ function clearWorld() {
   resetBossUi();
   $('#frost').classList.remove('on');
   document.body.classList.remove('raging', 'overflowing');
+  lockOn.release();
+  reticle.update(null, 0);
 }
 /**
  * Start a fight: fighter `id` on map `mapId` (default: his home map). Spawns him on the map's start
@@ -641,6 +653,7 @@ function newGame(id = G.charId, mapId) {
   p.sync();
   G.wave = 0; G.score = 0; G.kills = 0; G.bestCombo = 0;
   G.noWaves = false; G.view = null; G.camLock = false; // test-harness switches never leak into a new game
+  lockOn.release(); G.lockW = 0; G.lockPull = 1; G.lockLook = 0;
   G.camYaw = G.camYawTarget = s.facing + Math.PI;
   G.camLift = 0;
   G.camArm = -1;
@@ -1029,7 +1042,7 @@ function flash(kind) {
 const vsMode = createVsMode({
   cfg, $, scene, camera, audio, fx, fire, maps, ROSTER, portraits,
   available: (c) => assetsReady && available(c),
-  createFighter, setScreen, setMap, hideShowcases, configureHud, banner, flash,
+  createFighter, setScreen, setMap, hideShowcases, configureHud, banner, flash, reticle,
   clearHorde: () => { if (G.player || G.enemies.length) clearWorld(); endIntroUi(); },
   toTitle,
   setMode: (m) => { G.mode = m; },
@@ -1063,7 +1076,7 @@ window.addEventListener('keydown', (e) => {
 // ---------- loop ----------
 const clock = new THREE.Clock();
 const camPos = new THREE.Vector3(), look = new THREE.Vector3(), camScript = new THREE.Vector3(), menuLook = new THREE.Vector3();
-const idleInput = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, dodge: false, special: false, overflow: false, punchHeld: false };
+const idleInput = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, dodge: false, special: false, overflow: false, lock: false, lockPrev: false, lockNext: false, punchHeld: false };
 const NO_CAM = { distance: 1, height: 1, look: 1 }; // fighters without their own camera framing
 let titleT = 0;
 
@@ -1131,16 +1144,46 @@ function stepGame(dt, inp) {
   // boss warning / cinematic / defeat focus: controls locked, the player cannot be hurt
   const scripted = encounter && encounter.active && encounter.lockInput;
   if (scripted) { inp = idleInput; p.invuln = Math.max(p.invuln || 0, 0.25); }
-  // camera yaw from drag + gentle auto-follow behind the fighter while moving
-  G.camYawTarget -= inp.camDX * cfg.camera.dragSensitivity;
-  const moving = Math.hypot(inp.moveX, inp.moveY) > 0.3 && Math.abs(inp.moveY) > 0.5 && inp.moveY > 0;
-  if (moving && Math.abs(inp.camDX) < 1 && !G.camLock) {
-    const behind = p.facing + Math.PI;
-    let d = behind - G.camYawTarget;
-    d = Math.atan2(Math.sin(d), Math.cos(d));
-    G.camYawTarget += d * Math.min(1, dt * 0.8);
+  // TARGET LOCK-ON: the button toggles it, the arrows switch targets (to the left / right on screen); it
+  // follows its target's fate (dead or gone: the next one, or off). The fighter reads lockTarget.
+  const viewYaw = G.camYaw + Math.PI, LC = cfg.lockOn.camera;
+  if (!scripted) {
+    if (inp.lock) lockOn.toggle(p, G.enemies, viewYaw);
+    if (inp.lockPrev || inp.lockNext) {
+      // left / right as the camera really looks (locked, it looks partway toward the target)
+      camera.getWorldDirection(camScript);
+      lockOn.next(inp.lockNext ? 1 : -1, p, G.enemies, Math.atan2(camScript.x, camScript.z), camera.position);
+    }
   }
-  G.camYaw += (G.camYawTarget - G.camYaw) * Math.min(1, dt * 10);
+  const lockT = lockOn.update(p, G.enemies, viewYaw);
+  p.lockTarget = lockT;
+  p.lockTurn = cfg.lockOn.faceTurn;
+  G.lockW += ((lockT ? 1 : 0) - G.lockW) * Math.min(1, dt * LC.blend);
+  if (lockT) {
+    // locked: the camera swings behind the player on the line from the target - eased and rate-capped,
+    // and held still while the target is in the player's hands or flying (no whip-pans through a giant
+    // swing, a throw or a knockback); framing for the distance and size between them
+    const F = lockFraming(p, lockT, LC);
+    const flying = lockT.holder === p || lockT.thrower === p || lockT.state === 'grabbed' || lockT.state === 'thrown';
+    if (!flying) G.camYawTarget = G.camYaw + angleDiff(F.yaw, G.camYaw);
+    G.camYaw = approachAngle(G.camYaw, G.camYawTarget, dt, LC.yawEase, LC.maxYawRate);
+    G.lockPull = F.pull;
+    G.lockLook = F.look;
+    const c = lockT.center ? lockT.center(camScript) : camScript.copy(lockT.pos);
+    // a lock from nothing starts its focus on the target (its weight is still ~0); a switch glides over
+    if (G.lockW < 0.05) G.lockFocus.copy(c); else G.lockFocus.lerp(c, Math.min(1, dt * 6));
+  } else {
+    // camera yaw from drag + gentle auto-follow behind the fighter while moving
+    G.camYawTarget -= inp.camDX * cfg.camera.dragSensitivity;
+    const moving = Math.hypot(inp.moveX, inp.moveY) > 0.3 && Math.abs(inp.moveY) > 0.5 && inp.moveY > 0;
+    if (moving && Math.abs(inp.camDX) < 1 && !G.camLock) {
+      const behind = p.facing + Math.PI;
+      let d = behind - G.camYawTarget;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      G.camYawTarget += d * Math.min(1, dt * 0.8);
+    }
+    G.camYaw += (G.camYawTarget - G.camYaw) * Math.min(1, dt * 10);
+  }
 
   p.update(dt, inp, G.camYaw, world);
   for (const e of G.enemies) e.update(dt, world);
@@ -1207,7 +1250,7 @@ function stepGame(dt, inp) {
   G.bossZoom += ((G.bossRef && G.bossRef.alive ? 1 : 0) - G.bossZoom) * Math.min(1, dt * 1.5);
   const cm = p.cfg.camera || NO_CAM;
   const zoom = (G.specialCam > 0 ? 0.72 : 1) * (1 + cfg.camera.bossPull * G.bossZoom);
-  let dist = cfg.camera.distance * cm.distance * zoom, rise = 0;
+  let dist = cfg.camera.distance * cm.distance * zoom * (1 + (G.lockPull - 1) * G.lockW), rise = 0;
   if (G.map.cameraReach) {
     // spring arm (the Glatorian Arena): the arm shortens so the camera stays over the floor, never in
     // the podium wall or the stands; it shortens fast, lengthens slowly, and the camera rises by part
@@ -1215,7 +1258,7 @@ function stepGame(dt, inp) {
     // the wall side, the camera also swings round toward open floor (unless it is being dragged).
     const C = cfg.camera, px = p.pos.x, pz = p.pos.z;
     const reach = G.map.cameraReach(px, pz, G.camYaw, dist);
-    if (reach < dist * 0.6 && Math.abs(inp.camDX) < 1 && !G.camLock) {
+    if (reach < dist * 0.6 && Math.abs(inp.camDX) < 1 && !G.camLock && !lockT) {
       const l = G.map.cameraReach(px, pz, G.camYaw - 0.6, dist), r = G.map.cameraReach(px, pz, G.camYaw + 0.6, dist);
       G.camYawTarget += (Math.abs(r - l) > 0.3 ? Math.sign(r - l) : 1) * C.wallTurn * (1 - reach / dist) * dt;
     }
@@ -1234,6 +1277,7 @@ function stepGame(dt, inp) {
   G.gameCam.lerp(camPos, Math.min(1, dt * cfg.camera.followLerp + (dt === 0 ? 0 : 0.02)));
   camera.position.copy(G.gameCam);
   look.set(p.pos.x, p.pos.y + Math.max(0, p.altitude()) * 0.3 + cfg.camera.lookHeight * cm.look + cfg.camera.bossLook * G.bossZoom, p.pos.z);
+  if (G.lockW > 0.001) look.lerp(G.lockFocus, G.lockLook * G.lockW); // locked: partway toward the target
   if (camOverride) {
     camera.position.lerp(camScript.set(camOverride.pos.x, camOverride.pos.y, camOverride.pos.z), camOverride.w);
     look.lerp(camScript.set(camOverride.look.x, camOverride.look.y, camOverride.look.z), camOverride.w);
@@ -1252,6 +1296,7 @@ function stepGame(dt, inp) {
     camera.position.y += (Math.random() - 0.5) * s;
     camera.rotation.z += (Math.random() - 0.5) * s * 0.05;
   }
+  reticle.update(lockT, dt);
   G.map.update(dt, p.pos);
   fx.update(dt);
   fire.update(dt);
@@ -1308,6 +1353,9 @@ window.__game = {
   get scene() { return scene; },
   /** The camera (close-up captures in tests). */
   get camera() { return camera; },
+  /** The horde's target lock-on and its reticle (tests). */
+  get lockOn() { return lockOn; },
+  get reticle() { return reticle; },
   get skinned() { return !!toakuTpl; },
   get tahuLoaded() { return !!tahuTpl; },
   get dreadnoughtLoaded() { return !!dreadTpl; },
@@ -1317,7 +1365,7 @@ window.__game = {
   step(frames = 1, inp = {}, fps = 60) {
     for (let i = 0; i < frames; i++) {
       const tickInput = { ...idleInput, ...inp };
-      if (i > 0) { tickInput.punch = false; tickInput.kick = false; tickInput.grab = false; tickInput.jump = false; tickInput.dodge = false; tickInput.special = false; tickInput.overflow = false; }
+      if (i > 0) { tickInput.punch = false; tickInput.kick = false; tickInput.grab = false; tickInput.jump = false; tickInput.dodge = false; tickInput.special = false; tickInput.overflow = false; tickInput.lock = false; tickInput.lockPrev = false; tickInput.lockNext = false; }
       if (G.mode === 'title') stepShowcase(1 / fps, true);
       else stepMode(1 / fps, tickInput);
     }

@@ -7,6 +7,7 @@
  */
 import * as THREE from 'three';
 import { updateCooldownButtons } from './cooldownHud.js';
+import { LockOn } from './lockOn.js';
 import { VS, VsFlow, MATCH_TYPES, slotCheck, pairingOk, defaultPicks, vsRoster, vsSpawns, slotLabel, cyclePick } from './vsRules.js';
 import { makeVsWorld, vsFighterConfig, vsRulesFor, separate } from './vsCombat.js';
 import { CombatAI, SuperTahuCounter, idleInput, rngFrom, COUNTER } from './vsAI.js';
@@ -25,6 +26,9 @@ export function createVsMode(d) {
   const flow = new VsFlow();
   const rosterOf = (id) => d.ROSTER.find((c) => c.id === id);
   const cdButtons = { kick: $('#btn-kick'), grab: $('#btn-grab'), dodge: $('#btn-dodge') }; // their cooldown wipes
+  // TARGET LOCK-ON for the player in PLAYER VS CPU (the same system as the horde's; the reticle is shared)
+  const lock = new LockOn(cfg.lockOn);
+  const lockEls = { btn: $('#btn-lock'), ui: $('#lock-ui') };
   let picks = [null, null];
   let m = null;            // the match in progress
   let paused = false;
@@ -300,6 +304,8 @@ export function createVsMode(d) {
 
   /** Remove the match's fighters and effects (rematch, reselect, exit). */
   function disposeMatch() {
+    lock.release();
+    d.reticle.update(null, 0);
     if (!m) return;
     for (const f of m.fighters) { d.scene.remove(f.root); if (f.dispose) f.dispose(); }
     for (const c of m.ctrls) if (c.ai) c.ai.tahu = c.ai.foe = c.ai.self = null;
@@ -475,6 +481,8 @@ export function createVsMode(d) {
       put('spReady', p.specialReady !== undefined ? p.specialReady : mf >= 1, (v) => sp.classList.toggle('ready', v));
       put('spRaging', !!(p.rageT > 0), (v) => sp.classList.toggle('raging', v));
       updateCooldownButtons(p, put, cdButtons);
+      put('lockOn', !!lock.target, (v) => { lockEls.btn.classList.toggle('on', v); lockEls.ui.classList.toggle('on', v); });
+      put('lockSingle', true, (v) => lockEls.ui.classList.toggle('single', v)); // one opponent: nobody to switch to
       const ch = p.charge || 0;
       put('charge', Math.round(ch * 50) / 50, (v) => { punch.style.setProperty('--charge', v * 360 + 'deg'); punch.classList.toggle('charging', v > 0); });
       put('charged', ch >= 1, (v) => punch.classList.toggle('charged', v));
@@ -534,6 +542,21 @@ export function createVsMode(d) {
     // camera first: the player's stick is relative to it
     let pose, playerYaw = 0;
     if (m.type === 'pvc') { const v = m.versus.update(dt, a, b, fighting ? inp.camDX : 0); pose = v; playerYaw = v.yaw; } else pose = m.spectator.update(dt, a, b);
+    // TARGET LOCK-ON (PvC): toggled on the opponent; the versus camera already keeps both in frame. The
+    // fighter faces it while standing and aims at it; nothing toggles outside FIGHTING; a knockout lets go.
+    if (m.type === 'pvc') {
+      const viewYaw = playerYaw + Math.PI, foes = [b];
+      if (fighting) {
+        if (inp.lock) lock.toggle(a, foes, viewYaw);
+        if (inp.lockPrev || inp.lockNext) {
+          d.camera.getWorldDirection(tmp);
+          lock.next(inp.lockNext ? 1 : -1, a, foes, Math.atan2(tmp.x, tmp.z), d.camera.position);
+        }
+      }
+      a.lockTarget = lock.update(a, foes, viewYaw);
+      a.lockTurn = cfg.lockOn.faceTurn;
+      d.reticle.update(a.lockTarget, dt);
+    }
     // inputs: the pad for the player, the CPUs' controllers otherwise (nothing outside FIGHTING)
     const inputs = m.ctrls.map((c, i) => {
       if (c.kind === 'player') return fighting ? inp : idle;

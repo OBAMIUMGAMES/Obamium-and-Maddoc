@@ -24,6 +24,14 @@
         <circle cx="24" cy="24" r="14" fill="none" stroke="currentColor" stroke-width="2.5" opacity=".7"/>
         <path d="M27 9L15 26h8l-3 13 13-18h-8z" fill="currentColor"/>
       </symbol>
+      <!-- TARGET LOCK-ON: a crosshair; and the switch arrows -->
+      <symbol id="i-lock" viewBox="0 0 48 48">
+        <circle cx="24" cy="24" r="13" fill="none" stroke="currentColor" stroke-width="4"/>
+        <circle cx="24" cy="24" r="4.5" fill="currentColor"/>
+        <path d="M24 2v10M24 36v10M2 24h10M36 24h10" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+      </symbol>
+      <symbol id="i-arrow-l" viewBox="0 0 48 48"><path d="M30 8L14 24l16 16" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-arrow-r" viewBox="0 0 48 48"><path d="M18 8l16 16-16 16" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
       <!-- WARLORD RAGE: a roaring horned head in a burst of spikes -->
       <symbol id="i-rage" viewBox="0 0 48 48">
         <g fill="currentColor" opacity=".55"><path d="M24 0l3 7h-6zM24 48l-3-7h6zM0 24l7-3v6zM48 24l-7 3v-6zM6 6l7 3-4 4zM42 6l-3 7-4-4zM6 42l3-7 4 4zM42 42l-7-3 4-4z"/></g>
@@ -108,6 +116,12 @@
     <div id="combo"></div>
     <div id="banner"></div>
     <div id="stick"><div id="knob"></div></div>
+    <!-- TARGET LOCK-ON: the toggle, and the arrows that switch targets (shown while locked) -->
+    <div id="lock-ui">
+      <button id="btn-lock-prev" class="act lock-arrow" aria-label="previous target"><svg class="ic"><use href="#i-arrow-l"></use></svg></button>
+      <button id="btn-lock" class="act" aria-label="lock-on"><svg class="ic"><use href="#i-lock"></use></svg><span>LOCK</span></button>
+      <button id="btn-lock-next" class="act lock-arrow" aria-label="next target"><svg class="ic"><use href="#i-arrow-r"></use></svg></button>
+    </div>
     <div id="buttons">
       <button id="btn-special" class="act"><svg class="ic"><use href="#i-mgi"></use></svg><span>MACHINEGUN<br>IMPACT</span></button>
       <button id="btn-dodge" class="act"><svg class="ic"><use href="#i-dodge"></use></svg><span>DODGE</span></button>

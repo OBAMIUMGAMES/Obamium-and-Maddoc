@@ -73,6 +73,10 @@ export class ClipFighter extends Fighter {
     // attack cooldowns by kind (cfg.cooldowns): s until another attack of that kind may start
     this.cool = {};
     this.dodgeCool = 0; // s before the next dodge
+    // TARGET LOCK-ON (lockOn.js, set by the mode each frame): the enemy the player is locked onto, and the
+    // share of the turn rate used to face it while standing
+    this.lockTarget = null;
+    this.lockTurn = 0.6;
     this.dodgeFacing = 0;
     this.atkSpeed = 1;  // attack clip playback multiplier (ENERGY OVERFLOW)
     this.speedMul = 1;  // movement speed multiplier (ENERGY OVERFLOW)
@@ -125,7 +129,7 @@ export class ClipFighter extends Fighter {
 
     let friction = 10;
     switch (this.state) {
-      case 'idle': friction = 0; this.steer(dt, ctl); break; // velocity is steered directly
+      case 'idle': friction = 0; this.steer(dt, ctl); this.faceLockTarget(dt, ctl); break; // velocity is steered directly
       case 'punch': this.updatePunch(dt, world); break;
       case 'hurt':
         this.vel.x *= 0.85; this.vel.z *= 0.85;
@@ -211,6 +215,23 @@ export class ClipFighter extends Fighter {
     this.vel.z += (Math.cos(this.facing) * sp - this.vel.z) * Math.min(1, acc * dt);
   }
 
+  /**
+   * Locked on and standing (no stick): turn to face the target at a share of the turn rate. Running keeps
+   * its own direction (the clips run forward: no moonwalk), and moves keep theirs (nothing here runs then).
+   */
+  faceLockTarget(dt, ctl) {
+    const L = this.lockTarget;
+    if (!L || ctl.mag > 0.15 || !this.onGround || L.alive === false) return;
+    this.turnTowards(Math.atan2(L.pos.x - this.pos.x, L.pos.z - this.pos.z), this.cfg.turnRate * this.lockTurn, dt);
+  }
+
+  /** The locked-on target if an attack starting now may aim at it: in play, on this level, within `range` m. */
+  lockAim(world, range) {
+    const L = this.lockTarget;
+    if (!L || L.alive === false || L.targetable === false || !world.map.sameLevel(this.pos, L.pos)) return null;
+    return Math.hypot(L.pos.x - this.pos.x, L.pos.z - this.pos.z) - L.radius <= range ? L : null;
+  }
+
   /** Punch press: queue the next punch, continue a recent combo, or start a new one. */
   handlePunch(ctl, world) {
     if (!ctl.input.punch) return;
@@ -259,6 +280,10 @@ export class ClipFighter extends Fighter {
 
   /** Snap facing to the closest enemy in a forgiving cone on the same level. */
   aimAssist(world, range = 5.5, cone = 2.4) {
+    // locked on: the attack goes for the locked target when it is within the assist's range (its reach
+    // and hit test are unchanged: being locked on never makes a blow land)
+    const locked = this.lockAim(world, range);
+    if (locked) { this.facing = Math.atan2(locked.pos.x - this.pos.x, locked.pos.z - this.pos.z); return locked; }
     let best = null, bd = 1e9;
     for (const e of world.enemies) {
       if (!e.alive || !e.targetable || !world.map.sameLevel(this.pos, e.pos)) continue;

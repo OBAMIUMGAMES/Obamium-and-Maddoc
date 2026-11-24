@@ -568,6 +568,22 @@ export const CONFIG = {
     minArm: 1.6, armRise: 0.35, maxRise: 2.6, wallTurn: 1.8 },
 
   /**
+   * TARGET LOCK-ON (src/js/lockOn.js), every mode with a player fighter: LOCK-ON toggles it, the arrows next
+   * to it switch targets. It takes the nearest valid enemy within acquireRange m, favouring those ahead of
+   * the camera (frontWeight), and lets go beyond releaseRange m (or when the target dies: the next one, or off).
+   */
+  lockOn: {
+    acquireRange: 30, releaseRange: 40, frontWeight: 1.6,
+    // the horde camera while locked: behind the player on the line from the target, looking up to
+    // lookShare of the way to it (more as they part: nearSep..farSep m), pulled back pullPerM per m of
+    // separation (and for a taller target) up to maxPull; its yaw eases (yawEase /s) at most maxYawRate
+    // rad/s, and the framing blends in and out over ~1/blend s
+    camera: { lookShare: 0.42, nearSep: 4, farSep: 18, pullPerM: 0.012, maxPull: 1.3, yawEase: 5, maxYawRate: 3.2, blend: 3 },
+    faceTurn: 0.6, // share of the fighter's turn rate it uses to face the target while standing
+    reticle: { color: 0xff5a3c, size: 0.3, lift: 0 },
+  },
+
+  /**
    * VS MODE — 1v1 duels in the Glatorian Arena (design/vs-mode.md). The horde values above are not
    * touched: whatever a fighter does differently in a duel comes from here.
    */
