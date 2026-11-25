@@ -139,8 +139,10 @@ const G = {
   toSpawn: [], spawnT: 0, breakT: 0, waveActive: false,
   hitStop: 0, shake: 0, camYaw: 0, camYawTarget: 0, specialCam: 0, camLift: 0,
   // the lock-on camera's framing, blended in and out (lockW 0..1): how far to pull back, how far toward the
-  // target to look, and the (smoothed) point on the target it looks toward
-  lockW: 0, lockPull: 1, lockLook: 0, lockFocus: new THREE.Vector3(),
+  // target to look, and the (smoothed) point on the target it looks toward; which side of the target's line
+  // the camera keeps (lockSide, chosen per target: lockFor) and its eased turn off that line (lockOff), which
+  // the stick's frame leaves out
+  lockW: 0, lockPull: 1, lockLook: 0, lockFocus: new THREE.Vector3(), lockSide: 1, lockFor: null, lockOff: 0,
   enemies: [],
   player: null,
   tonuaRef: null,
@@ -653,7 +655,7 @@ function newGame(id = G.charId, mapId) {
   p.sync();
   G.wave = 0; G.score = 0; G.kills = 0; G.bestCombo = 0;
   G.noWaves = false; G.view = null; G.camLock = false; // test-harness switches never leak into a new game
-  lockOn.release(); G.lockW = 0; G.lockPull = 1; G.lockLook = 0;
+  lockOn.release(); G.lockW = 0; G.lockPull = 1; G.lockLook = 0; G.lockFor = null; G.lockOff = 0;
   G.camYaw = G.camYawTarget = s.facing + Math.PI;
   G.camLift = 0;
   G.camArm = -1;
@@ -1161,19 +1163,27 @@ function stepGame(dt, inp) {
   p.lockTurn = cfg.lockOn.faceTurn;
   G.lockW += ((lockT ? 1 : 0) - G.lockW) * Math.min(1, dt * LC.blend);
   if (lockT) {
-    // locked: the camera swings behind the player on the line from the target - eased and rate-capped,
-    // and held still while the target is in the player's hands or flying (no whip-pans through a giant
-    // swing, a throw or a knockback); framing for the distance and size between them
-    const F = lockFraming(p, lockT, LC);
+    // locked: the camera swings behind the player, turned off the line from the target just enough that his
+    // body does not hide it, on the side of the line it already is (chosen once per target: no swinging
+    // across) - eased and rate-capped, and held still while the target is in the player's hands or flying
+    // (no whip-pans through a giant swing, a throw or a knockback); framing for the distance and size
+    if (G.lockFor !== lockT) {
+      G.lockFor = lockT;
+      G.lockSide = angleDiff(G.camYaw, Math.atan2(p.pos.x - lockT.pos.x, p.pos.z - lockT.pos.z)) < 0 ? -1 : 1;
+    }
+    const F = lockFraming(p, lockT, LC, cfg.camera.distance * (p.cfg.camera || NO_CAM).distance, G.lockSide);
     const flying = lockT.holder === p || lockT.thrower === p || lockT.state === 'grabbed' || lockT.state === 'thrown';
     if (!flying) G.camYawTarget = G.camYaw + angleDiff(F.yaw, G.camYaw);
     G.camYaw = approachAngle(G.camYaw, G.camYawTarget, dt, LC.yawEase, LC.maxYawRate);
+    G.lockOff = approachAngle(G.lockOff, F.shoulder, dt, LC.yawEase, LC.maxYawRate);
     G.lockPull = F.pull;
     G.lockLook = F.look;
     const c = lockT.center ? lockT.center(camScript) : camScript.copy(lockT.pos);
     // a lock from nothing starts its focus on the target (its weight is still ~0); a switch glides over
     if (G.lockW < 0.05) G.lockFocus.copy(c); else G.lockFocus.lerp(c, Math.min(1, dt * 6));
   } else {
+    G.lockFor = null; // the next lock chooses its side afresh
+    if (G.lockW < 0.01) G.lockOff = 0;
     // camera yaw from drag + gentle auto-follow behind the fighter while moving
     G.camYawTarget -= inp.camDX * cfg.camera.dragSensitivity;
     const moving = Math.hypot(inp.moveX, inp.moveY) > 0.3 && Math.abs(inp.moveY) > 0.5 && inp.moveY > 0;
@@ -1186,7 +1196,9 @@ function stepGame(dt, inp) {
     G.camYaw += (G.camYawTarget - G.camYaw) * Math.min(1, dt * 10);
   }
 
-  p.update(dt, inp, G.camYaw, world);
+  // the stick's frame: the camera's, less the lock's turn off the target's line (blended in and out with
+  // the lock), so while locked forward heads at the target and sideways circles it
+  p.update(dt, inp, G.camYaw - G.lockOff * G.lockW, world);
   for (const e of G.enemies) e.update(dt, world);
   if (bossFx) bossFx.update(dt, world);
   // body separation (same level only; bodies being swung or thrown pass through)

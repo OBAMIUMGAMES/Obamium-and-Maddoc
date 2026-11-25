@@ -106,20 +106,32 @@ export class LockOn {
 const smoothstep = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
 
 /**
- * The camera framing for a lock: `yaw` (from the player out toward the camera, the horde camera's camYaw
- * convention) puts the camera behind the player on the line from the target, so both are ahead of it;
- * `look` (0..lookShare) is how far toward the target the camera looks; `pull` (>= 1) how much further back
- * it stands, for a target far away or taller than the player.
- * @param {{lookShare:number, nearSep:number, farSep:number, pullPerM:number, maxPull:number}} C CONFIG.lockOn.camera
+ * The camera framing for a lock (the horde camera's camYaw convention: yaw points from the player out toward
+ * the camera). The camera stands behind the player, both ahead of it, but turned off the line from the target
+ * through the player (`lineYaw`) by `shoulder` rad to one `side`: straight on the line the player's own body
+ * would hide the target (it is beyond him, at about the same height on screen). The turn is the smallest that
+ * puts the two bodies (their radii times shoulderPad) side by side as the camera sees them: large up close,
+ * small far apart, never more than maxShoulder. `look` (0..lookShare) is how far toward the target the camera
+ * looks; `pull` (>= 1) how much further back it stands, for a target far away or taller than the player.
+ * @param {{lookShare:number, nearSep:number, farSep:number, pullPerM:number, maxPull:number, shoulderPad:number, maxShoulder:number}} C CONFIG.lockOn.camera
+ * @param {number} [camDist] the camera's distance from the player before the pull (m)
+ * @param {number} [side] +1 / -1: which side of the line the camera keeps
+ * @returns {{yaw:number, lineYaw:number, shoulder:number, look:number, pull:number, sep:number}}
  */
-export function lockFraming(player, target, C) {
+export function lockFraming(player, target, C, camDist = 9.5, side = 1) {
   const dx = player.pos.x - target.pos.x, dz = player.pos.z - target.pos.z;
   const sep = Math.hypot(dx, dz);
-  const yaw = Math.atan2(dx, dz);
+  const lineYaw = Math.atan2(dx, dz);
   const look = C.lookShare * smoothstep(C.nearSep * 0.5, C.farSep, sep);
   const tall = Math.max(0, (target.height || 0) - (player.height || 0)) / Math.max(1, player.height || 1);
   const pull = Math.min(C.maxPull, 1 + C.pullPerM * Math.max(0, sep - C.nearSep) + tall * 0.35);
-  return { yaw, look, pull, sep };
+  // seen from a camera D m behind the player, turned phi off the line, the target S m beyond him sits
+  // atan(S sin phi / (D + S cos phi)) from him; it must clear both half-widths (beta): phi = beta + asin(D sin(beta) / S)
+  const D = camDist * pull, S = Math.max(sep, 0.01), pad = C.shoulderPad ?? 1.2;
+  const beta = Math.atan2((player.radius || 0.5) * pad, D) + Math.atan2((target.radius || 0.5) * pad, D + S);
+  const k = (D / S) * Math.sin(beta);
+  const shoulder = (side < 0 ? -1 : 1) * Math.min(C.maxShoulder ?? 0.9, beta + (k >= 1 ? Math.PI / 2 : Math.asin(k)));
+  return { yaw: lineYaw + shoulder, lineYaw, shoulder, look, pull, sep };
 }
 
 /**

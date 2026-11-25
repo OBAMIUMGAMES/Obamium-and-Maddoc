@@ -84,14 +84,43 @@ test('the target dies: the next valid one is taken; none left: lock-on turns off
   assert.equal(L3.target, held, 'still locked while the player holds it');
 });
 
-test('camera framing: behind the player on the target\'s line, looking further toward it and pulling back as they part', () => {
-  const player = ent(0, 0, { height: 3.6 });
-  for (const [x, z] of [[0, 10], [7, -3], [-12, 4]]) {
-    const target = ent(x, z);
-    const F = lockFraming(player, target, C.camera);
-    const cam = new THREE.Vector3(Math.sin(F.yaw), 0, Math.cos(F.yaw)), toT = new THREE.Vector3(x, 0, z).normalize();
-    assert.ok(cam.dot(toT) < -0.999, 'the camera on the far side of the player from the target');
+test('camera framing: behind the player, turned off the target\'s line just enough that the player\'s body never hides it', () => {
+  // the horde camera's distances: Toaku (9.5 m) and Dreadnought (x1.42); a Bohrok-sized target at body gaps
+  // from touching to far, in several directions
+  for (const [player, camDist] of [[ent(0, 0, { height: 3.6, radius: 0.9 }), 9.5], [ent(0, 0, { height: 5.2, radius: 1.35 }), 9.5 * 1.42]]) {
+    for (const gap of [0.1, 1.2, 2.5, 8.5, 23]) {
+      for (const dir of [0, 1.9, -2.6]) {
+        for (const side of [1, -1]) {
+          const d = player.radius + 0.62 + gap, x = Math.sin(dir) * d, z = Math.cos(dir) * d;
+          const target = ent(x, z, { radius: 0.62, height: 1.7 });
+          const F = lockFraming(player, target, C.camera, camDist, side);
+          const D = camDist * F.pull;
+          const cam = new THREE.Vector3(Math.sin(F.yaw) * D, 0, Math.cos(F.yaw) * D);
+          const toP = player.pos.clone().sub(cam), toT = target.pos.clone().sub(cam);
+          const where = `player r ${player.radius}, gap ${gap} m, dir ${dir}, side ${side}`;
+          assert.ok(toT.length() > toP.length(), `${where}: the camera behind the player, the target beyond him`);
+          // as the camera sees them: the angle between the two bodies' centres clears both half-widths (the
+          // whole target in view); bodies touching, at least the target's centre clears the player's body
+          const halfP = Math.atan2(player.radius, toP.length()), need = halfP + Math.atan2(target.radius, toT.length());
+          const seen = toP.angleTo(toT);
+          if (gap >= 1.2) assert.ok(seen >= need, `${where}: target clear of the player (${seen.toFixed(3)} >= ${need.toFixed(3)} rad)`);
+          else assert.ok(seen >= halfP, `${where}: the target's centre clear of the player (${seen.toFixed(3)} >= ${halfP.toFixed(3)} rad)`);
+          // turned to the side asked for, never more than the cap
+          const off = wrapped(F.yaw - F.lineYaw);
+          assert.ok(Math.sign(off) === side && Math.abs(off) <= C.camera.maxShoulder + 1e-9, `${where}: off the line by ${off.toFixed(3)}`);
+          assert.ok(Math.abs(wrapped(F.lineYaw - Math.atan2(-x, -z))) < 1e-9, 'lineYaw: from the target through the player');
+        }
+      }
+    }
   }
+  // the turn shrinks as they part (a far target is already clear of the player's body)
+  const p0 = ent(0, 0, { height: 3.6, radius: 0.9 });
+  const offs = [3, 6, 12, 24].map((z) => Math.abs(wrapped(lockFraming(p0, ent(0, z, { radius: 0.62 }), C.camera, 9.5, 1).yaw - Math.PI)));
+  for (let k = 1; k < offs.length; k++) assert.ok(offs[k] < offs[k - 1], `smaller further away: ${offs.map((o) => o.toFixed(2)).join(' > ')}`);
+});
+
+test('camera framing: looking further toward the target and pulling back as they part; the yaw eases, rate-capped', () => {
+  const player = ent(0, 0, { height: 3.6 });
   const near = lockFraming(player, ent(0, 3), C.camera), far = lockFraming(player, ent(0, 25), C.camera);
   assert.ok(far.look > near.look && far.look <= C.camera.lookShare, 'looks further toward a far target');
   assert.ok(far.pull > near.pull && far.pull <= C.camera.maxPull, 'pulls back for a far target');

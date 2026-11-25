@@ -574,11 +574,15 @@ export const CONFIG = {
    */
   lockOn: {
     acquireRange: 30, releaseRange: 40, frontWeight: 1.6,
-    // the horde camera while locked: behind the player on the line from the target, looking up to
-    // lookShare of the way to it (more as they part: nearSep..farSep m), pulled back pullPerM per m of
-    // separation (and for a taller target) up to maxPull; its yaw eases (yawEase /s) at most maxYawRate
-    // rad/s, and the framing blends in and out over ~1/blend s
-    camera: { lookShare: 0.42, nearSep: 4, farSep: 18, pullPerM: 0.012, maxPull: 1.3, yawEase: 5, maxYawRate: 3.2, blend: 3 },
+    // the horde camera while locked: behind the player, turned off the line from the target just enough
+    // that the player's body never hides it (the bodies' radii x shoulderPad side by side on screen; at
+    // most maxShoulder rad, reached only with the bodies about touching), on the side it already was;
+    // looking up to lookShare of the way to the target (more as they part: nearSep/2..farSep m), pulled
+    // back pullPerM per m of separation (and for a taller target) up to maxPull; its yaw eases (yawEase /s)
+    // at most maxYawRate rad/s, and the framing blends in and out over ~1/blend s. The stick's frame
+    // leaves out the turn: forward heads at the target, sideways circles it.
+    camera: { lookShare: 0.42, nearSep: 4, farSep: 18, pullPerM: 0.012, maxPull: 1.3, yawEase: 5, maxYawRate: 3.2, blend: 3,
+      shoulderPad: 1.2, maxShoulder: 0.9 },
     faceTurn: 0.6, // share of the fighter's turn rate it uses to face the target while standing
     reticle: { color: 0xff5a3c, size: 0.3, lift: 0 },
   },
