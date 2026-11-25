@@ -667,10 +667,17 @@ export const CONFIG = {
         aggression: 0.92, range: 0.72, moveFreq: 0.35, dodge: 0.2, heavy: 0.62, grab: 0.5, combo: 0.75,
         counter: 0.4, special: 0.9, reaction: 0.3, defense: 0.12, retreat: 0.05, jump: 0, think: 0.2, spacing: 0,
       },
-      toaku: { // the agile tactician: keeps moving, evades, punishes recoveries, avoids slugging matches
-        aggression: 0.55, range: 0.95, moveFreq: 0.9, dodge: 0.7, heavy: 0.3, grab: 0.45, combo: 0.85,
-        counter: 0.9, special: 0.8, reaction: 0.17, defense: 0.6, retreat: 0.45, jump: 0.35, think: 0.12,
-        spacing: 0.85, // against a longer reach: hover just outside it, dart in on an opening
+      toaku: { // the martial artist (src/js/vsTactician.js): combinations, tactical grabs, counters, calculated pressure
+        style: 'tactician',
+        aggression: 0.25, range: 0.9, moveFreq: 0.7, dodge: 0.7, heavy: 0.3, grab: 0.85, combo: 0.9,
+        counter: 0.9, special: 0.85, reaction: 0.2, defense: 0.45, retreat: 0.2, jump: 0.3, think: 0.12,
+        spacing: 0.6,      // against a longer reach, out of pressure: wait at its edge
+        counterGrab: 0.6,  // a slow wind-up in grab reach (uppercut charge, grab, kick, scream): grabbed out of it
+        pressure: 0.2,     // after a combination, nothing open: stays in anyway (else resets to an angle)
+        tempo: 0.1,        // pressing, in range, no opening: the chance he strikes now (else a beat, a half-step)
+        feint: 0.12,       // neutral: a quick step in to draw a whiff
+        hold: 0.25,        // neutral, at the edge of his reach: a moment watching him in his stance
+        overflowAggro: 1.35, // ENERGY OVERFLOW: this much more assertive
       },
       default: {
         aggression: 0.7, range: 0.85, moveFreq: 0.6, dodge: 0.45, heavy: 0.4, grab: 0.35, combo: 0.7,

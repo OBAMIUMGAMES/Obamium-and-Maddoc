@@ -94,27 +94,27 @@ test('only legal moves at legal times: attacks in range, Dreadnought never jumps
   }
 });
 
-test('personalities: Dreadnought presses forward and hits heavy; Toaku moves, evades and keeps his distance', () => {
-  const sum = (i, k, runs) => runs.reduce((s, r) => s + r.D.ctrls[i].ai.stats[k], 0);
+test('personalities: Dreadnought presses forward with heavy blows and grabs; Toaku fights with combinations, tactical grabs and counters', () => {
+  const sum = (i, k, runs) => runs.reduce((s, r) => s + (r.D.ctrls[i].ai.stats[k] || 0), 0);
   const runs = [6, 7, 8, 9].map((s) => fight(['dreadnought', 'toaku'], s, 120));
   const time = runs.reduce((s, r) => s + r.t, 0);
   const W = (k) => sum(0, k, runs), T = (k) => sum(1, k, runs);
-  const attacksW = W('punch') + W('heavy') + W('kick') + W('grab'), attacksT = T('punch') + T('kick') + T('grab') + T('slam');
-  // Dreadnought: aggressive, heavy blows and grabs, rarely backs off; attacks far more often than Toaku
-  // (absolute rates include the cooldowns and the time a floored opponent cannot be hit)
+  // Dreadnought: the aggressive juggernaut — heavy blows and grabs, never backs off (unchanged)
   assert.ok(W('heavy') > 0 && W('grab') > 0, `heavy ${W('heavy')} grab ${W('grab')}`);
-  assert.ok(W('retreat') < T('retreat'), `retreats D ${W('retreat')} vs T ${T('retreat')}`);
-  assert.ok(attacksW > attacksT * 1.5 && attacksW / time > 10 / 60, `attacks / min: Dreadnought ${(attacksW / time * 60).toFixed(1)}, Toaku ${(attacksT / time * 60).toFixed(1)}`);
-  // Toaku: keeps his distance and evades far more: retreats, side-steps and rolls (rolls away from heavy
-  // blows, side-steps light ones to stay in punishing range)
-  const evasiveT = T('retreat') + T('evade') + T('dodge'), evasiveW = W('retreat') + W('evade') + W('dodge');
-  assert.ok(evasiveT > evasiveW * 3, `evasive moves: Toaku ${evasiveT}, Dreadnought ${evasiveW}`);
-  assert.ok(T('evade') > 0, 'Toaku side-steps light blows');
-  assert.ok(T('dodge') > 0, 'Toaku rolls away from heavy ones');
-  assert.ok(attacksT > 0, 'and still fights');
-  // the profiles say so too (these numbers drive the decisions above)
+  assert.equal(W('retreat'), 0, 'Dreadnought never backs off');
+  assert.ok((W('punch') + W('heavy') + W('kick') + W('grab')) / time > 10 / 60, 'he attacks all the time');
+  // Toaku: combinations (punches cancelled into a grab or the kick), grabs as freely as the grappler,
+  // openings punished and wind-ups countered, heavy blows rolled away from
+  assert.ok(T('plan') > 10, `combinations planned: ${T('plan')}`);
+  assert.ok(T('chainGrab') + T('chainKick') > 0, `chains ending in a grab ${T('chainGrab')} / the kick ${T('chainKick')}`);
+  assert.ok(T('grab') >= W('grab') * 0.6, `grabs: Toaku ${T('grab')}, Dreadnought ${W('grab')}`);
+  assert.ok(T('punish') + T('counterGrab') > 0, 'openings punished');
+  assert.ok(T('dodge') + T('evade') > W('dodge') + W('evade'), `evasion: Toaku ${T('dodge') + T('evade')}, Dreadnought ${W('dodge') + W('evade')}`);
+  assert.ok(T('special') > 0, 'MACHINEGUN IMPACT used');
+  // the profiles say so too
   const D = CONFIG.vs.ai.dreadnought, K = CONFIG.vs.ai.toaku;
-  assert.ok(D.aggression > K.aggression && D.heavy > K.heavy && D.grab > K.grab && D.dodge < K.dodge && D.moveFreq < K.moveFreq && D.retreat < K.retreat);
+  assert.equal(K.style, 'tactician'); assert.ok(!D.style, 'Dreadnought keeps the universal CPU');
+  assert.ok(D.aggression > K.aggression && D.heavy > K.heavy && D.dodge < K.dodge && K.combo > D.combo && K.grab > D.grab);
 });
 
 test('Dreadnought\'s CPU uses WARLORD RAGE once the meter is full', () => {

@@ -10,6 +10,7 @@ import { CONFIG } from '../../../src/js/config.js';
 import { ROSTER } from '../../../src/js/characters.js';
 import { VsFlow, vsSpawns, MATCH_TYPES } from '../../../src/js/vsRules.js';
 import { makeVsWorld, vsFighterConfig, vsRulesFor, separate } from '../../../src/js/vsCombat.js';
+import { createCombatAI } from '../../../src/js/vsTactician.js';
 import { CombatAI, SuperTahuCounter, idleInput, rngFrom } from '../../../src/js/vsAI.js';
 
 export const dt = 1 / 60;
@@ -150,7 +151,7 @@ export function duel(ids, o = {}) {
     const role = MATCH_TYPES[type].roles[i], c = rosterOf(ids[i]);
     if (role === 'player') return { kind: 'player' };
     if (c.vs.counter) return { kind: 'counter', ai: new SuperTahuCounter(f, fighters[1 - i], CONFIG.vs.superTahu, match, { erupt: (at, cb) => { log.erupts++; cb(); } }) };
-    return { kind: 'cpu', ai: new CombatAI(f, fighters[1 - i], CONFIG.vs.ai[ids[i]] || CONFIG.vs.ai.default, { common: CONFIG.vs.ai, rng, map, buttons: c.buttons, foeButtons: rosterOf(ids[1 - i]).buttons }) };
+    return { kind: 'cpu', ai: createCombatAI(f, fighters[1 - i], CONFIG.vs.ai[ids[i]] || CONFIG.vs.ai.default, { common: CONFIG.vs.ai, rng, map, buttons: c.buttons, foeButtons: rosterOf(ids[1 - i]).buttons }) };
   });
   if (o.fighting !== false) flow.fight();
   let frame = 0;

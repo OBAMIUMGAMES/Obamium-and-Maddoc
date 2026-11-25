@@ -10,7 +10,8 @@ import { updateCooldownButtons } from './cooldownHud.js';
 import { LockOn } from './lockOn.js';
 import { VS, VsFlow, MATCH_TYPES, slotCheck, pairingOk, defaultPicks, vsRoster, vsSpawns, slotLabel, cyclePick } from './vsRules.js';
 import { makeVsWorld, vsFighterConfig, vsRulesFor, separate } from './vsCombat.js';
-import { CombatAI, SuperTahuCounter, idleInput, rngFrom, COUNTER } from './vsAI.js';
+import { SuperTahuCounter, idleInput, rngFrom, COUNTER } from './vsAI.js';
+import { createCombatAI } from './vsTactician.js';
 import { VsIntro } from './vsIntro.js';
 import { VersusCamera, SpectatorCamera } from './vsCamera.js';
 import { CineCamera, orbitShot } from './cineCam.js';
@@ -160,7 +161,7 @@ export function createVsMode(d) {
       if (role === 'player') return { kind: 'player' };
       if (c.vs.counter) return { kind: 'counter', ai: new SuperTahuCounter(f, foe, V.superTahu, match, counterHooks(f)) };
       const prof = V.ai[ids[i]] || V.ai.default;
-      return { kind: 'cpu', ai: new CombatAI(f, foe, prof, { common: V.ai, rng, map, buttons: c.buttons, foeButtons: rosterOf(ids[1 - i]).buttons }) };
+      return { kind: 'cpu', ai: createCombatAI(f, foe, prof, { common: V.ai, rng, map, buttons: c.buttons, foeButtons: rosterOf(ids[1 - i]).buttons }) };
     });
     m = {
       type, ids, fighters, worlds, ctrls, frame: 0, t: 0, koT: -1, victoryAt: -1, victoryLen: 0, resultsShown: false, intro: null, fightT: 0,
