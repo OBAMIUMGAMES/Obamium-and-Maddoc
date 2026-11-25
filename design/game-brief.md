@@ -22,7 +22,7 @@ One visual language: angular metal frames, Oxanium display type, Rajdhani text (
 | Character select | name plate, subtitle (Toaku: THE BUILDER; Super Tahu: none; Dreadnought: A MEANS TO ALL ENDS), five animated stat bars, special, moves, home arena, roster strip with 3D-rendered portraits, **SELECT**, ◀ MENU; the fighter idles live in their home arena (Dreadnought sits on his throne) |
 | Fighter intro | DREADNOUGHT only: letterbox, front camera, he rises from his throne into his idle stance, name card **DREADNOUGHT / A MEANS TO ALL ENDS**; TAP TO SKIP (also Enter, Esc, Android back) |
 | Select location | **SELECT LOCATION** heading, a large card (pre-rendered arena preview, tag, name, one-line description), a strip of location cards with ◀ ▶, **FIGHT**, ◀ FIGHTER; the chosen fighter idles live in the focused arena behind the menu |
-| Combat HUD | emblem (Toaku: his mask, Super Tahu: his portrait, Dreadnought: his horned mask), name, health bar, thinner/shorter energy bar under it (Toaku: ENERGY OVERFLOW, Super Tahu: INFERNO ENERGY, Dreadnought: INSATIABLE DOMINION — fills with his damage and kills, then counts down his 30 s of rage with the seconds left), WAVE 0N panel, separate red enemies-left chip, score, pause |
+| Combat HUD | emblem (Toaku: his mask, Super Tahu: his portrait, Dreadnought: his horned mask), name, health bar, thinner/shorter energy bar under it (Toaku: ENERGY OVERFLOW, Super Tahu: INFERNO ENERGY, Dreadnought: INSATIABLE DOMINION — fills with his damage and kills, then counts down his 30 s of rage with the seconds left), WAVE 0N panel, separate red enemies-left chip, score, pause; the **LOCK** button above the stick (◀ ▶ switch arrows beside it while locked) and the target reticle (see Target lock-on); cooldown wipes on KICK, GRAB and DODGE |
 | Effects | wave announcement sweep, combo counter, banners, damage numbers (pop-in; heavy hits bigger and gold, 30+ largest with a red-orange glow), special-ready ring around the special button; Dreadnought's rage: **INSATIABLE DOMINION!!** banner, a violet vignette while it lasts, a green **+N** pop and flash on his health bar for each healing kill |
 | Pause / defeat | framed panels; defeat lists wave, robots scrapped, best combo, score, personal best |
 
@@ -43,6 +43,13 @@ v0.4 — verified by measuring every control in both builds at 915×412, 740×36
 Dreadnought cannot jump: he has no JUMP button, his **DODGE** button takes the jump button's place,
 and **DOMINION** (purple and gold, lit with a gold ring when his meter is full) the special button's;
 PUNCH, KICK and GRAB are where Toaku has them. Toaku and Super Tahu keep their JUMP.
+**LOCK** (a crosshair, 58 px; 52 px on a short screen) sits above the stick, clear of every other control; while locked it glows
+and two small ◀ ▶ arrows beside it switch targets (dimmed with only one enemy in play, as in a duel).
+Hidden in CPU VS CPU. Keyboard: T lock, Z / X previous / next target.
+**Cooldown wipes:** while KICK, GRAB or DODGE cannot be used — its move still playing, then its cooldown —
+the button dims and a dark wedge covers it, unwinding back to 12 o'clock as the cooldown runs out; it is
+bright again the moment the move can be used (read from the fighter's own cooldown each frame, so the
+display and the rule never disagree).
 
 **App icon:** Toaku + logo artwork (`assets/branding/app-icon-source.jpg`), built by
 `tools/build-icons.mjs` into an adaptive icon (artwork in the 66 dp safe zone, blurred artwork
@@ -98,18 +105,27 @@ loaded at start-up (behind the main menu's LOADING), so FIGHT needs no loading s
 | Regular damage | hook 20, uppercut finisher 36; Spartan kick 45 | 140 % (jab 14 → 20, power straight 26 → 36, kick 32 → 45) |
 | Heavy uppercut | 44, launches (lift 15, knockback 12) | 220 % of his standard punch (20) |
 | Grab | 3 squeezes × 12 + slam 51 = 87; works on Sidorak too | 170 % of Toaku's grab and throw (6 + 45 = 51) |
-| Reach / knockback | 5.1–5.8 m reach (Toaku 3.2–3.7), grab 5.4 m; finisher knockback 14 (11), kick 23 (18) | more |
+| Reach / knockback | 5.1–5.8 m reach (Toaku 3.2–3.7), grab within 4.0 m body to body (Toaku 2.4); finisher knockback 14 (11), kick 23 (18) | more |
 | INSATIABLE DOMINION | 30 s: × 1.5 damage, +8 % max HP per kill | — |
 | Style | Heavy, armoured through his uppercut, kick, grab and scream; no jump; dive-roll dodge | |
 
 ## Moves (Toaku)
 - **Punch combo** (PUNCH ×4) — jab, cross, jab, power straight (launches).
 - **Rising flying kick** (KICK) — a leaping head-height kick that carries him ~4 m forward.
-- **Grab, swing & throw** (GRAB) — catches the closest enemy in front (lunging in if needed), holds
-  it by the feet and spins two full turns (a giant swing: the swung body knocks away anyone it
-  sweeps through), then hurls it along his facing — the stick aims the throw. The thrown body
-  smashes into enemies in its path and crashes down hard (45 damage: three quarters of a Bohrok).
-  Nothing in reach: the grab whiffs and he recovers quickly.
+- **Grab, swing & throw** (GRAB) — catches an enemy in front, holds it by the feet and spins two full
+  turns (a giant swing: the swung body knocks away anyone it sweeps through), then hurls it along his
+  facing — the stick aims the throw. The thrown body smashes into enemies in its path and crashes down
+  hard (45 damage: three quarters of a Bohrok). Nothing in reach: the grab whiffs and he recovers quickly
+  (and the grab still cools down).
+- **Grab magnetism** (every grabbing fighter; `src/js/grabAssist.js`, `CONFIG.<fighter>.grab.assist`).
+  The grab goes for the locked-on enemy when it is in reach, otherwise the closest one in front (closest
+  and straightest ahead: gap + 1.5 × angle). Reach is measured body to body, so sizes count: a broad
+  Dreadnought is as reachable as a slim Bohrok. During the reach, before the hands close, he turns toward
+  it (at most 14 rad/s) and slides in (at most 6 m/s and 0.85 m in all), and the catch accepts 0.5 m past
+  his hands' reach (1.3 m body to body): a grab slightly out of reach or a little to one side connects.
+  Never one more than 2.4 m away body to body, behind him (beyond ±60°), across a wall (the line between
+  them must be clear on the map) or on another level; nobody is teleported, the catch and the hands'
+  hold are unchanged. Dreadnought: the same system with his own numbers (below).
 - **Double jump** — second jump fires the back thrusters.
 - **Thruster slam** — punch in mid-air: hang on the thrusters, dive into an AoE impact and land with
   the Dive_Down_and_Land_2 clip (its touchdown frame on the frame he hits the ground; once, feet planted).
@@ -132,10 +148,59 @@ loaded at start-up (behind the main menu's LOADING), so FIGHT needs no loading s
   aura, embers and a blazing core and eyes; no health back. Over: everything back to normal, the bar
   refills from empty. A knockout ends it at once (mid-emote: it never starts). The CPU uses it too, from
   a safe moment, through the same function, with the same emote. Tuning: `CONFIG.toaku.overflow`.
-- **Cooldowns** (every fighter, player and CPU; `CONFIG.<fighter>.cooldowns`): normal 0.35 s (a new
-  combo; the combo's own follow-ups are not delayed), heavy 0.8 s (kick, slam, uppercut), grab 2.0 s
-  (after a grab ends, caught or missed), special 1.5 s. They count real seconds: ENERGY OVERFLOW's faster
-  animations do not shorten them.
+- **Cooldowns** (every fighter, player and CPU; `CONFIG.<fighter>.cooldowns`, seconds per attack):
+  punch 0.35 (a new combo; the combo's own follow-ups are not delayed), **kick 1.5**, **grab 3.0** (caught
+  or missed), slam 0.8, uppercut 0.8, special 1.5 — Toaku and Dreadnought alike; Super Tahu: punch 0.35,
+  kick 1.5, special 1.5. They are enforced in the fighters' combat logic, not the buttons: an attack
+  cannot start again while its own move is still playing, and its cooldown starts when that move ends by
+  any route — finished, cancelled into a dodge or a jump, interrupted by a hit, a grab or a knockdown — so
+  mashing, cancelling or switching to another attack never restarts, stacks or skips it (each attack has
+  its own). They count real seconds: ENERGY OVERFLOW's faster animations do not shorten them. The KICK,
+  GRAB and DODGE buttons show them (Interface).
+
+## Target lock-on
+One reusable system for every mode with a player fighter — the horde (Survival, boss waves included),
+VS PLAYER VS CPU, future story encounters and bosses: `src/js/lockOn.js` (`LockOn`, `lockFraming`,
+`LockReticle`), tuning `CONFIG.lockOn`. A mode hands it its enemies and its camera's view; any fighter
+built on `clipFighter.js` (future Self-MOCs included) gets the facing and aiming for free.
+
+- **On / off.** The **LOCK** button (T) toggles it. On, it takes the nearest valid enemy within 30 m,
+  favouring the ones ahead of the camera (distance × (1 + 1.6 × angle off the view / 180°)); with nobody
+  valid it stays off. Valid: alive, in play (not spawning), targetable. A red-orange reticle — a ring with
+  four ticks — sits on the target's body, drawn over everything, sized to the target and gently pulsing.
+- **Camera (horde).** It swings behind the player, turned off the line from the target just enough that
+  the player's body never hides it — straight on that line the target stands right behind him on screen
+  (measured at 1.5–18 m: 0–40 % of a Bohrok visible behind Toaku, 0–39 % behind Dreadnought; with the turn,
+  100 % at every distance). The turn is the smallest
+  that sets the two bodies (their radii × 1.2) side by side as the camera sees them — for Toaku and a
+  Bohrok 10° at a 20 m body gap, 15° at 10 m, 25° at 4 m, 37° at 2 m, and the cap, 0.9 rad (52°), from
+  about 1 m to touching (Dreadnought, broader and with a longer camera: 12°, 18°, 30°, 43°, 52°). It keeps the
+  side of the line the camera was already on (chosen when the target is taken: no swing across). It
+  looks partway toward the target (up to 42 % of the way, more as they part: 2–18 m); it pulls back
+  for distance (0.012 per m beyond 4 m) and for a taller target (Dreadnought, Sidorak), at most 1.3×. Its
+  turn eases (5 /s) and is capped at 3.2 rad/s, the framing blends in and out over about 1/3 s, so a
+  knockback, a dodge or a special never jerks it; while the target is in the player's hands or flying
+  from his throw (the giant swing, Dreadnought's crush) it holds its direction instead of chasing the
+  body. The spring arm still keeps the camera out of walls; only its swing toward open floor waits while
+  locked (the lock decides the direction). Scripted shots (boss intros) still take over.
+- **Camera (VS PLAYER VS CPU).** The duel camera already frames both fighters over the shoulder; the
+  lock adds the reticle, the facing and the aim.
+- **Movement.** The stick moves the fighter relative to the target's line (the camera's frame less its
+  turn off that line, blended in and out with the lock): forward heads straight at the target, back opens
+  the gap, sideways circles it. Standing, he turns to face the target (at
+  0.6 × his turn rate); moving, he faces where he moves (the rigs have no side-step clips, so nothing
+  slides or moonwalks); a roll keeps its own direction (directional dodges unchanged); every animation
+  plays as before.
+- **Attacks.** Punches, kicks and Dreadnought's attack tracking turn to the locked target when it is
+  within their own assist range (otherwise they pick as usual); a grab takes it when it is in grab reach.
+  The lock never lengthens a reach, widens a hit volume or guarantees a hit, and never turns a move
+  already under way.
+- **Switching and loss.** The ◀ ▶ arrows (Z / X) move to the next valid enemy left / right as the
+  camera sees it, wrapping round. The target defeated or no longer valid: the next best one is taken;
+  none left: the lock turns off. Beyond 40 m: let go. While the player holds or throws it (briefly
+  untargetable) it stays locked. The player defeated, or a VS match decided: off.
+- **Off.** Pressed again (or lost): the reticle hides, the button dims, the camera's framing blends back
+  into the normal follow camera (drag to turn again) and movement is exactly as before.
 
 ## Toaku model & animation
 `assets/models/toaku.glb` is built by `tools/build-character.mjs` from Meshy's rigged exports of the
@@ -280,8 +345,11 @@ far outside their reach (hook 5.1 m, finisher 5.3 m, uppercut 5.6 m, kick 5.8 m)
 the ground up to the striking limb, so blows from his height land on a 1.7 m Bohrok, and the
 uppercut's reaches up to 1.6 × his height (airborne enemies).
 
-**Crushing grab.** He turns his right side to the closest enemy in reach (5.4 m), steps in and closes
-his right hand on it. It is held in his **palm** — the centre of his knuckles, measured on the rig, not
+**Crushing grab.** He goes for the locked-on enemy when it is in reach, otherwise the closest in front
+(the grab magnetism of Moves (Toaku), with his numbers: within 4.0 m body to body, ±69°, no wall between);
+during the reach he turns his right side to it (at most 9 rad/s), steps in (at most 2.4 m in all, 5 m/s)
+and closes his right hand on it — the grip closes within 2.4 m (+0.6 m tolerance) from his palm to its
+body. It is held in his **palm** — the centre of his knuckles, measured on the rig, not
 the wrist joint — by its upper body, and follows the hand's position and turn every frame (AI
 suspended, `grabbed` state); he lifts it, squeezes it three times (12 each, never lethal — the slam
 finishes it), then slams it into the ground at his side (`thrown`: 51 on the crash, 30 to anyone it

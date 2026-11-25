@@ -3,7 +3,7 @@
 - **Play in a browser:** `npm install && npm run build:web`, open `dist/index.html`.
   Keys: WASD move (Dreadnought: a light push walks, a full one runs), J punch (hold: Dreadnought's heavy uppercut), K kick, G grab,
   Space jump (not Dreadnought), Shift dodge, L special (Dreadnought: INSATIABLE DOMINION when the meter is full),
-  O ENERGY OVERFLOW (Toaku, when its green bar is full), Q/R camera,
+  O ENERGY OVERFLOW (Toaku, when its green bar is full), T target lock-on (on / off), Z / X previous / next target, Q/R camera,
   Enter confirm (start / select / skip the intro / fight), ←/→ browse fighters and locations, Esc back / pause.
   VS MODE: V on the main menu opens it; 1 / 2 (or Enter = 1) pick PLAYER VS CPU / CPU VS CPU; on the select screen
   ←/→ browse fighter 1, ↑/↓ fighter 2, Enter FIGHT; Enter / Space skip the intro; C switches the CPU VS CPU camera;
@@ -40,6 +40,13 @@
   landing and ENERGY OVERFLOW (the Charged_Spell_Cast emote, `src/js/toaku.js`, its aura from `src/js/rageAura.js`);
   attack cooldowns for every fighter. Tuning: `CONFIG.toaku.overflow`, `.ragdoll`, `.getUp`, `.launch`,
   `.cooldowns` (and Dreadnought's). Design: `design/game-brief.md` → Moves (Toaku), VS MODE; `design/vs-mode.md`.
+- **Combat fixes and target lock-on:** per-fighter, per-attack cooldowns enforced in the fighters' logic
+  (`src/js/clipFighter.js`: `canAttack`, `ATTACK_OF_STATE`; the cooldown starts whenever a move ends, by any
+  route) and their wipes on the KICK / GRAB / DODGE buttons (`src/js/cooldownHud.js`); grab magnetism shared by
+  every grabber (`src/js/grabAssist.js`); the reusable target lock-on (`src/js/lockOn.js`: state, switching,
+  the horde camera's framing, the reticle), wired into the horde in `main.js` and VS in `vsMode.js`. Tuning:
+  `CONFIG.<fighter>.cooldowns`, `CONFIG.<fighter>.grab.assist` / `.catchGap`, `CONFIG.lockOn`. Design:
+  `design/game-brief.md` → Moves (Toaku), Target lock-on; `design/vs-mode.md`.
 - **App icon:** `node tools/build-icons.mjs` rebuilds `android/res/mipmap-*` from `assets/branding/app-icon-source.jpg`.
 - **Interface:** `src/index.html` + `src/style.css` (per-fighter themes = `body[data-fighter]` blocks); fonts in `assets/fonts/` are inlined at build, the main-menu art comes from `assets/branding/key-art.jpg`.
 - **Tuning:** everything is in `src/js/config.js` — the fighters' moves and clip timings, their look, enemies, waves, the arena and the throne intro; the roster is `src/js/characters.js`, the locations `src/js/locations.js`. Design: `design/game-brief.md`.
