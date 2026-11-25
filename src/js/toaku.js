@@ -89,6 +89,8 @@ export class Toaku extends ClipFighter {
     this.emberT = 0;
     this.evaded = false;        // this roll already let a blow through (meter once per roll)
     this.emoteLen = 0;          // the activation emote's real length (s), read from its clip
+    this.emoteCosmetic = false; // the emote plays for show (a cinematic): no meter spent, no mode, no HUD
+    this.winEmote = null;       // VS victory: the activation emote replayed for show ({surged})
     this.dress(inst);
     this.aura = createRageAura(inst, cfg.overflow.aura);
     // the activation is the uploaded emote and nothing else: without it the mode cannot start
@@ -205,9 +207,12 @@ export class Toaku extends ClipFighter {
     this.speedMul = on ? O.speedMul : 1;
     this.atkSpeed = on ? O.attackSpeedMul : 1;
     // the aura: gathering through the emote's charge, full from its surge, while the mode runs
-    const A = O.aura;
+    const A = O.aura, E = O.emote;
     let want = on ? 1 : 0;
-    if (this.state === 'overflow') want = this.surged ? 1 : this.clipT >= O.emote.charge ? A.gather * smooth(O.emote.charge, O.emote.surge, this.clipT) : 0;
+    if (this.state === 'overflow') want = this.surged ? 1 : this.clipT >= E.charge ? A.gather * smooth(E.charge, E.surge, this.clipT) : 0;
+    // the victory emote gathers and bursts the same way (for show); a cinematic may hold the aura up
+    if (this.state === 'victory' && this.winEmote) { const t = this.stateT * E.speed; want = t >= E.surge ? 1 : t >= E.charge ? A.gather * smooth(E.charge, E.surge, t) : 0; }
+    want = Math.max(want, this.cineAuraW);
     this.ofW = want > this.ofW ? Math.min(want, this.ofW + dt / A.fadeIn) : Math.max(want, this.ofW - dt / A.fadeOut);
   }
 
@@ -260,18 +265,19 @@ export class Toaku extends ClipFighter {
    * The activation (ENERGY_OVERFLOW_ACTIVATING): the meter is spent, the uploaded emote plays once,
    * whole, at its own length; he stands planted, blows hurt but do not interrupt, grabs are refused.
    */
-  startOverflow(world) {
+  startOverflow(world, cosmetic = false) {
     this.setState('overflow');
     this.clipT = 0;
     this.overflowQueue = 0;
-    this.overflow = 0;
+    if (!cosmetic) this.overflow = 0;
     this.surged = false;
-    this.ofOn = true;
+    this.ofOn = !cosmetic;
+    this.emoteCosmetic = cosmetic;
     this.emberT = 0;
     this.emoteLen = this.inst.actions.Overflow.getClip().duration;
     this.vel.x = 0; this.vel.z = 0;
     world.audio.whoosh();
-    if (world.onOverflow) world.onOverflow('charge');
+    if (!cosmetic && world.onOverflow) world.onOverflow('charge');
   }
 
   updateOverflow(dt, world) {
@@ -285,6 +291,12 @@ export class Toaku extends ClipFighter {
       this.emberT -= dt;
       if (this.emberT <= 0) { this.emberT = O.emberEvery; world.fx.sparks(this.center(tmpV), 2, GREEN, 3); }
     }
+    if (this.clipT >= this.emoteLen && this.emoteCosmetic) {
+      // played for show (a cinematic): back to the stance, nothing switched on
+      this.emoteCosmetic = false;
+      this.setState('idle');
+      return;
+    }
     if (this.clipT >= this.emoteLen) {
       // the emote is over: the mode is on (every bonus from this frame), back to the fight stance
       this.overflowT = O.duration;
@@ -295,8 +307,8 @@ export class Toaku extends ClipFighter {
     }
   }
 
-  /** The emote's peak: the green energy bursts out of him. */
-  surge(world) {
+  /** The emote's peak: the green energy bursts out of him (for show only: no hit-stop, no HUD). */
+  surge(world, cosmetic = this.emoteCosmetic) {
     const O = this.cfg.overflow;
     this.surged = true;
     const c = this.center(tmpV);
@@ -305,8 +317,9 @@ export class Toaku extends ClipFighter {
     world.fx.sparks(c, 36, GREEN, 15);
     world.fx.sparks(c, 16, PALE, 10);
     world.shake(0.6);
-    world.hitStop(0.06);
     world.audio.special();
+    if (cosmetic) return;
+    world.hitStop(0.06);
     if (world.onOverflow) world.onOverflow('surge');
   }
 
@@ -713,13 +726,63 @@ export class Toaku extends ClipFighter {
     return super.animTargets(T, A);
   }
 
-  /** VS MODE poses: arms flung out when knocked flying, held or floored; a raised fist when he wins. */
-  vsPose(T) {
+  /**
+   * VS MODE poses: arms flung out when knocked flying, held or floored. He wins with his ENERGY OVERFLOW
+   * activation emote (the uploaded clip, whole), the green aura gathering and bursting with it — for show
+   * only: the mode does not start, and his health, cooldowns and meters stay as they were.
+   */
+  vsPose(T, A) {
     switch (this.state) {
       case 'launched': case 'thrown': case 'grabbed': case 'down': T.PoseFall = 1; return true;
-      case 'victory': T.PoseRise = 1; return true;
+      case 'victory':
+        if (!this.winEmote) { T.PoseRise = 1; return true; } // no emote on the model: the raised fist
+        T.Overflow = 1;
+        A.Overflow.time = Math.min(this.stateT * this.cfg.overflow.emote.speed, this.emoteLen - 0.02);
+        return true;
     }
     return false;
+  }
+
+  /** The match is won: the activation emote, for show (see vsPose). */
+  vsVictory() {
+    if (!super.vsVictory()) return false;
+    const clip = this.inst.actions.Overflow;
+    this.winEmote = clip ? { surged: false } : null;
+    if (clip) {
+      this.emoteLen = clip.getClip().duration;
+      this.emberT = 0;
+      if (this.world) this.world.audio.whoosh();
+    }
+    return true;
+  }
+
+  /** How long his victory takes to play out (s): the emote, whole. */
+  victoryLength() {
+    return this.winEmote ? this.emoteLen / this.cfg.overflow.emote.speed : 0;
+  }
+
+  // ---------------------------------------------------------------- selection cinematic moves
+  /**
+   * His cinematic moves (selectCinematic.js), played in a world with nothing to hit: 'overflowEmote' — the
+   * ENERGY OVERFLOW activation emote with its aura and surge, for show (no meter spent, no mode, no HUD);
+   * 'special' — the whole MACHINEGUN IMPACT (its flurry, after-images and finisher; nothing to land on).
+   */
+  cineMove(name, world) {
+    if (name === 'overflowEmote' && this.inst.actions.Overflow) { this.startOverflow(world, true); return true; }
+    if (name === 'special') { this.startSpecial(world); return true; }
+    return false;
+  }
+
+  /** A clean stance: no mode, emote, MACHINEGUN IMPACT, thrust or aura left over. */
+  cineReset() {
+    super.cineReset();
+    this.overflowT = 0; this.overflow = 0; this.overflowQueue = 0;
+    this.surged = false; this.ofOn = false; this.emoteCosmetic = false; this.winEmote = null;
+    this.speedMul = 1; this.atkSpeed = 1;
+    this.specT = 0; this.specialHitT = 0; this.specialFinished = false;
+    this.thrust = 0; this.jumps = 0; this.held = null; this.grabTarget = null;
+    this.ofW = 0;
+    this.aura.set(0, this.age);
   }
 
   postAnimate(dt, world) {
@@ -740,6 +803,15 @@ export class Toaku extends ClipFighter {
     if (this.ofW > 0) glow = Math.max(glow, this.ofW * (2.2 + Math.sin(this.age * 9) * 0.35));
     this.setCoreGlow(glow);
     this.aura.set(this.ofW, this.age);
+    if (this.state === 'victory' && this.winEmote) {
+      // the victory emote (for show): energy gathering, then the burst at its peak
+      const E = this.cfg.overflow.emote, t = this.stateT * E.speed;
+      if (!this.winEmote.surged && t >= E.surge) { this.winEmote.surged = true; this.surge(world, true); }
+      else if (!this.winEmote.surged && t >= E.charge) {
+        this.emberT -= dt;
+        if (this.emberT <= 0) { this.emberT = this.cfg.overflow.emberEvery; world.fx.sparks(this.center(tmpV), 2, GREEN, 3); }
+      }
+    }
     if (this.overflowT > 0) {
       // green energy rising off him
       this.emberT -= dt;

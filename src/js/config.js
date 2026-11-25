@@ -160,6 +160,34 @@ export const CONFIG = {
       landDamage: 45, // the thrown enemy crashing down
     },
     mgi: { windup: 0.3, flurrySpeed: 3.2 },
+    // CHARACTER SELECTION CINEMATIC (src/js/selectCinematic.js; how-to: design/selection-cinematics.md), on his
+    // desert showcase spot, ~7.3 s, skippable: his stance under a push-in; the ENERGY OVERFLOW activation emote
+    // (whole, for show) as the camera circles him and the green energy gathers, bursts and stays on him; a cut
+    // to a low side angle for the whole MACHINEGUN IMPACT (cinematic only: nothing to hit, nothing spent);
+    // a strong final framing in his stance with his name card. Camera angle: + toward his left.
+    cinematic: {
+      map: 'desert',
+      duration: 7.3,
+      sequence: [
+        { at: 0.6, move: 'overflowEmote' }, // Charged_Spell_Cast, 2.67 s: gathers from 1.2 s, bursts at ~2.5 s
+        { at: 3.35, move: 'special' },      // MACHINEGUN IMPACT: wind-up, 1.9 s flurry, finisher at ~5.55 s, stance at ~6 s
+      ],
+      camera: {
+        angle: [[0, 0.75], [0.6, 0.5], [2.55, -0.3], [3.35, -0.42], [3.36, -0.95, 'step'], [5.55, -0.35], [6.0, -0.2], [7.3, 0.1]],
+        dist: [[0, 7.4], [0.6, 6.2], [2.55, 5.6], [3.35, 6.4], [3.36, 5.2, 'step'], [5.55, 5.9], [6.0, 6.4], [7.3, 7.6]],
+        height: [[0, 1.5], [0.6, 1.9], [2.55, 2.5], [3.35, 2.4], [3.36, 1.25, 'step'], [5.55, 1.6], [7.3, 1.9]],
+        look: [[0, 2.3], [0.6, 2.5], [2.55, 2.9], [3.35, 2.6], [3.36, 2.3, 'step'], [5.55, 2.5], [7.3, 2.35]],
+        lookFwd: [[0, 0], [3.35, 0], [3.36, 0.8, 'step'], [5.55, 1.4], [6.0, 0.4], [7.3, 0]],
+        pan: [[0, 0], [6.0, 0], [7.3, 1.7]],
+      },
+      shake: [{ at: 2.5, amount: 0.22, dur: 0.6 }, { at: 5.55, amount: 0.3, dur: 0.7 }],
+      worldShake: 0.25, // the flurry's own shakes, subdued
+      fx: [{ at: 0.6, kind: 'dust', count: 10 }, { at: 3.35, kind: 'sparks', count: 18, color: 0x6aff8a, speed: 6, y: 0.4 }],
+      sounds: [{ at: 0.6, name: 'charge' }, { at: 6.1, name: 'whoosh' }],
+      aura: [[0, 0], [2.5, 0], [2.6, 1], [6.3, 1], [7.2, 0]],
+      light: { color: 0x39ff6a, track: [[0, 0], [1.2, 0], [2.5, 0.3, 'out'], [6.2, 0.25], [7.2, 0]] },
+      title: 6.05,
+    },
     // points measured on the rigged model by raycasting its bind pose and sampling the texture
     // (source units, model faces +Z, +X is his left)
     attach: {
@@ -361,6 +389,23 @@ export const CONFIG = {
     // multipliers of CONFIG.camera for his size: further back and higher (about 1.9 m above his head,
     // where Toaku's is 1 m) so enemies at mid range and a boss stay visible over his shoulders
     camera: { distance: 1.42, height: 1.55, look: 1.45 },
+    // CHARACTER SELECTION CINEMATIC (src/js/selectCinematic.js), in his arena: seated on his throne he holds
+    // still 0.8 s, rises (StandUp clip 0.3 -> 2.1 s at 0.85x) and settles into his stance while the front
+    // camera pushes in 1.1 m and tilts up with him; from 2.7 s his name card, the view panning 2.8 m to his
+    // right so he ends right of centre. 4.1 s, skippable. (The throne intro, unchanged, as data.)
+    cinematic: {
+      map: 'glatorian',
+      duration: 4.1,
+      start: { move: 'throneRise', from: 0.3, to: 2.1, hold: 0.8, speed: 0.85 },
+      camera: {
+        angle: [[0, 0]],
+        dist: [[0, 9.9], [4.1, 8.8]],
+        height: [[0, 2.4], [0.8, 2.4], [2.917647, 3.0]], // follows the rise: hold .. hold + (2.1 - 0.3) / 0.85
+        look: [[0, 2.6], [0.8, 2.6], [2.917647, 3.1]],
+        pan: [[0, 0], [2.7, 0], [4.1, 2.8]],
+      },
+      title: 2.7,
+    },
     hurtInvuln: 0.5,
     cooldowns: { punch: 0.35, uppercut: 0.8, kick: 1.5, grab: 3.0, special: 1.5 }, // s, per attack
     hurtTime: 0.3,
@@ -371,13 +416,11 @@ export const CONFIG = {
   throne: {
     seatTop: 1.4, seatWidth: 2.4, seatDepth: 1.2, backHeight: 7.3, // m (for his 5.2 m)
     seat: [0, -0.95],          // seat centre from the seated fighter's root (behind him), m
-    // seconds: the seated hold, then StandUp's clip times rising (`rise`), then the stance and the name
-    hold: 0.8, rise: [0.3, 2.1], riseSpeed: 0.85, end: 4.1, title: 2.7,
-    // front view, slightly low: pushes in by `push` m over the shot; camera height h -> hTo and the
-    // look height look -> lookTo follow him as he rises (m above the floor); from `title` the view
-    // pans `side` m to his right so he ends right of centre, his name card on the left
-    cam: { dist: 9.9, push: 1.1, h: 2.4, hTo: 3.0, look: 2.6, lookTo: 3.1, side: 2.8 },
-    menuBlend: 0.9,            // s: the camera eases from the end of the shot to the location menu's
+    // (his rise from it is his selection cinematic: CONFIG.dreadnought.cinematic)
+  },
+  // selection cinematics (src/js/selectCinematic.js): shared settings
+  cinematic: {
+    menuBlend: 0.9, // s: the camera eases from a cinematic's last shot into the location menu's
   },
 
   glatorian: {

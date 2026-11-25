@@ -492,7 +492,7 @@ body.cine #sidorak-bar { opacity: 0; }
 #select #btn-go { position: absolute; right: calc(4vw + var(--safe-r)); bottom: calc(122px + var(--safe-b)); }
 @media (max-height: 420px) { #select #btn-go { bottom: calc(110px + var(--safe-b)); } }
 
-/* ---------- fighter intro (DREADNOUGHT rises from his throne) ---------- */
+/* ---------- selection cinematics (src/js/selectCinematic.js): letterbox, name card, skip ---------- */
 #intro { padding: 0; }
 /* the name card: left of him as the shot ends (he stands right of centre) */
 #intro-title { position: absolute; left: calc(5vw + var(--safe-l)); bottom: calc(17vh + var(--safe-b)); text-align: left; pointer-events: none; opacity: 0; transition: opacity .5s; }
@@ -504,6 +504,15 @@ body.cine #sidorak-bar { opacity: 0; }
 .it-sub i { display: block; width: clamp(24px, 5vw, 60px); height: 2px; background: linear-gradient(90deg, transparent, #ffcf5a); }
 .it-sub i:first-child { display: none; }
 .it-sub i:last-child { transform: scaleX(-1); }
+/* the name card in each fighter's colours (#intro[data-fighter], set by the cinematic): Dreadnought's above */
+#intro[data-fighter="toaku"] .it-name { background-image: linear-gradient(180deg, #fff 0%, #dcffe6 24%, #57ff86 50%, #6d7680 74%, #1c2126 100%);
+  filter: drop-shadow(0 4px 0 #04140a) drop-shadow(0 0 20px rgba(57, 255, 106, .7)); }
+#intro[data-fighter="toaku"] .it-sub { color: #dcffe6; text-shadow: 0 2px 0 #000, 0 0 12px rgba(57, 255, 106, .9); }
+#intro[data-fighter="toaku"] .it-sub i { background: linear-gradient(90deg, transparent, #39ff6a); }
+#intro[data-fighter="tahu"] .it-name { background-image: linear-gradient(180deg, #fff 0%, #fff0b8 26%, #ffb02e 52%, #d2401a 76%, #5a0c00 100%);
+  filter: drop-shadow(0 4px 0 #2a0600) drop-shadow(0 0 20px rgba(255, 110, 30, .75)); }
+#intro[data-fighter="tahu"] .it-sub { color: #ffe9c0; text-shadow: 0 2px 0 #000, 0 0 12px rgba(255, 120, 30, .9); }
+#intro[data-fighter="tahu"] .it-sub i { background: linear-gradient(90deg, transparent, #ff7a1a); }
 #intro-title.show .it-name { animation: bt-slam .55s cubic-bezier(.2, 1.4, .4, 1) both; }
 #intro-title.show .it-sub { animation: bt-sub .6s .3s ease-out both; }
 /* inside the lower letterbox bar */

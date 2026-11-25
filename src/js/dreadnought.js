@@ -166,7 +166,7 @@ export class Dreadnought extends ClipFighter {
       this.rageT -= dt;
       if (this.rageT <= 0) this.endRage(this.world);
     }
-    const want = this.rageT > 0 ? 1 : 0;
+    const want = Math.max(this.rageT > 0 ? 1 : 0, this.cineAuraW); // a cinematic may show it for effect
     this.auraW = want > this.auraW ? Math.min(want, this.auraW + dt / R.aura.fadeIn) : Math.max(want, this.auraW - dt / R.aura.fadeOut);
     this.runW += ((this.gait === 'run' ? 1 : 0) - this.runW) * (1 - Math.exp(-this.cfg.locomotion.gaitBlend * dt));
   }
@@ -684,6 +684,34 @@ export class Dreadnought extends ClipFighter {
       this.inst.actions.StandUp.time = from;
       this.applyWeights();
     }
+  }
+
+  // ---------------------------------------------------------------- selection cinematic moves
+  /**
+   * His cinematic moves (selectCinematic.js): 'throneRise' — seated on his throne for `hold` s, then the
+   * stand-up clip from `from` to `to` at `speed` (CONFIG.dreadnought.cinematic).
+   */
+  cineMove(name, world, step) {
+    if (name === 'throneRise') { this.playStandUp(step.from, step.to, step.hold || 0, step.speed || 1); return true; }
+    return false;
+  }
+
+  /** The end or a skip: standing in his stance at once (out of the stand-up if he was still rising). */
+  cineFinish() {
+    if (this.state === 'standup') this.finishStandUp();
+    this.cineReset();
+  }
+
+  /** A clean stance: no rage, charge, grip or aura left over. */
+  cineReset() {
+    const standing = this.state === 'standup';
+    super.cineReset();
+    if (standing) this.finishStandUp();
+    this.rageT = 0; this.rageQueue = 0; this.roared = false; this.charge = 0;
+    this.held = null; this.grabTarget = null; this.target = null;
+    this.standHold = 0;
+    this.auraW = 0;
+    this.aura.set(0, this.age);
   }
 
   /** Skip the stand-up: standing in the idle stance at once. */

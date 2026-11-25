@@ -53,7 +53,6 @@ export const ROSTER = [
     stats: { defense: 5 },
     moves: ['Hook + uppercut combo', 'Hold PUNCH: heavy uppercut', 'Crushing grab (even Sidorak)', 'Spartan kick', 'Dive-roll dodge', 'Insatiable Dominion: +50% damage, kills heal'],
     color: '#a64dff',
-    intro: true, // rises from his throne when chosen
     // a grounded heavyweight: no jump. DODGE takes the JUMP slot, DOMINION (his rage mode) the special's
     buttons: { jump: null, special: 'DOMINION', specialIcon: 'i-rage', dodge: 'DODGE', dodgeIcon: 'i-dodge', kick: true, grab: true },
     vs: { player: true, cpu: true },

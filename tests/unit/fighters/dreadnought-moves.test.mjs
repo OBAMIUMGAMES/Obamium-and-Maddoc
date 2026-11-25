@@ -601,7 +601,7 @@ test('running into a punch: the run cross-fades into the move, then back to the 
 // ----------------------------------------------------------------------------------- the throne
 test('on the throne: seated (breathing) for the hold, then the stand-up clip, then the idle stance', () => {
   const { f, world } = setup();
-  const [from, to] = CONFIG.throne.rise;
+  const { from, to } = CONFIG.dreadnought.cinematic.start; // his selection cinematic's rise
   f.playStandUp(from, to, 0.5, 1);
   assert.equal(f.weights.Seated, 1, 'seated at once');
   run(f, world, secs(0.4));

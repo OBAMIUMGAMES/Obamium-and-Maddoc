@@ -80,6 +80,7 @@ export class ClipFighter extends Fighter {
     this.dodgeFacing = 0;
     this.atkSpeed = 1;  // attack clip playback multiplier (ENERGY OVERFLOW)
     this.speedMul = 1;  // movement speed multiplier (ENERGY OVERFLOW)
+    this.cineAuraW = 0; // a selection cinematic's cosmetic aura (0..1)
     // VS knockdowns: launch clip -> ragdoll on impact -> get-up clip (when the rig and clips allow it)
     this.ragdoll = cfg.ragdoll && cfg.getUp && inst.actions.Launch && inst.actions.GetUp && Ragdoll.supports(inst.bones)
       ? new Ragdoll(inst.bones, cfg.height, cfg.ragdoll) : null;
@@ -136,6 +137,7 @@ export class ClipFighter extends Fighter {
         if (this.stateT > cfg.hurtTime) this.setState('idle');
         break;
       case 'dead': this.vel.x *= 0.9; this.vel.z *= 0.9; break;
+      case 'cine': friction = this.updateCineClip(dt); break; // a selection cinematic's clip step
       default: friction = this.act(dt, ctl, world);
     }
 
@@ -156,6 +158,7 @@ export class ClipFighter extends Fighter {
   /** Fill target weights for the current state; return the blend rate, or 0 for idle/run. */
   animTargets(T, A) {
     if (this.state === 'punch') { T.Punch = 1; A.Punch.time = this.clipT; return 22; }
+    if (this.state === 'cine') { T[this.cineClip] = 1; A[this.cineClip].time = this.clipT; return this.cineRate; }
     if (this.ragdoll && this.vs) {
       // flying (launched, thrown, knocked out): the launch clip; getting up: the get-up clip
       if (this.state === 'launched' || this.state === 'thrown' || this.state === 'dead') { T.Launch = 1; A.Launch.time = this.launchT; return 14; }
@@ -575,6 +578,67 @@ export class ClipFighter extends Fighter {
     if (!this.headBone) return out.set(this.pos.x, this.pos.y + this.height * 0.83, this.pos.z);
     this.root.updateMatrixWorld(true);
     return this.headBone.getWorldPosition(out);
+  }
+
+  // ---------------------------------------------------------------- selection cinematics
+  // (src/js/selectCinematic.js drives these; everything here is cosmetic: a cinematic's world has nothing
+  // to hit, and cineReset() leaves no move, timer, meter, cooldown or aura behind)
+
+  /** A cinematic begins: a clean stance. */
+  cineStart() { this.cineReset(); }
+
+  /**
+   * One cinematic step: `{ clip, speed?, from?, to?, blend? }` plays one of his clips once (an animation
+   * channel), cross-faded in over `blend` s; `{ move }` one of his own named moves (cineMove). Returns
+   * whether he could play it.
+   */
+  cinePlay(step, world) {
+    if (step.clip) {
+      const a = this.inst.actions[step.clip];
+      if (!a || !this.channels.includes(step.clip)) return false;
+      this.setState('cine');
+      this.cineClip = step.clip;
+      this.cineSpeed = step.speed || 1;
+      this.clipT = step.from || 0;
+      this.cineTo = step.to ?? a.getClip().duration;
+      this.cineRate = 3 / Math.max(0.05, step.blend ?? 0.25);
+      this.vel.x = 0; this.vel.z = 0;
+      return true;
+    }
+    return !!step.move && this.cineMove(step.move, world, step);
+  }
+
+  /** His own named cinematic moves (subclasses: e.g. Toaku 'overflowEmote', Dreadnought 'throneRise'). */
+  cineMove() { return false; }
+
+  /** A clip step plays: planted, the clip once, then his stance. */
+  updateCineClip(dt) {
+    this.vel.x = 0; this.vel.z = 0;
+    this.clipT = Math.min(this.cineTo, this.clipT + dt * this.cineSpeed);
+    if (this.clipT >= this.cineTo) this.setState('idle');
+    return 10;
+  }
+
+  /** The cosmetic aura weight a cinematic asks for (0..1); fighters with an aura show at least this. */
+  cineAura(w) { this.cineAuraW = Math.max(0, Math.min(1, w || 0)); }
+
+  /** The end (or a skip): straight to his final stance. */
+  cineFinish() { this.cineReset(); }
+
+  /** Back to a clean idle stance: no move, timer, meter, cooldown, buffered press or aura left over. */
+  cineReset() {
+    this.setState('idle');
+    this.cool = {}; // leaving a move above started its cooldown: none is kept
+    this.clipT = 0;
+    this.vel.set(0, 0, 0);
+    this.meter = 0;
+    this.invuln = 0;
+    this.combo = 0; this.comboTimer = 0; this.comboGap = 0;
+    this.punchIdx = -1; this.punchQueued = false; this.hitDone = false;
+    this.buffer = {};
+    this.dodgeCool = 0;
+    this.lockTarget = null;
+    this.cineAuraW = 0;
   }
 
   /** The match is won: the victory pose (subclasses pick it in vsPose). */

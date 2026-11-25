@@ -19,7 +19,7 @@ import { SuperTahu } from './tahu.js';
 import { Dreadnought } from './dreadnought.js';
 import { buildGlatorian, GLATORIAN_ENV } from './glatorian.js';
 import { buildThrone } from './throne.js';
-import { ThroneIntro } from './throneIntro.js';
+import { SelectCinematic, defaultCinematic } from './selectCinematic.js';
 import { LOCATIONS, availableLocations, defaultLocation, stepLocation } from './locations.js';
 import { waveComposition, killScore, waveClearHp, angleDiff } from './combat.js';
 import { LockOn, LockReticle, lockFraming, approachAngle } from './lockOn.js';
@@ -132,7 +132,7 @@ const G = {
   locSel: 0,          // focused card on SELECT LOCATION (it opens on the featured one)
   mapId: null,        // the map of the current / last fight (FIGHT AGAIN replays it)
   showMap: null,      // the map the menus show the fighter on
-  introSeen: false,   // the fighter's intro played on this visit to the menus (not replayed while browsing)
+  introSeen: new Set(), // fighters whose selection cinematic played on this visit to the menus (not replayed while browsing)
   camArm: -1,         // the spring-arm length of the gameplay camera (maps with cameraReach)
   camFrom: null,      // menus: the camera eases from this shot (the end of an intro) into the menu's
   map: null,
@@ -653,7 +653,7 @@ function newGame(id = G.charId, mapId) {
   clearWorld();
   G.charId = id;
   G.mapId = mid;
-  G.introSeen = false; // a new visit to the menus after this fight plays it again
+  G.introSeen.clear(); // a new visit to the menus after this fight plays them again
   setMap(mid);
   hideShowcases();
   const p = createFighter(id);
@@ -706,7 +706,7 @@ function toTitle() {
   clearWorld();
   endIntroUi();
   G.mode = 'title';
-  G.introSeen = false;
+  G.introSeen.clear();
   document.body.dataset.fighter = 'menu'; // the main menu has its own neutral (cyan) theme
   setScreen('title');
   showShowcase(G.charId);
@@ -780,50 +780,87 @@ function showSelect() {
   select(G.sel);
 }
 
-// ---------- fighter intro (DREADNOUGHT rises from his throne) ----------
-let intro = null;
-/** On the select screen DREADNOUGHT waits on his throne until his intro has played on this visit. */
+// ---------- character selection cinematics (src/js/selectCinematic.js) ----------
+// Every fighter confirmed on the character select plays his cinematic once per visit to the menus: his own
+// (CONFIG.<id>.cinematic: Dreadnought rises from his throne, Toaku charges ENERGY OVERFLOW and unleashes
+// MACHINEGUN IMPACT) or the default push-in. It plays on his showcase spot of its map; tap / Enter / Esc /
+// back skips it; then the location menu.
+let intro = null;     // the SelectCinematic playing (G.mode === 'intro')
+let introMap = null;  // the map it plays on
+/** The fighter's cinematic definition: his own, or the default sequence sized to him. */
+function cinematicOf(c, f) {
+  return (cfg[c.id] && cfg[c.id].cinematic) || defaultCinematic(f ? f.height : 3);
+}
+/**
+ * The world a cinematic's fighter plays in: the menus' world (no enemies: nothing to hit, no damage) with
+ * the game's sound, and the shakes his moves ask for passed to the cinematic camera (subdued).
+ */
+function cineWorld(map) {
+  return { ...menuWorld(map), audio, enemies: [], shake: (a) => { if (intro) intro.addShake(a); }, hitStop() {}, hitEnemy() { G.cineHits = (G.cineHits || 0) + 1; } };
+}
+/** Tint a map's lights toward `color` by k (0 = their own colours, restored exactly). */
+function tintLights(map) {
+  const lights = [];
+  if (map.group) map.group.traverse((o) => { if (o.isHemisphereLight || o.isDirectionalLight) lights.push(o); });
+  for (const l of lights) if (!l.userData.base) l.userData.base = l.color.clone();
+  const tint = new THREE.Color();
+  return (color, k) => {
+    tint.set(color);
+    for (const l of lights) l.color.copy(l.userData.base).lerp(tint, (l.isHemisphereLight ? 1 : 0.5) * Math.max(0, Math.min(1, k)));
+  };
+}
+/** On the select screen DREADNOUGHT waits on his throne until his cinematic has played on this visit. */
 function seatOnThrone() {
   const f = showcases.dreadnought;
   if (!f || G.charId !== 'dreadnought') return;
   const seated = f.state === 'standup' && f.standHold > 0;
-  if (!G.introSeen && !seated) f.playStandUp(cfg.throne.rise[0], cfg.throne.rise[1], Infinity, cfg.throne.riseSpeed);
-  else if (G.introSeen && f.state === 'standup') f.finishStandUp();
+  const rise = cfg.dreadnought.cinematic.start;
+  if (!G.introSeen.has('dreadnought') && !seated) f.playStandUp(rise.from, rise.to, Infinity, rise.speed);
+  else if (G.introSeen.has('dreadnought') && f.state === 'standup') f.finishStandUp();
 }
-/** SELECT on the character select: the fighter's intro (once per visit to the menus), then the locations. */
+/** SELECT on the character select: the fighter's cinematic (once per visit to the menus), then the locations. */
 function confirmFighter(id) {
   const c = rosterOf(id);
   if (!assetsReady || !c || !available(c) || G.mode !== 'select') return;
   G.charId = id;
-  if (c.intro && !G.introSeen && showcases[id] && maps.glatorian) startIntro(c);
+  if (!G.introSeen.has(id) && showcases[id]) startIntro(c);
   else showLocations();
 }
 function startIntro(c) {
-  const f = showcases[c.id], map = maps.glatorian, sc = map.showcase; // his throne stands in his arena
-  showShowcase(c.id, 'glatorian');
+  const f = showcases[c.id];
+  const def = cinematicOf(c, f);
+  const mapId = maps[def.map] ? def.map : maps[c.map] ? c.map : G.showMap;
+  const map = maps[mapId], sc = map.showcase;
+  showShowcase(c.id, mapId);
+  if (showTonua) showTonua.root.visible = false; // his moment: nobody else on the spot
   G.mode = 'intro';
-  G.introSeen = true;
+  G.introSeen.add(c.id);
+  G.cineHits = 0;
   $('#it-name').textContent = c.name;
   $('#it-title').textContent = c.title || '';
+  $('#intro').dataset.fighter = c.id; // the name card in his colours
   setScreen('intro');
   document.body.classList.add('cine'); // letterbox
-  intro = new ThroneIntro(cfg.throne, {
+  introMap = map;
+  intro = new SelectCinematic(def, {
     fighter: f, stage: { x: sc.x, y: map.groundHeight(sc.x, sc.z), z: sc.z, facing: sc.facing },
+    world: cineWorld(map),
     ui: { title: (on) => $('#intro-title').classList.toggle('show', on) },
+    fx, audio, light: tintLights(map),
   });
   applyShot(intro.start());
 }
 function stepIntro(dt) {
-  const f = showcases[G.charId], map = maps.glatorian;
-  holdOnSpot(f, map, dt, idleInput);
+  const f = showcases[G.charId], map = introMap;
+  holdOnSpot(f, map, dt, idleInput, intro.d.world);
   applyShot(intro.update(dt));
   map.update(dt, f.pos);
   fx.update(dt);
   if (intro.done) endIntro();
 }
-/** Tap / Enter / Escape / back during the intro: he is standing at once, the cut hidden by a fade. */
+/** Tap / Enter / Escape / back during a cinematic: his final pose at once, the cut hidden by a fade. */
 function skipIntro() {
-  if (G.mode !== 'intro' || !intro) return;
+  if (G.mode !== 'intro' || !intro || !intro.skippable) return;
   applyShot(intro.skip());
   const cut = $('#cut');
   cut.classList.remove('go'); void cut.offsetWidth; cut.classList.add('go');
@@ -834,8 +871,11 @@ function endIntro() {
   endIntroUi();
   showLocations();
 }
+/** Whatever ends a cinematic: nothing of it is left (fighter, effects' owner, light, aura, name card). */
 function endIntroUi() {
+  if (intro) intro.end();
   intro = null;
+  introMap = null;
   document.body.classList.remove('cine');
   $('#intro-title').classList.remove('show');
 }
@@ -1081,9 +1121,9 @@ function menuWorld(map) {
   return menuWorlds[map.id] || (menuWorlds[map.id] = { ...world, map, enemies: [], audio: silentAudio, shake() {}, hitStop() {}, onCombo() {}, onSpecial() {}, onSpecialImpact() {} });
 }
 /** Update a menu fighter and keep him on the map's menu spot. */
-function holdOnSpot(f, map, dt, inp) {
+function holdOnSpot(f, map, dt, inp, w = menuWorld(map)) {
   const sc = map.showcase;
-  f.update(dt, inp, 0, menuWorld(map));
+  f.update(dt, inp, 0, w);
   f.pos.set(sc.x, map.groundHeight(sc.x, sc.z), sc.z);
   f.facing = sc.facing;
   f.sync();
@@ -1120,7 +1160,7 @@ function stepShowcase(dt, moves) {
     // out of an intro: ease from where its shot ended into the menu's camera
     const F = G.camFrom;
     F.t += dt;
-    const k = Math.min(1, F.t / cfg.throne.menuBlend), e = k * k * (3 - 2 * k);
+    const k = Math.min(1, F.t / cfg.cinematic.menuBlend), e = k * k * (3 - 2 * k);
     camera.position.lerpVectors(F.pos, camera.position, e);
     menuLook.lerpVectors(F.look, menuLook, e);
     if (k >= 1) G.camFrom = null;
