@@ -17,7 +17,8 @@ import { CineCamera, orbitShot } from './cineCam.js';
 
 /**
  * @param {object} d services from main.js: cfg, $, scene, camera, audio, fx, fire, maps, ROSTER,
- *   available(c), createFighter(id, cfg), portraits, setScreen(id|null), setMap(id), hideShowcases(),
+ *   available(c), createFighter(id, cfg), portraits (cards), headshots (HUD), setEmblem(el, c) (a
+ *   portrait frame), setScreen(id|null), setMap(id), hideShowcases(),
  *   clearHorde(), toTitle(), configureHud(c), banner(text, kind), setMode(m), flash(kind)
  */
 export function createVsMode(d) {
@@ -435,8 +436,7 @@ export function createVsMode(d) {
       e.res.classList.remove('raging', 'overflowing', 'ready');
       e.name.textContent = c.name;
       e.tag.textContent = type === 'pvc' ? (i === 0 ? 'P1' : 'CPU') : 'CPU';
-      e.emb.classList.toggle('portrait', !c.emblem);
-      if (c.emblem) e.use.setAttribute('href', '#' + c.emblem); else e.img.src = d.portraits[id] || '';
+      d.setEmblem(e.emb, c); // his head portrait in his colours, player or CPU
       // a resource bar only for a fighter that has one in a duel (Super Tahu: none — his counter needs none)
       const hasRes = !c.vs.counter;
       e.res.style.display = hasRes ? '' : 'none';

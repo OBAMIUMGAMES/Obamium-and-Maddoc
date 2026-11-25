@@ -11,7 +11,10 @@ export const ROSTER = [
     map: 'desert',
     special: 'MACHINEGUN IMPACT',
     meterLabel: 'ENERGY OVERFLOW',
-    emblem: 'mask-toaku', // SVG symbol in index.html; fighters without one show their rendered portrait
+    emblem: 'mask-toaku', // SVG symbol in index.html: the HUD's fallback until his rendered head portrait is ready
+    // portraits (src/js/portraits.js) are rendered from his model for every entry; bg = the cards' backdrop
+    // (optional: a dark shade of `color` otherwise)
+    portrait: { bg: 0x1b3a24, cardY: 3.15 }, // cardY: the cards' framing height (m), measured from his head if absent
     stats: { defense: 5 }, // designer rating (out of 5) where the game has no numeric value
     moves: ['4-punch combo', 'Rising flying kick', 'Grab, swing & throw', 'Thruster double jump + slam'],
     color: '#39ff6a',
@@ -26,6 +29,7 @@ export const ROSTER = [
     special: 'INFERNO SLAM',
     meterLabel: 'INFERNO ENERGY',
     emblem: null,
+    portrait: { bg: 0x4a2410, cardY: 2.45 },
     maxStats: true, // shown at MAX on the select screen (design decision)
     stats: { defense: 3 },
     moves: ['4-punch combo', 'Spartan kick', 'Jump-and-roll dodge'],
@@ -44,6 +48,8 @@ export const ROSTER = [
     special: 'INSATIABLE DOMINION',     // his rage mode (shown as this; the code calls it rage)
     meterLabel: 'INSATIABLE DOMINION', // fills with his damage and kills; DOMINION when full
     emblem: 'mask-dreadnought',
+    // his Head -> HeadTop bones span the horned crown too: the HUD portrait centres lower, on the mask
+    portrait: { bg: 0x24123a, cardY: 4.6, head: { lift: 0.3, frame: 1.3 } },
     stats: { defense: 5 },
     moves: ['Hook + uppercut combo', 'Hold PUNCH: heavy uppercut', 'Crushing grab (even Sidorak)', 'Spartan kick', 'Dive-roll dodge', 'Insatiable Dominion: +50% damage, kills heal'],
     color: '#a64dff',

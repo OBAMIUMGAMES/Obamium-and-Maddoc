@@ -27,6 +27,7 @@ import { loadCharacterTemplate, buildCharacterInstance } from './characterModel.
 import { ROSTER, nextSelectable, fighterStats } from './characters.js';
 import { createVsMode } from './vsMode.js';
 import { updateCooldownButtons } from './cooldownHud.js';
+import { PortraitStudio, cardBackdrop } from './portraits.js';
 import toakuGlb from '../../assets/models/toaku.glb'; // bundled as bytes (esbuild binary loader)
 import tahuGlb from '../../assets/models/tahu.glb';
 import dreadnoughtGlb from '../../assets/models/dreadnought.glb'; // tools/build-character.mjs (7 Mixamo exports)
@@ -585,16 +586,26 @@ function updateHud(dt) {
   if (G.tonuaRef) put('boss', Math.round((G.tonuaRef.hp / G.tonuaRef.maxHp) * 200) / 200, (v) => { hud.boss.style.transform = `scaleX(${Math.max(0, v)})`; });
   put('comboOn', p.comboTimer > 0, (v) => { if (!v) hud.combo.style.opacity = 0; });
 }
-/** Per-fighter HUD: theme, name, emblem, energy label, button set. */
+/**
+ * A fighter's portrait frame next to a health bar: his head portrait (rendered from his model at load),
+ * or, until there is one, his emblem (an SVG symbol) or card portrait.
+ */
+function setEmblem(el, c) {
+  const head = headshots[c.id];
+  const img = el.querySelector('img'), use = el.querySelector('use');
+  el.classList.toggle('portrait', !!head || !c.emblem);
+  el.classList.toggle('head', !!head);
+  if (head) img.src = head;
+  else if (c.emblem) use.setAttribute('href', '#' + c.emblem);
+  else img.src = portraits[c.id] || '';
+}
+/** Per-fighter HUD: theme, name, portrait, energy label, button set. */
 function configureHud(c) {
   for (const k of Object.keys(shown)) delete shown[k]; // force a full refresh for the new fighter
   document.body.dataset.fighter = c.id;
   $('#pname').textContent = c.name;
   $('#meter-label').textContent = c.meterLabel;
-  const em = $('#emblem');
-  em.classList.toggle('portrait', !c.emblem);
-  if (c.emblem) em.querySelector('use').setAttribute('href', '#' + c.emblem);
-  else $('#emblem-img').src = portraits[c.id] || '';
+  setEmblem($('#emblem'), c);
   const B = c.buttons;
   document.body.classList.toggle('has-kick', !!B.kick);
   document.body.classList.toggle('has-grab', !!B.grab);
@@ -712,7 +723,8 @@ window.__backPressed = () => {
 };
 
 // ---------- character select ----------
-const portraits = {};
+const portraits = {}; // fighter id -> the select cards' head-and-shoulders portrait (data URL)
+const headshots = {}; // fighter id -> the HUD's transparent head-and-mask portrait (data URL)
 function buildSelect() {
   const row = $('#sel-cards');
   row.innerHTML = '';
@@ -915,46 +927,27 @@ function renderLocationPreviews() {
   setMap(start);
 }
 
-/** Render a head-and-shoulders portrait of each fighter for the cards. */
+/**
+ * Render every roster fighter's portraits once, from his own model (src/js/portraits.js): the select
+ * cards' head and shoulders, and the HUD's transparent head and mask. A new roster entry gets both.
+ */
 function renderPortraits() {
-  const size = 256;
-  const pScene = new THREE.Scene();
-  pScene.add(new THREE.HemisphereLight(0xffffff, 0x554433, 2.0));
-  const key = new THREE.DirectionalLight(0xffffff, 2.4);
-  key.position.set(2, 4, 5);
-  pScene.add(key);
-  const cam = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
-  const shots = [['toaku', 3.15, 0x1b3a24], ['tahu', 2.45, 0x4a2410], ['dreadnought', 4.6, 0x24123a]]; // [id, head height, backdrop]
-  const prevFog = scene.fog;
-  const out = document.createElement('canvas');
-  out.width = out.height = size;
-  const ctx = out.getContext('2d');
-  for (const [id, headY, bg] of shots) {
-    if (!available(rosterOf(id))) continue;
-    const f = createFighter(id);
+  const studio = new PortraitStudio(renderer);
+  // posed on flat ground at the origin (the terrace map's centre is the 15 m top terrace)
+  const flat = { ...maps.desert, groundHeight: () => 0, resolve: (px, pz, nx, nz) => [nx, nz], sameLevel: () => true, snapDown: 0.3 };
+  for (const c of ROSTER) {
+    if (c.locked || !available(c)) continue;
+    const f = createFighter(c.id);
     f.facing = 0.35;
-    // pose on flat ground at the origin (the terrace map's centre is the 15 m top terrace)
-    const flat = { ...maps.desert, groundHeight: () => 0, resolve: (px, pz, nx, nz) => [nx, nz], sameLevel: () => true, snapDown: 0.3 };
     for (let k = 0; k < 3; k++) f.update(1 / 60, { moveX: 0, moveY: 0, camDX: 0 }, 0, { ...world, map: flat, enemies: [] });
     f.sync();
     f.root.updateMatrixWorld(true);
-    pScene.add(f.root);
-    pScene.background = new THREE.Color(bg);
-    cam.position.set(0.9, headY + 0.1, 3.4);
-    cam.lookAt(0, headY - 0.35, 0);
-    const w = renderer.domElement.width, h = renderer.domElement.height;
-    const s = Math.min(w, h);
-    renderer.setViewport(0, 0, s / renderer.getPixelRatio(), s / renderer.getPixelRatio());
-    renderer.render(pScene, cam);
-    ctx.clearRect(0, 0, size, size);
-    ctx.drawImage(renderer.domElement, 0, h - s, s, s, 0, 0, size, size);
-    portraits[id] = out.toDataURL('image/png');
+    portraits[c.id] = studio.card(f, cardBackdrop(c), c.portrait && c.portrait.cardY);
+    headshots[c.id] = studio.head(f, c.portrait && c.portrait.head);
     if (f.dispose) f.dispose(); // the portrait model is thrown away
-    G.portraitDebug = G.portraitDebug || {}; G.portraitDebug[id] = portraits[id];
-    pScene.remove(f.root);
   }
+  G.portraitDebug = { cards: portraits, heads: headshots };
   renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
-  scene.fog = prevFog;
 }
 
 // ---------- title / select showcase ----------
@@ -1042,7 +1035,7 @@ function flash(kind) {
   f.classList.add('go');
 }
 const vsMode = createVsMode({
-  cfg, $, scene, camera, audio, fx, fire, maps, ROSTER, portraits,
+  cfg, $, scene, camera, audio, fx, fire, maps, ROSTER, portraits, headshots, setEmblem,
   available: (c) => assetsReady && available(c),
   createFighter, setScreen, setMap, hideShowcases, configureHud, banner, flash, reticle,
   clearHorde: () => { if (G.player || G.enemies.length) clearWorld(); endIntroUi(); },
