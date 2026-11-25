@@ -20,9 +20,9 @@ One visual language: angular metal frames, Oxanium display type, Rajdhani text (
 |---|---|
 | Main menu | the key art (`assets/branding/key-art.jpg`) at its own proportions, as tall as the screen allows, over a pre-blurred copy of itself; large **INIZIO** button (glow + shine) — the horde mode — and **VS MODE** under it (1v1 duels, see VS MODE); controls hint. The 3D scene is not rendered behind it. |
 | Character select | name plate, subtitle (Toaku: THE BUILDER; Super Tahu: none; Dreadnought: A MEANS TO ALL ENDS), five animated stat bars, special, moves, home arena, roster strip with 3D-rendered portraits, **SELECT**, ◀ MENU; the fighter idles live in their home arena (Dreadnought sits on his throne) |
-| Fighter intro | DREADNOUGHT only: letterbox, front camera, he rises from his throne into his idle stance, name card **DREADNOUGHT / A MEANS TO ALL ENDS**; TAP TO SKIP (also Enter, Esc, Android back) |
+| Selection cinematic | every fighter, once per visit to the menus, on his showcase spot (`src/js/selectCinematic.js`, data in `CONFIG.<id>.cinematic`; how-to: `design/selection-cinematics.md`): **Dreadnought** rises from his throne into his stance under a pushing-in front camera (4.1 s); **Toaku** in his stance, his ENERGY OVERFLOW emote with the green aura gathering and bursting, a cut to a low side angle for the whole MACHINEGUN IMPACT (for show: nothing hit, nothing spent), a hero framing in his stance (7.3 s); anyone else a short push-in (2.4 s). Letterbox, his name card in his colours (**DREADNOUGHT / A MEANS TO ALL ENDS**, **TOAKU / THE BUILDER**); TAP TO SKIP (also Enter, Esc, Android back) — a skip leaves no effect, aura, light tint or move behind |
 | Select location | **SELECT LOCATION** heading, a large card (pre-rendered arena preview, tag, name, one-line description), a strip of location cards with ◀ ▶, **FIGHT**, ◀ FIGHTER; the chosen fighter idles live in the focused arena behind the menu |
-| Combat HUD | emblem (Toaku: his mask, Super Tahu: his portrait, Dreadnought: his horned mask), name, health bar, thinner/shorter energy bar under it (Toaku: ENERGY OVERFLOW, Super Tahu: INFERNO ENERGY, Dreadnought: INSATIABLE DOMINION — fills with his damage and kills, then counts down his 30 s of rage with the seconds left), WAVE 0N panel, separate red enemies-left chip, score, pause; the **LOCK** button above the stick (◀ ▶ switch arrows beside it while locked) and the target reticle (see Target lock-on); cooldown wipes on KICK, GRAB and DODGE |
+| Combat HUD | portrait — his head and mask rendered from his own model at load (same framing and light for everyone, transparent background, cached), in a frame of his colours: Toaku gunmetal with a neon-green ring, Dreadnought gold with purple, Super Tahu gold with fire orange (`src/js/portraits.js`; the SVG emblem only until it exists) — name, health bar, thinner/shorter energy bar under it (Toaku: ENERGY OVERFLOW, Super Tahu: INFERNO ENERGY, Dreadnought: INSATIABLE DOMINION — fills with his damage and kills, then counts down his 30 s of rage with the seconds left), WAVE 0N panel, separate red enemies-left chip, score, pause; the **LOCK** button above the stick (◀ ▶ switch arrows beside it while locked) and the target reticle (see Target lock-on); cooldown wipes on KICK, GRAB and DODGE |
 | Effects | wave announcement sweep, combo counter, banners, damage numbers (pop-in; heavy hits bigger and gold, 30+ largest with a red-orange glow), special-ready ring around the special button; Dreadnought's rage: **INSATIABLE DOMINION!!** banner, a violet vignette while it lasts, a green **+N** pop and flash on his health bar for each healing kill |
 | Pause / defeat | framed panels; defeat lists wave, robots scrapped, best combo, score, personal best |
 
@@ -438,8 +438,12 @@ VS MODE refuses to open and says why). Code: `src/js/vsMode.js` (flow, HUD, resu
   MATCH_FINISHED. Nothing can hurt and no CPU or pad acts outside FIGHTING; the fight starts exactly
   once (intro end or SKIP); the first knockout decides (no double result). Results: VICTORY / DEFEAT
   (PvC) or CPU n WINS, with REMATCH (same type, fighters, arena — everything rebuilt and reset),
-  CHARACTER SELECTION, MAIN MENU. The winner poses (Dreadnought's roar, Toaku's raised fist; Super Tahu
-  stays calm) under a slow orbit; the loser falls.
+  CHARACTER SELECTION, MAIN MENU. The winner celebrates once his last exchange is over (on his feet, out
+  of his move — a K.O. during MACHINEGUN IMPACT lets it finish): Dreadnought roars; **Toaku plays his
+  ENERGY OVERFLOW activation emote, whole, the green aura gathering and bursting** — for show only (the mode
+  does not start; health, cooldowns and meters stay as they were); Super Tahu stays calm. A slow orbit
+  frames him, the loser falls, and the results follow once the celebration has played (game time: a pause
+  holds it).
 - **Arena:** fighter 1 and 2 start on the centre line, 10 m between their bodies (plus their radii),
   facing each other; the arena wall is the boundary for both.
 - **Duel combat** (the fighters' own moves): blows land on the opponent with damage, knockback by mass
@@ -472,11 +476,24 @@ VS MODE refuses to open and says why). Code: `src/js/vsMode.js` (flow, HUD, resu
   through a reaction delay, decides every think tick by utility over approach / retreat / circle / wait
   / punch combo / heavy / kick / grab / jump-slam / special or INSATIABLE DOMINION, turns to face before striking,
   dodges (or side-steps) perceived attacks once each, avoids the wall, varies its attacks, presses on
-  when nothing happens. **Dreadnought** (aggression 0.92, heavy 0.62, grab 0.5, dodge 0.2, retreat
-  0.05): constant pressure, uppercuts and grabs, INSATIABLE DOMINION when full. **Toaku** (aggression 0.55, dodge 0.7,
-  moveFreq 0.9, counter 0.9): circles, side-steps, punishes recoveries; against a longer reach he
-  waits just outside it (its reach plus his own radius), backs off when the opponent advances and
-  sprints in on a whiffed blow — hit-and-run, the flying kick his main punish.
+  when nothing happens. **Dreadnought** (the universal CPU; aggression 0.92, heavy 0.62, grab 0.5, dodge
+  0.2, retreat 0.05): constant pressure, uppercuts and grabs, INSATIABLE DOMINION when full.
+  **Toaku** (`src/js/vsTactician.js`, profile style `tactician`): a martial artist, not a hit-and-run
+  fighter. Combinations instead of single blows — the four-punch chain, punches cancelled into a grab
+  or the flying kick the moment the last one lands, the kick then punches — each step checked before it
+  is pressed. **Grabs as his weapon**: a slow wind-up in his reach (an uppercut being charged, a grab
+  reaching, a kick or a scream winding up) is grabbed out of — his grab closes in ~0.14 s and armour does
+  not stop it — a reaction time after he sees it, never sooner; recoveries and whiffs are punished with
+  the grab first, then the full chain. He holds the edge of a longer reach or comes inside it, never idles
+  in between; takes the initiative when it is his (ahead on health, ENERGY OVERFLOW on, the opponent
+  nearly beaten, a standoff dragging on), and once committed lands the combination; after it he stays in
+  while the opponent is staggered, recovering or slow, otherwise resets to an angle — he backs away after
+  only ~9% of his attacks (the old CPU: 31%). Heavy blows coming are grabbed out of or rolled away from,
+  light ones side-stepped; attacks that keep getting interrupted are used less for a while; back on his
+  feet he rolls from a blow already coming, punishes a recovering opponent or repositions. MACHINEGUN
+  IMPACT when the opponent is in its reach and open; ENERGY OVERFLOW from a safe moment (the opponent
+  floored or far), more assertive while it lasts. Same reaction delay, buttons, cooldowns and stagger as
+  everyone: no bonus of any kind.
 - **SUPER TAHU** (not the ordinary CPU): stands still, calmly facing the opponent, and never presses
   anything — approaching, circling or touching him does nothing. The first blow that **lands** on him,
   or a grab closing on him, wakes him (that blow can never knock him out): the attacker is pinned,
@@ -496,15 +513,20 @@ VS MODE refuses to open and says why). Code: `src/js/vsMode.js` (flow, HUD, resu
   back. CvC — beside the fight,
   both in frame, pulling back as they part, keeping its side; or a steady wide shot. Both stay over the
   floor (the arena's spring arm).
-- **HUD:** both fighters' names, emblems, health (with the damage trail) and resource bars (Toaku's
+- **HUD:** both fighters' names, portraits (player or CPU; the right-hand one mirrored to face the
+  middle), health (with the damage trail) and resource bars (Toaku's
   ENERGY OVERFLOW, Dreadnought's INSATIABLE DOMINION with its seconds; Super Tahu has none), the player's own
   buttons in PvC only.
 - **Matchups (CPU VS CPU, seeded matches):** mirror matches split (either slot wins; ~20–40 s);
-  Dreadnought beats Toaku every time (24 of 24; after the combat update still 6 of 6 sampled, Toaku
-  using ENERGY OVERFLOW in 4 of them) — by design he has 150% health, 140% damage, armour on his heavy
-  moves and far more reach; Toaku fights back (on average ~125 of Dreadnought's 600 health, up to ~500
-  with ENERGY OVERFLOW) but loses the race. Knobs if that should change: `CONFIG.vs.overrides`
-  (duel-only stats), `vs.knockMul`, `vs.launchFrom`, `vs.ai.<id>`.
+  Toaku vs Dreadnought is now an even fight won on decisions: in the real game (real clips) Toaku's
+  tactician CPU won 20 of 40 matches against the unchanged Dreadnought (and 50 of 100 in the test harness),
+  many to the last few health points, matches ~45–95 s. Dreadnought keeps his 150% health, 140% damage,
+  armour and reach; Toaku answers with ~3.9 caught grabs a minute (most out of Dreadnought's wind-ups or on
+  his recoveries), ~2.2 combinations a minute, MACHINEGUN IMPACT ~1.1 and ENERGY OVERFLOW ~1.3 times a
+  match. Before this CPU, Dreadnought won every match (24 of 24, then 6 of 6; 99 of 100 in the harness).
+  Knobs: `CONFIG.vs.ai.toaku` (aggression, tempo and pressure set how often he takes the initiative —
+  the strongest lever; counterGrab, counter, special, dodge, reaction), `CONFIG.vs.overrides`,
+  `vs.knockMul`, `vs.launchFrom`.
 
 ## Bohrok (enemies): Tahnok, Gahlok, Lehvak, Pahrak, Nuhvok, Kohrak
 The only standard enemies (the old Scrapbot drones are gone). Six types share one body, rig

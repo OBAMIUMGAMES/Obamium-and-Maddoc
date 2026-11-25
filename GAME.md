@@ -47,6 +47,12 @@
   the horde camera's framing, the reticle), wired into the horde in `main.js` and VS in `vsMode.js`. Tuning:
   `CONFIG.<fighter>.cooldowns`, `CONFIG.<fighter>.grab.assist` / `.catchGap`, `CONFIG.lockOn`. Design:
   `design/game-brief.md` → Moves (Toaku), Target lock-on; `design/vs-mode.md`.
+- **Portraits, selection cinematics, Toaku's CPU (0.15.0):** the HUD portraits beside every health bar are rendered
+  once at load from each roster fighter's model (`src/js/portraits.js`; roster `portrait` adjusts a shot). Character
+  selection cinematics are data (`CONFIG.<id>.cinematic`) played by `src/js/selectCinematic.js` — Dreadnought's
+  throne, Toaku's ENERGY OVERFLOW + MACHINEGUN IMPACT, a default for everyone else; to add one for a new Self-MOC
+  follow `design/selection-cinematics.md` (template included). Toaku's VS CPU is `src/js/vsTactician.js` (profile
+  `CONFIG.vs.ai.toaku`, style `tactician`); his VS victory is his ENERGY OVERFLOW emote, for show.
 - **App icon:** `node tools/build-icons.mjs` rebuilds `android/res/mipmap-*` from `assets/branding/app-icon-source.jpg`.
 - **Interface:** `src/index.html` + `src/style.css` (per-fighter themes = `body[data-fighter]` blocks); fonts in `assets/fonts/` are inlined at build, the main-menu art comes from `assets/branding/key-art.jpg`.
 - **Tuning:** everything is in `src/js/config.js` — the fighters' moves and clip timings, their look, enemies, waves, the arena and the throne intro; the roster is `src/js/characters.js`, the locations `src/js/locations.js`. Design: `design/game-brief.md`.

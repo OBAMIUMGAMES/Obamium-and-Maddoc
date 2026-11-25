@@ -67,7 +67,18 @@ Horde mode (waves, bosses, locations) is untouched.
   heavy blows are rolled away from (Toaku's DODGE), light ones side-stepped; nothing is issued while its
   own emote plays; moves already in progress are never cancelled; wall avoidance,
   stuck detection, repetition penalty, pressure that grows while nothing happens. Profiles
-  (`vs.ai.<id>`) weight those scores: Dreadnought = aggressive juggernaut, Toaku = agile tactician.
+  (`vs.ai.<id>`) weight those scores; a profile's `style` picks the decision-making (`createCombatAI`):
+  Dreadnought = the universal CPU as an aggressive juggernaut; **Toaku = `TacticianAI`**
+  (`src/js/vsTactician.js`, style `tactician`) — combinations cancelled into grabs and kicks, slow wind-ups
+  grabbed out of a reaction time after he sees them, recoveries punished grab-first, calculated pressure
+  (initiative when it is his, committed once taken), side-steps to a new angle instead of retreating,
+  interrupted attacks used less, a choice on getting up, MACHINEGUN IMPACT on a vulnerable opponent,
+  ENERGY OVERFLOW from a safe moment and more assertive in it (the brief's VS MODE → CPU). Same perception
+  delay, buttons, cooldowns and stagger as any fighter: no bonus.
+- **Victory**: after the K.O. the winner celebrates once his last exchange is over (on his feet, out of his
+  move; at most `vs.victoryWait` s after `vs.victoryDelay`) — Dreadnought's roar, **Toaku's ENERGY OVERFLOW
+  emote with its aura, for show** (no mode, no meter, health or cooldown change) — and the results wait for
+  it (`vs.victoryHold` after it), all on game time.
 - **SUPER TAHU** (`SuperTahuCounter`, not the ordinary AI): `PASSIVE_WAITING` (idle, slowly faces the
   opponent, never moves or presses anything) → `ATTACK_DETECTED` on a *confirmed* hostile contact (a hit
   that lands on him, or a grab closing on him — proximity never counts) → `ULTIMATE_COUNTER`: the
@@ -86,6 +97,8 @@ Horde mode (waves, bosses, locations) is untouched.
 - `src/js/clipUtils.js` — clip preparation (root motion, ground anchoring) and `poseFromClip` (a clip's
   frame without the mixer, which writes only values that changed since its own last update).
 - `src/js/vsAI.js` — `CombatAI` (+ profiles), `SuperTahuCounter`.
+- `src/js/vsTactician.js` — `TacticianAI` (Toaku's CPU) and `createCombatAI` (a profile's style picks the class).
+- `src/js/portraits.js` — the fighters' head portraits on both bars (rendered once from the models).
 - `src/js/cineCam.js` — reusable cinematic camera (keyed shots, easing, orbit, cuts, shake, blend out).
 - `src/js/vsIntro.js` — the 8 s intro timeline (5 shots) on top of `cineCam.js`.
 - `src/js/vsCamera.js` — PvC versus camera, CvC dynamic and wide spectator cameras.
@@ -102,7 +115,7 @@ Horde mode (waves, bosses, locations) is untouched.
 names. 5. 7–8 s FIGHT!, blend into the gameplay camera, controls / AI on. Distances and heights scale with
 each fighter's height. SKIP ends it at once and starts the fight (once).
 
-## Tests (automated: `npm test`, 99 of the suite's 307 in `tests/unit/vs/`)
+## Tests (automated: `npm test`, 109 of the suite's 327 in `tests/unit/vs/`)
 
 - **rules** (8): roster flags; PvC — Super Tahu refused as the player, allowed as the CPU; CvC — never
   twice, ordinary mirrors allowed; locked / unavailable fighters refused; default picks legal; the
@@ -115,9 +128,18 @@ each fighter's height. SKIP ends it at once and starts the fight (once).
   Toaku, applied at the slam's impact and not before; the triggering blow cannot knock him out; once per
   match; reset on rematch.
 - **CPU** (10): real fights to a knockout; mirrors — either slot wins; only legal moves (in range,
-  Dreadnought never jumps, reactions take their delay, no spam over three matches); personalities; INSATIABLE DOMINION
-  when full; nothing pressed outside FIGHTING; wall avoidance; Toaku waits at the edge of a longer reach
-  and punishes whiffs; an attack decided with the opponent behind is carried out after the turn.
+  Dreadnought never jumps, reactions take their delay, no spam over three matches); personalities
+  (Dreadnought presses with heavy blows and grabs and never backs off; Toaku plans combinations, grabs as
+  freely as the grappler, punishes, evades heavy blows); INSATIABLE DOMINION when full; nothing pressed
+  outside FIGHTING; wall avoidance; Toaku waits at the edge of a longer reach and fights back against a
+  striker; an attack decided with the opponent behind is carried out after the turn.
+- **Toaku's tactician** (8): the profile picks the class; slow wind-ups grabbed out of, never sooner than
+  his reaction time; four-blow chains and chains cancelled into a grab or the kick; he walks away after
+  under 20% of his attacks; interrupted attacks chosen less; ENERGY OVERFLOW while the opponent is down,
+  more assertive in it; on getting up a roll from a coming blow, an attack on a recovering opponent; no
+  artificial advantage (the player's fighter config, no move inside its cooldown).
+- **victory** (2): Toaku's emote whole with the aura and one burst at its peak, nothing switched on or
+  spent; Dreadnought's roar and timing unchanged.
 - **cameras / intro** (9): the 8 s timeline (plates, VS, FIGHT!), SKIP once; every shot framed by the
   fighter's height; close-ups on the rig's head; the cinematic camera; PvC — both in view, over the
   shoulder, the opponent never hidden; CvC spectator — both in frame, pulls back, no flips.
@@ -191,6 +213,23 @@ emulation, the real models, clips and arena (`dist/`); a harness steps the game 
   GRAB wipes read 0.725 / 0.975 with the buttons dimmed. Horde <-> VS cross-mode with 8 rematches (GPU
   objects flat) and the horde menu flow: as before, no page errors.
 
+- **Portraits, cinematics, victory, Toaku's CPU** (evidence `132`–`136`): every roster fighter's head
+  portrait renders at load (transparent, same framing) and shows in his colours on the horde HUD and on both
+  VS bars (player and CPU, PvC and CvC). Toaku's selection cinematic plays idle -> ENERGY OVERFLOW emote ->
+  MACHINEGUN IMPACT -> stance in 7.3 s with nothing hit (0 hits) and nothing left (no aura, cooldown or
+  light tint); Dreadnought's throne cinematic is frame-identical to before; Super Tahu gets the default
+  2.4 s sequence; a skip mid-MACHINEGUN IMPACT leaves the desert light exactly as it was; the menu flow and
+  horde <-> VS cross-mode (8 rematches, GPU objects flat) pass with the cinematics in the way (tapped to
+  skip, or played out). Toaku's VS victory: the emote from +0.70 s after the K.O., the aura full at its
+  peak, the results at +3.78 s; a K.O. during MACHINEGUN IMPACT lets it finish (+2.87 s) first. CPU VS CPU
+  Toaku vs Dreadnought with the real clips: 20 of 40 matches to Toaku (before: none), ~3.9 grabs caught a
+  minute, ~2.2 combinations, MACHINEGUN IMPACT ~1.1 and ENERGY OVERFLOW ~1.3 per match; frames caught in
+  real matches of a grab out of Dreadnought's scream, a chain cancelled into the grab, a three-blow chain,
+  MACHINEGUN IMPACT on a staggered Dreadnought, ENERGY OVERFLOW while he is floored, a roll from a charged
+  uppercut. Performance (SwiftShader, 0.14.0 -> 0.15.0): VS game logic 0.23 -> 0.27 ms a frame (both CPUs),
+  shader programs 35 -> 35, VS GPU objects unchanged, the cinematic 1.1 ms a frame (the select screen 1.5);
+  three full cinematics leave GPU object counts flat; loading +0.8 s here (the six extra portrait renders).
+
 ## Needs an Android device
 
 Frame rate on a phone GPU (SwiftShader timings say nothing about it) — including the ragdoll frames and
@@ -200,7 +239,10 @@ hardware back button (simulated here), and overlay timings in real time (the har
 faster than the CSS transitions run). Combat fixes and lock-on: the reach of the LOCK button and its
 arrows with a thumb on the stick, how the cooldown wipes read at a glance on a small screen, and the feel
 of the horde's lock camera (its turn off the target's line, its 3.2 rad/s cap) and of the target-relative
-stick in a real fight; the harness measured them, it cannot judge them.
+stick in a real fight; the harness measured them, it cannot judge them. This update: the selection
+cinematics' pacing and sound in real time (the harness steps game time; on this software renderer they
+run slower than real time), the portraits' sharpness at the phone's pixel density, the portrait renders'
+cost at load on a phone GPU, and how the new CPU Toaku feels to fight as a player.
 
 ## Known limits
 
@@ -210,8 +252,9 @@ stick in a real fight; the harness measured them, it cannot judge them.
   hands and toes (they keep their animated rotation; a tip under the sand turns them up to rest on it).
   The turn-over is procedural (no clip): the torso is carried, the limbs follow physically.
 - The get-up clips are used as authored: Stand_Up1 has Dreadnought's fingertips in the sand mid-rise.
-- Dreadnought beats Toaku in every measured CPU VS CPU match: the stats the game gives him (see the brief's
-  Matchups line and its tuning knobs).
+- Toaku vs Dreadnought (CPU VS CPU) is now close — Dreadnought keeps his 150% health and 140% damage, Toaku
+  wins on decisions (see the brief's Matchups line); a player meeting the CPU Toaku meets the same
+  tactician (a harder opponent than before).
 - Lock-on has no side-step clips to play: moving while locked, a fighter faces where he moves (the run clip,
   no sliding) and turns back to the target when he stops; sideways input circles the target in a slightly
   widening spiral (each step is along the tangent). The CPU does not use the lock (it has its own
