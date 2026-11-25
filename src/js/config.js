@@ -645,7 +645,10 @@ export const CONFIG = {
     getUpTime: 0.4,       // s getting back up (invulnerable, then a short grace)
     getUpGrace: 0.35,
     koSlowMo: 0.9,        // s of slow motion on the knockout blow
-    resultDelay: 2.8,     // s from the knockout to the results (victory / defeat poses meanwhile)
+    resultDelay: 2.8,     // s from the knockout to the results at the soonest (victory / defeat poses meanwhile)
+    victoryDelay: 0.7,    // s after the knockout before the winner celebrates (the dust settles)...
+    victoryWait: 2.5,     // ...and at most this much longer while his last move finishes (a throw, a landing)
+    victoryHold: 0.4,     // s his celebration's last pose holds before the results (Toaku: after his whole emote)
     settle: 0.6,          // s the fighters stand in their idle stance before the intro's first frame
     // per-fighter config changes for duels (deep-merged over CONFIG.<id>)
     overrides: {

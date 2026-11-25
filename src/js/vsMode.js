@@ -15,6 +15,9 @@ import { VsIntro } from './vsIntro.js';
 import { VersusCamera, SpectatorCamera } from './vsCamera.js';
 import { CineCamera, orbitShot } from './cineCam.js';
 
+/** States in which a fighter is floored or flying: no victory pose from these. */
+const VS_FLOORED = new Set(['launched', 'thrown', 'ragdoll', 'rollover', 'down', 'getup', 'grabbed', 'pinned']);
+
 /**
  * @param {object} d services from main.js: cfg, $, scene, camera, audio, fx, fire, maps, ROSTER,
  *   available(c), createFighter(id, cfg), portraits (cards), headshots (HUD), setEmblem(el, c) (a
@@ -160,7 +163,7 @@ export function createVsMode(d) {
       return { kind: 'cpu', ai: new CombatAI(f, foe, prof, { common: V.ai, rng, map, buttons: c.buttons, foeButtons: rosterOf(ids[1 - i]).buttons }) };
     });
     m = {
-      type, ids, fighters, worlds, ctrls, frame: 0, t: 0, koT: -1, resultsShown: false, intro: null, fightT: 0,
+      type, ids, fighters, worlds, ctrls, frame: 0, t: 0, koT: -1, victoryAt: -1, victoryLen: 0, resultsShown: false, intro: null, fightT: 0,
       versus: new VersusCamera(V.camera.versus, cfg.camera, map),
       spectator: new SpectatorCamera(V.camera, map),
       cine: null, rng,
@@ -248,15 +251,33 @@ export function createVsMode(d) {
     fxState.slow = V.koSlowMo;
     env.hitStop(0.12);
     env.shake(0.6);
-    const w = m.fighters[1 - i];
     d.banner('K.O.!', 'bad');
     d.audio.slam();
-    // the winner poses once the dust settles (Super Tahu finishes his slam and stays calm)
-    setTimeout(() => {
-      if (!m || m.fighters[1 - i] !== w || !w.alive) return;
-      if (rosterOf(m.ids[1 - i]).vs.counter) return;
-      if (w.vsVictory()) { if (w.kind === 'dreadnought') d.audio.roar(); else d.audio.special(); }
-    }, 700);
+    m.victoryAt = -1; // the winner celebrates once the dust settles (stepFight)
+  }
+
+  /**
+   * After the knockout (game time, so a pause holds it): the winner celebrates once his last exchange is
+   * over — on his feet, out of his move — at most `victoryWait` s after `victoryDelay`; then the results
+   * wait for his celebration to play out (Toaku's emote, whole). Super Tahu stays calm. Inputs and the
+   * CPUs are already off (the fight is over).
+   */
+  function celebrate() {
+    if (m.victoryAt >= 0 || m.koT < V.victoryDelay) return;
+    const wi = flow.winner, w = m.fighters[wi];
+    if (!w || !w.alive || rosterOf(m.ids[wi]).vs.counter) { m.victoryAt = m.koT; m.victoryLen = 0; return; }
+    const settled = w.onGround && w.state === 'idle';
+    const late = m.koT >= V.victoryDelay + V.victoryWait;
+    if (!settled && !late) return; // still finishing his last move (a throw, MACHINEGUN IMPACT, a landing)
+    m.victoryAt = m.koT;
+    m.victoryLen = 0;
+    // too late and still floored or flying: no pose (the results follow); otherwise the celebration
+    if (!settled && (!w.onGround || VS_FLOORED.has(w.state))) return;
+    if (w.vsVictory()) {
+      m.victoryLen = w.victoryLength ? w.victoryLength() : 0;
+      if (w.kind === 'dreadnought') d.audio.roar();
+      else if (!m.victoryLen) d.audio.special(); // a pose with no sound of its own
+    }
   }
 
   /** MATCH_FINISHED: the results. */
@@ -571,6 +592,7 @@ export function createVsMode(d) {
     // after the knockout: slow motion, the winner's pose, an orbit around him, then the results
     if (flow.state === VS.DONE) {
       m.koT += dt;
+      celebrate();
       if (m.koT > 0.9 && !m.cine) {
         const w = m.fighters[flow.winner], h = w.height;
         m.cine = new CineCamera(m.rng).play([orbitShot(V.resultDelay + 2, { x: w.pos.x, y: w.pos.y, z: w.pos.z }, { a0: w.facing - 0.5, a1: w.facing + 0.4, r0: h * 1.9, r1: h * 1.55, h0: h * 0.45, h1: h * 0.6, look0: h * 0.62 })]);
@@ -583,7 +605,9 @@ export function createVsMode(d) {
         look.copy(pose.look).lerp(c.look, m.cineW);
         pose = { pos: tmp, look };
       }
-      if (m.koT >= V.resultDelay) showResults();
+      // the results once the winner's celebration has played (at least resultDelay after the knockout)
+      const until = m.victoryAt >= 0 ? m.victoryAt + m.victoryLen + V.victoryHold : Infinity;
+      if (m.koT >= V.resultDelay && m.koT >= Math.min(until, V.resultDelay + V.victoryWait + 4)) showResults();
     }
     applyPose(pose.pos, pose.look);
     d.maps.glatorian.update(sdt, a.pos);
