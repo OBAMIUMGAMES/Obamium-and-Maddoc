@@ -30,6 +30,12 @@
         <circle cx="24" cy="24" r="4.5" fill="currentColor"/>
         <path d="M24 2v10M24 36v10M2 24h10M36 24h10" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
       </symbol>
+      <!-- THE GREATSWORD: the SWORD button while it is held, the pickup prompt -->
+      <symbol id="i-sword" viewBox="0 0 48 48">
+        <path d="M30 4l14 14-19 19-4-4-5 5 3 3-6 6-3-3-4 4-4-4 4-4-3-3 6-6 3 3 5-5-4-4z" fill="currentColor"/>
+        <path d="M31 10l7 7-15 15-7-7z" fill="rgba(0,0,0,.35)"/>
+        <path d="M8 40l4-4" stroke="rgba(0,0,0,.5)" stroke-width="2.5" stroke-linecap="round"/>
+      </symbol>
       <symbol id="i-arrow-l" viewBox="0 0 48 48"><path d="M30 8L14 24l16 16" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
       <symbol id="i-arrow-r" viewBox="0 0 48 48"><path d="M18 8l16 16-16 16" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
       <!-- WARLORD RAGE: a roaring horned head in a burst of spikes -->
@@ -115,6 +121,8 @@
     <button id="vs-cam" class="chip-btn">CAM: DYNAMIC</button>
     <div id="combo"></div>
     <div id="banner"></div>
+    <!-- THE GREATSWORD standing in the arena: the contextual pickup (shown while its owner stands near it) -->
+    <button id="btn-pickup" aria-label="pick up the sword"><svg class="ic"><use href="#i-sword"></use></svg><span>PICK UP THE SWORD</span></button>
     <div id="stick"><div id="knob"></div></div>
     <!-- TARGET LOCK-ON: the toggle, and the arrows that switch targets (shown while locked) -->
     <div id="lock-ui">
@@ -221,6 +229,16 @@
     </div>
     <div class="vs-arena"><i></i>GLATORIAN ARENA</div>
     <button id="vs-go" class="cta small"><span class="cta-text">FIGHT</span></button>
+    <!-- SELECT WEAPON CONFIGURATION (a fighter with weapon variants: Dreadnought's greatsword) -->
+    <div id="vs-weapon" class="vs-theme" data-fighter="dreadnought">
+      <div class="vw-panel">
+        <div class="vw-head">SELECT WEAPON CONFIGURATION</div>
+        <div class="vw-name">DREADNOUGHT</div>
+        <div class="vw-slot">PLAYER 1</div>
+        <div class="vw-opts"></div>
+        <button id="vw-cancel" class="chip-btn">&#9664; BACK</button>
+      </div>
+    </div>
   </div>
   <div id="vs-intro" class="screen">
     <div class="vsi-plate p0 vs-theme"><div class="vsi-role"></div><div class="vsi-name"></div><div class="vsi-title"></div></div>

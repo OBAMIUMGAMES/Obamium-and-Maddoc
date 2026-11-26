@@ -1,12 +1,12 @@
 /**
  * Touch controls (virtual joystick + action buttons + camera drag) with keyboard/mouse fallback.
  * Exposes a polled state: { moveX, moveY, camDX, punch, kick, grab, jump, dodge, special, overflow, lock,
- * lockPrev, lockNext } where actions
+ * lockPrev, lockNext, pickup } where actions
  * are edge-triggered "pressed this frame" flags consumed by `consume()`; punchHeld is true while PUNCH
  * is down (Dreadnought's hold-to-charge uppercut).
  */
 export function createInput(root) {
-  const state = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, dodge: false, special: false, overflow: false, lock: false, lockPrev: false, lockNext: false, punchHeld: false };
+  const state = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, dodge: false, special: false, overflow: false, lock: false, lockPrev: false, lockNext: false, pickup: false, punchHeld: false };
   const keys = new Set();
 
   // ---- joystick ----
@@ -78,6 +78,7 @@ export function createInput(root) {
   bind('#btn-lock', 'lock');          // TARGET LOCK-ON on / off
   bind('#btn-lock-prev', 'lockPrev'); // the next target to the left
   bind('#btn-lock-next', 'lockNext'); // ... to the right
+  bind('#btn-pickup', 'pickup');      // PICK UP THE SWORD (shown near a weapon standing in the arena)
 
   // ---- keyboard (desktop testing) ----
   window.addEventListener('keydown', (e) => {
@@ -93,6 +94,7 @@ export function createInput(root) {
     if (e.code === 'KeyT') state.lock = true;     // TARGET LOCK-ON on / off
     if (e.code === 'KeyZ') state.lockPrev = true; // switch target: left
     if (e.code === 'KeyX') state.lockNext = true; // ... right
+    if (e.code === 'KeyF') state.pickup = true;   // PICK UP THE SWORD
   });
   window.addEventListener('keyup', (e) => {
     keys.delete(e.code);
@@ -114,6 +116,6 @@ export function createInput(root) {
     if (keys.has('KeyR')) state.camDX += 6;
     return state;
   }
-  function consume() { state.punch = false; state.kick = false; state.grab = false; state.jump = false; state.dodge = false; state.special = false; state.overflow = false; state.lock = false; state.lockPrev = false; state.lockNext = false; state.camDX = 0; }
+  function consume() { state.punch = false; state.kick = false; state.grab = false; state.jump = false; state.dodge = false; state.special = false; state.overflow = false; state.lock = false; state.lockPrev = false; state.lockNext = false; state.pickup = false; state.camDX = 0; }
   return { poll, consume, state };
 }

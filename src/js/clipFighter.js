@@ -177,6 +177,12 @@ export class ClipFighter extends Fighter {
   armored() { return this.state === 'special'; }
 
   // ---------------------------------------------------------------- attack cooldowns
+  /** The regular-attack config in use (cfg.punch; an armed moveset may replace it). */
+  punchCfg() { return this.cfg.punch; }
+  /** The attack cooldowns in use (cfg.cooldowns; an armed moveset may replace them). */
+  coolCfg() { return this.cfg.cooldowns; }
+  /** The dodge config in use (cfg.dodge; an armed moveset may replace it). */
+  dodgeCfg() { return this.cfg.dodge; }
   /** Seconds before an attack of `kind` (cfg.cooldowns: punch, kick, grab, slam, uppercut, special) may start again. */
   cooldown(kind) { return this.cool[kind] || 0; }
   /**
@@ -190,18 +196,18 @@ export class ClipFighter extends Fighter {
    */
   cooldownFrac(kind) {
     if (ATTACK_OF_STATE[this.state] === kind) return 1;
-    const C = this.cfg.cooldowns, c = this.cool[kind] || 0;
+    const C = this.coolCfg(), c = this.cool[kind] || 0;
     return C && C[kind] > 0 ? Math.min(1, c / C[kind]) : 0;
   }
   /** How unavailable the dodge is, for its HUD button: 1 while rolling, then the share of its cooldown left. */
   dodgeCooldownFrac() {
     if (this.state === 'dodge') return 1;
-    const c = this.cfg.dodge && this.cfg.dodge.cooldown;
+    const D = this.dodgeCfg(), c = D && D.cooldown;
     return c > 0 ? Math.min(1, Math.max(0, this.dodgeCool) / c) : 0;
   }
   /** A move of `kind` is over (hit or miss): its cooldown starts (game time; cfg.cooldowns). */
   coolDown(kind) {
-    const C = this.cfg.cooldowns;
+    const C = this.coolCfg();
     if (C && C[kind] > 0) this.cool[kind] = Math.max(this.cool[kind] || 0, C[kind]);
   }
   /** The fighter just died. */
@@ -240,7 +246,7 @@ export class ClipFighter extends Fighter {
     if (!ctl.input.punch) return;
     if (this.state === 'punch') { this.punchQueued = true; return; }
     if (this.state !== 'idle' || !this.onGround) return;
-    const P = this.cfg.punch;
+    const P = this.punchCfg();
     // a press shortly after a punch finishes continues the combo instead of restarting it; a new
     // combo waits for the normal-attack cooldown
     const next = this.comboGap > 0 && this.punchIdx >= 0 && this.punchIdx < P.hits.length - 1 ? this.punchIdx + 1 : 0;
@@ -250,7 +256,7 @@ export class ClipFighter extends Fighter {
   }
 
   startPunch(i, world) {
-    const P = this.cfg.punch;
+    const P = this.punchCfg();
     this.setState('punch');
     this.punchIdx = i;
     this.punchQueued = false;
@@ -261,7 +267,7 @@ export class ClipFighter extends Fighter {
   }
 
   updatePunch(dt, world) {
-    const P = this.cfg.punch;
+    const P = this.punchCfg();
     const h = P.hits[this.punchIdx];
     this.clipT += dt * P.speed * this.atkSpeed;
     this.vel.x *= 0.7; this.vel.z *= 0.7;

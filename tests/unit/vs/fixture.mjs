@@ -12,6 +12,7 @@ import { VsFlow, vsSpawns, MATCH_TYPES } from '../../../src/js/vsRules.js';
 import { makeVsWorld, vsFighterConfig, vsRulesFor, separate } from '../../../src/js/vsCombat.js';
 import { createCombatAI } from '../../../src/js/vsTactician.js';
 import { CombatAI, SuperTahuCounter, idleInput, rngFrom } from '../../../src/js/vsAI.js';
+import { Weapon, fitGrips } from '../../../src/js/weapons.js';
 
 export const dt = 1 / 60;
 export const rosterOf = (id) => ROSTER.find((c) => c.id === id);
@@ -87,14 +88,30 @@ export function fakeTahu() {
   s.scale = 1.76;
   return new SuperTahu(vsFighterConfig(CONFIG, 'tahu'), s);
 }
-/** Dreadnought: right hand out at his side, knuckles ahead of the wrist; the roll goes diagonally. */
+/**
+ * Dreadnought: right hand out at his side, knuckles ahead of the wrist; the roll goes diagonally. His sword
+ * clips are mimicked by the fake mixer: while SwordAttack / SwordHeavy play, the right hand swings down an
+ * arc in front of him (from high behind the head to low in front) over the clip's active window, so a
+ * weapon in that hand sweeps its blade through whatever stands ahead.
+ */
 export function fakeDreadnought() {
   const s = shell('dreadnought', DREADNOUGHT_CHANNELS, { Walk: 1.167, Run: 0.8 });
   const rig = mixamoRig(s.model, 5.2, { RightForeArm: [-1.3, 3.9, 0.2], RightHand: [-1.9, 3.6, 0.4], LeftForeArm: [0.9, 3.6, 0.3], LeftHand: [1.0, 3.2, 0.6], RightFoot: [-0.3, 0.3, 0], LeftFoot: [0.3, 0.3, 0] });
   s.bones = rig.bones;
-  s.restore = rig.restore;
   const hand = s.bones.RightHand;
+  const arc = (clip, from, to) => {
+    const a = s.actions[clip];
+    if (!a.enabled || a.weight < 0.5) return false;
+    const k = Math.max(0, Math.min(1, (a.time - from) / (to - from)));
+    // the hand from (-0.6, 5.2, -0.8) behind and above to (-0.4, 1.0, 2.2) low in front, in the hand's parent frame (world-ish: the rig is upright)
+    const w = new THREE.Vector3(-0.6 + 0.2 * k, 5.2 - 4.2 * k, -0.8 + 3.0 * k);
+    hand.parent.updateMatrixWorld(true);
+    hand.position.copy(hand.parent.worldToLocal(s.root.localToWorld(w)));
+    return true;
+  };
+  s.restore = () => { rig.restore(); arc('SwordAttack', 0.95, 1.2) || arc('SwordHeavy', 1.4, 1.7); };
   for (const [n, x] of [['RightHandIndex1', 0.04], ['RightHandMiddle1', 0.01], ['RightHandRing1', -0.02], ['RightHandPinky1', -0.05]]) s.bones[n] = bone(hand, x, -0.32, 0.12);
+  s.bones.RightHandThumb1 = bone(hand, 0, -0.05, 0.14); // the thumb ahead: a weapon's blade points forward out of the fist
   s.rootMotion = {
     Dodge: { times: Float32Array.from([0, 0.4, 1.4, 1.95]), x: Float32Array.from([0, 0.3, 3.0, 3.2]), z: Float32Array.from([0, 0.3, 2.9, 3.1]) },
     Walk: { times: Float32Array.from([0, 1.167]), x: Float32Array.from([0, 0]), z: Float32Array.from([0, 1.37]) },
@@ -102,6 +119,18 @@ export function fakeDreadnought() {
   return new Dreadnought(vsFighterConfig(CONFIG, 'dreadnought'), s);
 }
 export const FAKES = { toaku: fakeToaku, tahu: fakeTahu, dreadnought: fakeDreadnought };
+
+/**
+ * A greatsword for a fake Dreadnought: a bare prop, grips fitted on the fake rig (no clips: the hand
+ * convention). The fake rigs stand in game metres with unscaled bones (the real model is scaled 2.75 x), so
+ * the weapon's size factor carries that scale: its blade is as long as in the game.
+ */
+export function fakeGreatsword(f) {
+  const def = { ...CONFIG.weapons.greatsword, sizeFactor: CONFIG.dreadnought.height / CONFIG.dreadnought.sourceHeight };
+  return new Weapon(def, new THREE.Group(), fitGrips(def, f.inst.bones, {}));
+}
+/** Arm a fake fighter with the greatsword (resting on his shoulder, at once). */
+export function arm(f, opts = {}) { return f.equipWeapon(fakeGreatsword(f), { grip: 'rest', immediate: true, ...opts }); }
 
 /** A flat round arena (53 m to the wall) with the Glatorian Arena's map interface. */
 export function flatArena(edge = 53) {
@@ -123,14 +152,16 @@ const noop = () => {};
 /**
  * Two fighters set up for a duel the way vsMode.js does it.
  * @param {[string,string]} ids fighter ids (slot 0, slot 1)
- * @param {{type?:'pvc'|'cvc', seed?:number, fighting?:boolean, controllers?:boolean}} [o]
+ * @param {{type?:'pvc'|'cvc', seed?:number, fighting?:boolean, controllers?:boolean, variants?:(string|null)[]}} [o]
+ *   variants: each slot's weapon configuration ('greatsword' arms a Dreadnought from the start, like VS MODE's WITH SWORD)
  */
 export function duel(ids, o = {}) {
   const type = o.type || 'cvc';
   const map = flatArena();
   const flow = new VsFlow();
   flow.toType(); flow.toSelect(type); flow.load(ids); flow.intro();
-  const fighters = ids.map((id) => { const f = FAKES[id](); f.vs = vsRulesFor(CONFIG, id); return f; });
+  const variants = o.variants || [null, null];
+  const fighters = ids.map((id, i) => { const f = FAKES[id](); f.vs = vsRulesFor(CONFIG, id); if (variants[i] === 'greatsword' && f.equipWeapon) arm(f); return f; });
   const sp = vsSpawns(CONFIG.vs.gap, fighters[0].radius, fighters[1].radius, 0);
   fighters.forEach((f, i) => { f.pos.set(sp[i].x, 0, sp[i].z); f.facing = sp[i].facing; f.sync(); });
   const log = { hits: [], kos: [], erupts: 0, specials: [], misses: 0, overflow: [] };
@@ -151,7 +182,8 @@ export function duel(ids, o = {}) {
     const role = MATCH_TYPES[type].roles[i], c = rosterOf(ids[i]);
     if (role === 'player') return { kind: 'player' };
     if (c.vs.counter) return { kind: 'counter', ai: new SuperTahuCounter(f, fighters[1 - i], CONFIG.vs.superTahu, match, { erupt: (at, cb) => { log.erupts++; cb(); } }) };
-    return { kind: 'cpu', ai: createCombatAI(f, fighters[1 - i], CONFIG.vs.ai[ids[i]] || CONFIG.vs.ai.default, { common: CONFIG.vs.ai, rng, map, buttons: c.buttons, foeButtons: rosterOf(ids[1 - i]).buttons }) };
+    const prof = (variants[i] && CONFIG.vs.ai[`${ids[i]}:${variants[i]}`]) || CONFIG.vs.ai[ids[i]] || CONFIG.vs.ai.default;
+    return { kind: 'cpu', ai: createCombatAI(f, fighters[1 - i], prof, { common: CONFIG.vs.ai, rng, map, buttons: c.buttons, foeButtons: rosterOf(ids[1 - i]).buttons }) };
   });
   if (o.fighting !== false) flow.fight();
   let frame = 0;

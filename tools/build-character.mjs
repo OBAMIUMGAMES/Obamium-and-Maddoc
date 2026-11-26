@@ -5,7 +5,10 @@
 //     differs (vertex count), so a clip can never be played on a rig it was not authored for
 //   - textures -> WebP (resized to --size, default 1024); tracks resampled; meshopt-compressed
 //   - Draco-compressed exports are read too (decoded at build time; the game only needs meshopt)
-// usage: node tools/build-character.mjs <out.glb> [--size 2048] <base.glb> [clip.glb ...]
+// usage: node tools/build-character.mjs <out.glb> [--size 2048] [--keep-textures] <base.glb> [clip.glb ...]
+//   --keep-textures: the base is an asset this tool already built (its textures are WebP at their final
+//   size): they are copied as they are instead of being re-encoded (no generation loss when clips are
+//   added to a built model whose source exports are no longer at hand)
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, EXTTextureWebP } from '@gltf-transform/extensions';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
@@ -17,9 +20,12 @@ const args = process.argv.slice(2);
 let size = 1024;
 const si = args.indexOf('--size');
 if (si >= 0) { size = Number(args[si + 1]); args.splice(si, 2); }
+const ki = args.indexOf('--keep-textures');
+const keepTextures = ki >= 0;
+if (keepTextures) args.splice(ki, 1);
 const [out, base, ...clips] = args;
 if (!out || !base || !(size > 0)) {
-  console.error('usage: node tools/build-character.mjs <out.glb> [--size 2048] <base.glb> [clip.glb ...]');
+  console.error('usage: node tools/build-character.mjs <out.glb> [--size 2048] [--keep-textures] <base.glb> [clip.glb ...]');
   process.exit(1);
 }
 await MeshoptDecoder.ready;
@@ -90,7 +96,7 @@ console.log(`  dropped ${dropped} channels that hold the rest pose`);
 for (const e of root.listExtensionsUsed()) if (e.extensionName === 'KHR_draco_mesh_compression') e.dispose();
 doc.createExtension(EXTTextureWebP).setRequired(true);
 await doc.transform(
-  textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [size, size], quality: 82 }),
+  ...(keepTextures ? [] : [textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [size, size], quality: 82 })]),
   resample(),
   dedup(),
   prune(),

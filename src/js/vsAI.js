@@ -84,15 +84,18 @@ export function isRecovering(f) {
  */
 export function movesOf(f, buttons) {
   const c = f.cfg, B = buttons || {};
-  const punchReach = Math.max(...c.punch.hits.map((h) => h.reach));
+  // an armed fighter's regular and heavy attacks are its weapon's (punchCfg / heavyCfg), and it may have no grab
+  const P = f.punchCfg ? f.punchCfg() : c.punch, H = f.heavyCfg ? f.heavyCfg() : c.uppercut;
+  const A = f.armedMoves || null;
+  const punchReach = Math.max(...P.hits.map((h) => h.reach));
   const lunge = c.track ? Math.max(0, c.track.lunge - 0.6) : 0;
   return {
-    punch: { reach: punchReach, hits: c.punch.hits.length },
-    heavy: c.uppercut ? { reach: c.uppercut.reach } : null,
+    punch: { reach: punchReach, hits: P.hits.length },
+    heavy: H ? { reach: H.reach } : null,
     // the flying kick carries its kicker forward before it lands
     kick: B.kick && c.kick ? { reach: c.kick.reach + (c.rootMotion && c.rootMotion.includes('Kick') ? 1.5 : 0) } : null,
     // the grab's reach from the grabber's centre to the target's body (grabAssist: select is body to body)
-    grab: B.grab && c.grab ? { reach: c.grab.assist ? c.grab.assist.select + c.radius : c.grab.range } : null,
+    grab: B.grab && c.grab && !(A && A.grab === false) ? { reach: c.grab.assist ? c.grab.assist.select + c.radius : c.grab.range } : null,
     special: B.special ? (c.rage ? 'rage' : 'meter') : null,
     specialReach: c.special && c.special.reach ? c.special.reach + (c.special.advanceSpeed || 0) * 0.6 : 0,
     dodge: B.dodge ? 'dodge' : null,
@@ -290,7 +293,7 @@ export class CombatAI {
     // attacks still cooling down are not options at all (the fighter would ignore the press); a punch
     // inside the combo window continues the combo, which is not a new attack
     const ready = (k) => !S.canAttack || S.canAttack(k);
-    const followUp = S.comboGap > 0 && S.punchIdx >= 0 && S.punchIdx < S.cfg.punch.hits.length - 1;
+    const followUp = S.comboGap > 0 && S.punchIdx >= 0 && S.punchIdx < M.punch.hits - 1;
     if (canHit) {
       const punish = opening ? P.counter : 0;
       // attacking into an attack that is coming: less attractive, much less for a fighter that keeps its distance
@@ -298,7 +301,11 @@ export class CombatAI {
       if (inRange(M.punch.reach) && (ready('punch') || followUp)) U.punch = agg * (1 - P.heavy * 0.5) * 0.8 + punish * 0.7 - wary;
       if (M.heavy && inRange(M.heavy.reach) && ready('uppercut')) U.heavy = agg * P.heavy * 1.1 + punish * 0.8 - wary * 1.5;
       // the flying kick closes the gap: a hit-and-run fighter's way to punish from outside its punch range
-      if (M.kick && inRange(M.kick.reach) && ready('kick')) U.kick = agg * (0.25 + P.heavy * 0.6) * 0.85 + punish * (this.hitAndRun() ? 1.1 : 0.5) - wary;
+      if (M.kick && inRange(M.kick.reach) && ready('kick')) {
+        U.kick = agg * (0.25 + P.heavy * 0.6) * 0.85 + punish * (this.hitAndRun() ? 1.1 : 0.5) - wary;
+        // a weapon fighter: the opponent inside half its sweep's reach is kicked away (room for the blade)
+        if (P.closeKick && dist < R * 0.55) U.kick += P.closeKick * agg;
+      }
       // a grab is not stopped by armour: the best punish of a long recovery at close range
       if (M.grab && inRange(M.grab.reach) && !seen.attacking && ready('grab')) U.grab = agg * P.grab * 1.3 * (opening || seen.state === 'idle' ? 1 : 0.5) + punish * P.grab;
       if (M.slam && dist > R * 0.5 && dist < R + 2.5 && ready('slam')) U.slam = agg * P.heavy * 0.45 + P.jump * 0.2;

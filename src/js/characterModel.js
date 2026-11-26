@@ -8,15 +8,28 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { extractRootMotion, bakeSubclip, bakePose, groundAnchor } from './clipUtils.js';
-import { bakeEditedLoop, bakeEditedPose, recentreHips } from './clipPose.js';
+import { extractRootMotion, bakeSubclip, bakePose, groundAnchor, poseFromClip } from './clipUtils.js';
+import { bakeEditedLoop, bakeEditedPose, recentreHips, bakeBonePose, shortName } from './clipPose.js';
+import { fitGrips, poseArmForWeapon } from './weapons.js';
+
+/** Named bone sets for pose overlays and layers (cfg.breathLoops[].overlay.bones, cfg.bonePoses[].bones). */
+export const BONE_SETS = {
+  RightHandFingers: /^RightHand(Thumb|Index|Middle|Ring|Pinky)\d$/,
+  LeftHandFingers: /^LeftHand(Thumb|Index|Middle|Ring|Pinky)\d$/,
+  Arms: /^(Left|Right)(Shoulder|Arm|ForeArm|Hand(Thumb|Index|Middle|Ring|Pinky)?\d?)$/,
+  RightArm: /^Right(Shoulder|Arm|ForeArm|Hand(Thumb|Index|Middle|Ring|Pinky)?\d?)$/,
+  LeftArm: /^Left(Shoulder|Arm|ForeArm|Hand(Thumb|Index|Middle|Ring|Pinky)?\d?)$/,
+};
+/** A bone set spec (a set's name, a RegExp or a list of short names) as a RegExp or list. */
+export const boneSet = (spec) => (typeof spec === 'string' ? BONE_SETS[spec] || [spec] : spec);
 
 /**
  * Parse the GLB once and prepare its clips.
  * @param {Uint8Array} bytes
  * @param {object} cfg the fighter's config (height, sourceHeight, clips, rootMotion, idle, poses, loops)
- * @param {{envMap?:THREE.Texture, maxAnisotropy?:number}} [opts]
- * @returns {Promise<{scene:THREE.Object3D, clips:Object<string,THREE.AnimationClip>, rootMotion:object, scale:number}>}
+ * @param {{envMap?:THREE.Texture, maxAnisotropy?:number, weapons?:object[]}} [opts] weapons: the definitions
+ *   (CONFIG.weapons.<id>) this fighter can hold; their grips are fitted on his clips here (`grips`)
+ * @returns {Promise<{scene:THREE.Object3D, clips:Object<string,THREE.AnimationClip>, rootMotion:object, scale:number, grips:object, bonePoses:object}>}
  */
 export async function loadCharacterTemplate(bytes, cfg, opts = {}) {
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
@@ -46,9 +59,35 @@ export async function loadCharacterTemplate(bytes, cfg, opts = {}) {
     clips[name] = edits ? bakeEditedPose(gltf.scene, clips[src], name, t, edits, { x: 0, z: 0 }) : bakePose(clips[src], name, t);
   }
   for (const [name, [src, from, to]] of Object.entries(cfg.loops || {})) clips[name] = bakeSubclip(clips[src], name, from, to);
-  // one frame of a clip, breathing (e.g. Dreadnought seated on his throne): hips left where they are
+  // WEAPONS: each grip a weapon definition names is fitted on this rig's clips (where the trailing hand
+  // sits in the leading hand's frame on the two-handed clips); the rig is put back in its rest pose after
+  const grips = {};
+  if (opts.weapons && opts.weapons.length) {
+    const bones = {};
+    gltf.scene.traverse((o) => { if (o.isBone) bones[shortName(o.name)] = o; });
+    const rest = Object.values(bones).map((b) => [b, b.position.clone(), b.quaternion.clone()]);
+    const posers = {};
+    for (const [action, clip] of Object.entries(clips)) posers[action] = (t) => { poseFromClip(gltf.scene, clip, t); gltf.scene.updateMatrixWorld(true); };
+    for (const def of opts.weapons) grips[def.id] = fitGrips(def, bones, posers);
+    for (const [b, p, q] of rest) { b.position.copy(p); b.quaternion.copy(q); }
+    gltf.scene.updateMatrixWorld(true);
+  }
+  // one frame of a clip, breathing (e.g. Dreadnought seated on his throne): hips left where they are.
+  // `overlay` takes some bones from another clip's frame (fingers closed on a handle); `arm` poses an arm
+  // holding a weapon (arm IK + the hand turned to the weapon's aim: the armed idle of the reference image)
   for (const [name, L] of Object.entries(cfg.breathLoops || {})) {
-    clips[name] = bakeEditedLoop(gltf.scene, clips[L.clip], name, { at: L.at, edits: L.edits, period: L.period, breathe: L.breathe });
+    const overlay = L.overlay ? { clip: clips[L.overlay.clip], at: L.overlay.at, bones: boneSet(L.overlay.bones) } : null;
+    const arm = L.arm && grips[L.arm.weapon] && grips[L.arm.weapon][L.arm.grip || 'default'];
+    const adjust = arm ? (model, bones) => poseArmForWeapon(Object.fromEntries(Object.entries(bones).map(([n, b]) => [shortName(n), b])), L.arm, arm, model) : null;
+    clips[name] = bakeEditedLoop(gltf.scene, clips[L.clip], name, { at: L.at, edits: L.edits, period: L.period, breathe: L.breathe, overlay, adjust });
+  }
+  // pose layers (cfg.bonePoses): the local rotations of a bone set at the first frame of a baked loop (e.g.
+  // the arms of the armed stances), blended over the gait and other moves by the fighter at run time
+  const bonePoses = {};
+  for (const [name, P] of Object.entries(cfg.bonePoses || {})) {
+    const set = boneSet(P.bones), names = [];
+    gltf.scene.traverse((o) => { if (o.isBone) { const n = shortName(o.name); if (set instanceof RegExp ? set.test(n) : set.includes(n)) names.push(n); } });
+    bonePoses[name] = bakeBonePose(gltf.scene, clips[P.loop || P.clip], P.at || 0, names);
   }
   gltf.scene.traverse((o) => {
     if (!o.isMesh) return;
@@ -65,8 +104,41 @@ export async function loadCharacterTemplate(bytes, cfg, opts = {}) {
     }
     for (const t of [m.map, m.normalMap, m.roughnessMap, m.metalnessMap]) if (t && opts.maxAnisotropy) t.anisotropy = Math.min(4, opts.maxAnisotropy);
   });
-  return { scene: gltf.scene, clips, rootMotion, scale: cfg.height / cfg.sourceHeight };
+  return { scene: gltf.scene, clips, rootMotion, scale: cfg.height / cfg.sourceHeight, grips, bonePoses };
 }
+
+/**
+ * Parse a weapon's GLB (tools/build-weapon.mjs) once: a static prop in its own units, lit like the
+ * fighters (reflections, a per-weapon material override: the exports are matte).
+ * @param {Uint8Array} bytes
+ * @param {object} def CONFIG.weapons.<id>
+ * @param {{envMap?:THREE.Texture, maxAnisotropy?:number}} [opts]
+ * @returns {Promise<{scene:THREE.Object3D, def:object}>}
+ */
+export async function loadWeaponTemplate(bytes, def, opts = {}) {
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+  const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  const gltf = await loader.parseAsync(buf, '');
+  gltf.scene.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    o.frustumCulled = false; // it rides a hand: its bounds move with every animation
+    const m = o.material;
+    if (opts.envMap) { m.envMap = opts.envMap; m.envMapIntensity = 0.9; }
+    const M = def.material;
+    if (M) {
+      if (M.color !== undefined) m.color.setHex(M.color);
+      if (M.metalness !== undefined) m.metalness = M.metalness;
+      if (M.roughness !== undefined) m.roughness = M.roughness;
+      if (M.envMapIntensity !== undefined) m.envMapIntensity = M.envMapIntensity;
+    }
+    for (const t of [m.map, m.normalMap, m.roughnessMap, m.metalnessMap]) if (t && opts.maxAnisotropy) t.anisotropy = Math.min(4, opts.maxAnisotropy);
+  });
+  return { scene: gltf.scene, def };
+}
+
+/** A new instance of a weapon's prop (geometry and materials shared with the template). */
+export function buildWeaponProp(tpl) { return tpl.scene.clone(); }
 
 /**
  * A new animatable instance (bones are per instance; geometry, materials and clips are shared).
@@ -102,7 +174,7 @@ export function buildCharacterInstance(tpl, kind) {
   }
   const bones = {};
   model.traverse((o) => { if (o.isBone) bones[o.name.replace(/^mixamorig:?/, '')] = o; });
-  return { kind, root, holder, model, mixer, actions, bones, rootMotion: tpl.rootMotion, scale: tpl.scale, flames: [], j: {} };
+  return { kind, root, holder, model, mixer, actions, bones, rootMotion: tpl.rootMotion, scale: tpl.scale, flames: [], j: {}, grips: tpl.grips || {}, bonePoses: tpl.bonePoses || {} };
 }
 
 /**

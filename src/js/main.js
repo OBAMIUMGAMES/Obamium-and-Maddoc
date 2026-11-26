@@ -23,14 +23,17 @@ import { SelectCinematic, defaultCinematic } from './selectCinematic.js';
 import { LOCATIONS, availableLocations, defaultLocation, stepLocation } from './locations.js';
 import { waveComposition, killScore, waveClearHp, angleDiff } from './combat.js';
 import { LockOn, LockReticle, lockFraming, approachAngle } from './lockOn.js';
-import { loadCharacterTemplate, buildCharacterInstance } from './characterModel.js';
+import { loadCharacterTemplate, buildCharacterInstance, loadWeaponTemplate, buildWeaponProp, glowSprite } from './characterModel.js';
+import { Weapon, WeaponPickup, BladeTrail, pickManifestSpot } from './weapons.js';
+import { WeaponManifestation, WeaponPickupScene } from './weaponEvent.js';
 import { ROSTER, nextSelectable, fighterStats } from './characters.js';
 import { createVsMode } from './vsMode.js';
 import { updateCooldownButtons } from './cooldownHud.js';
 import { PortraitStudio, cardBackdrop } from './portraits.js';
 import toakuGlb from '../../assets/models/toaku.glb'; // bundled as bytes (esbuild binary loader)
 import tahuGlb from '../../assets/models/tahu.glb';
-import dreadnoughtGlb from '../../assets/models/dreadnought.glb'; // tools/build-character.mjs (7 Mixamo exports)
+import dreadnoughtGlb from '../../assets/models/dreadnought.glb'; // tools/build-character.mjs (Mixamo exports)
+import greatswordGlb from '../../assets/models/greatsword.glb';   // tools/build-weapon.mjs: DREADNOUGHT's greatsword
 import glatorianGlb from '../../assets/models/glatorian.glb';     // tools/build-arena.mjs
 import glatorianLayout from '../../assets/models/glatorian-layout.json';
 // Bohrok models, built by tools/build-bohrok.mjs (all six share one rig layout and animation set)
@@ -127,6 +130,10 @@ const G = {
   bossZoom: 0,
   bossRef: null,
   mode: 'title', // title | select | intro | location | playing | paused | over | vs (VS MODE runs its own states)
+  // THE GREATSWORD in the horde (src/js/weaponEvent.js): its manifestation director, the sword standing in
+  // the arena (a WeaponPickup), the pickup cinematic, whether it manifested this run, a boss intro waiting
+  // for the manifestation to end, and whether the PICK UP button is up this frame
+  weaponEvent: null, pickup: null, pickupScene: null, manifested: false, bossPending: false, canPick: false,
   charId: 'toaku',
   sel: 0,
   locSel: 0,          // focused card on SELECT LOCATION (it opens on the featured one)
@@ -171,8 +178,10 @@ const world = {
   get enemies() { return G.enemies; },
   shake(a) { G.shake = Math.min(1.2, Math.max(G.shake, a)); },
   hitStop(t) { G.hitStop = Math.max(G.hitStop, t); },
-  /** A scripted sequence holds the fight (boss warning, cinematic, defeat focus): the player cannot act. */
-  cinematic() { return !!(encounter && encounter.active && encounter.lockInput); },
+  /** A scripted sequence holds the fight (boss warning, cinematic, defeat focus, a weapon's manifestation or pickup): the player cannot act. */
+  cinematic() { return !!((encounter && encounter.active && encounter.lockInput) || (G.weaponEvent && G.weaponEvent.active) || (G.pickupScene && G.pickupScene.active)); },
+  /** A fighter took or lost a weapon: the player's buttons follow (SWORD for PUNCH, no GRAB). */
+  onWeapon(f) { if (f === G.player) applyWeaponHud(f); },
   attackersActive() { let n = 0; for (const e of G.enemies) if (e.alive && e.attacking) n++; return n; },
   hitEnemy(e, dmg, dx, dz, knock, lift, stun, heavy, rapid = false) {
     const c = e.center(hitPos);
@@ -291,6 +300,7 @@ function onKill(e) {
 
 // ---------- models (embedded, rigged Meshy/Mixamo exports) ----------
 let toakuTpl = null, tahuTpl = null, dreadTpl = null;
+const weaponTpl = {}; // weapon id -> its parsed prop (src/js/weapons.js); the grips are fitted on the holder's template
 let throne = null; // DREADNOUGHT's throne, on the Glatorian Arena's menu spot
 const bohrokTpl = {}; // one template per Bohrok type (shared clips, geometry, textures)
 const BOHROK_MODELS = { lehvak: lehvakGlb, tahnok: tahnokGlb, gahlok: gahlokGlb, pahrak: pahrakGlb, nuhvok: nuhvokGlb, kohrak: kohrakGlb };
@@ -305,13 +315,14 @@ const aniso = renderer.capabilities.getMaxAnisotropy();
 Promise.allSettled([
   loadCharacterTemplate(toakuGlb, cfg.toaku, { envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso }).then((t) => { toakuTpl = t; }),
   loadCharacterTemplate(tahuGlb, cfg.tahu, { envMap: makeEnv(maps.terraces.env), maxAnisotropy: aniso }).then((t) => { tahuTpl = t; }),
-  loadCharacterTemplate(dreadnoughtGlb, cfg.dreadnought, { envMap: makeEnv(GLATORIAN_ENV), maxAnisotropy: aniso }).then((t) => { dreadTpl = t; }),
+  loadCharacterTemplate(dreadnoughtGlb, cfg.dreadnought, { envMap: makeEnv(GLATORIAN_ENV), maxAnisotropy: aniso, weapons: [cfg.weapons.greatsword] }).then((t) => { dreadTpl = t; }),
+  loadWeaponTemplate(greatswordGlb, cfg.weapons.greatsword, { envMap: makeEnv(GLATORIAN_ENV), maxAnisotropy: aniso }).then((t) => { weaponTpl.greatsword = t; }),
   loadGlatorian(glatorianGlb),
   ...Object.entries(BOHROK_MODELS).map(([kind, glb]) => loadBohrokTemplate(glb, bohrokConfig(cfg.bohrok, kind), { envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso }).then((t) => { bohrokTpl[kind] = t; })),
   loadSidorakTemplate(sidorakGlb, cfg.sidorak, { envMap: makeEnv(maps.desert.env), maxAnisotropy: aniso, motions: { runFast: sidorakRunFast } }).then((t) => { sidorakTpl = t; }),
   loadRhotuka(rhotukaGlb).then((geo) => { bossFx = createSidorakFx(scene, cfg.sidorak, geo); }),
 ]).then((results) => {
-  const names = ['Toaku', 'Super Tahu', 'Dreadnought', 'Glatorian Arena', ...Object.keys(BOHROK_MODELS), 'Sidorak', 'Rhotuka'];
+  const names = ['Toaku', 'Super Tahu', 'Dreadnought', 'Greatsword', 'Glatorian Arena', ...Object.keys(BOHROK_MODELS), 'Sidorak', 'Rhotuka'];
   if (!bossFx) bossFx = createSidorakFx(scene, cfg.sidorak); // a plain disc stands in for the spinner
   results.forEach((r, i) => { if (r.status === 'rejected') console.warn(names[i], 'model failed to load:', r.reason); });
   G.modelLoadMs = Math.round(performance.now() - loadStart);
@@ -364,11 +375,28 @@ const available = (c) => !c.locked && (c.id !== 'tahu' || tahuTpl) && (c.id !== 
  * the procedural classic model if his rig failed to load. `fcfg` replaces his config (VS MODE's duel
  * values); default CONFIG.<id>.
  */
-function createFighter(id, fcfg) {
+function createFighter(id, fcfg, opts = {}) {
   if (id === 'tahu' && tahuTpl) return new SuperTahu(fcfg || cfg.tahu, buildCharacterInstance(tahuTpl, 'tahu'));
-  if (id === 'dreadnought' && dreadTpl) return new Dreadnought(fcfg || cfg.dreadnought, buildCharacterInstance(dreadTpl, 'dreadnought'));
+  if (id === 'dreadnought' && dreadTpl) {
+    const f = new Dreadnought(fcfg || cfg.dreadnought, buildCharacterInstance(dreadTpl, 'dreadnought'));
+    // a weapon variant (VS MODE's WITH SWORD): armed from the start, the sword resting on his shoulder
+    if (opts.variant && cfg.weapons[opts.variant]) { const w = createWeapon(opts.variant); if (w) f.equipWeapon(w, { grip: 'rest', immediate: true }); }
+    return f;
+  }
   if (toakuTpl && !G.forceProcedural) return new Toaku(fcfg || cfg.toaku, buildCharacterInstance(toakuTpl, 'toaku'));
   return new ToakuClassic(fcfg || cfg.toaku);
+}
+const tplOf = (kind) => ({ toaku: toakuTpl, tahu: tahuTpl, dreadnought: dreadTpl })[kind] || null;
+/**
+ * A weapon ready for its owner's hand (src/js/weapons.js): the prop, the grips fitted on the owner's rig
+ * at load, and a blade trail in the scene. Null when its model (or its owner's) did not load.
+ */
+function createWeapon(id = 'greatsword') {
+  const def = cfg.weapons[id], tpl = weaponTpl[id], holder = def && tplOf(def.owner);
+  if (!def || !tpl || !holder) return null;
+  const w = new Weapon(def, buildWeaponProp(tpl), (holder.grips && holder.grips[id]) || {});
+  w.trail = new BladeTrail(scene, def.trail);
+  return w;
 }
 
 /**
@@ -383,6 +411,17 @@ function warmShaders() {
   const temps = Object.entries(bohrokTpl).map(([kind, tpl]) => new Bohrok(bohrokConfig(cfg.bohrok, kind), tpl));
   if (sidorakTpl) temps.push(new Sidorak(cfg.sidorak, sidorakTpl));
   for (const d of temps) { d.root.position.set(0, -50, 0); scene.add(d.root); }
+  // the weapons' materials and the blade trail's shader too: a sword that appears mid-fight (the
+  // manifestation, the pickup, the first chop) must not stall on its first draw
+  const props = [];
+  for (const [id, tpl] of Object.entries(weaponTpl)) {
+    const prop = buildWeaponProp(tpl);
+    prop.position.set(0, -50, 0);
+    scene.add(prop);
+    const trail = new BladeTrail(scene, cfg.weapons[id].trail);
+    trail.push(new THREE.Vector3(0, -50, 0), new THREE.Vector3(0, -48, 0), 1); trail.push(new THREE.Vector3(1, -50, 0), new THREE.Vector3(1, -48, 0), 1); trail.update(0.001);
+    props.push({ prop, trail });
+  }
   for (const id of Object.keys(maps)) {
     setMap(id);
     const hidden = [];
@@ -413,6 +452,7 @@ function warmShaders() {
   // on-screen appearance would otherwise upload them mid-fight
   for (const tpl of [...Object.values(bohrokTpl), sidorakTpl].filter(Boolean)) tpl.scene.traverse((o) => { if (o.isMesh && o.material.map) renderer.initTexture(o.material.map); });
   for (const d of temps) { scene.remove(d.root); d.dispose(); }
+  for (const { prop, trail } of props) { scene.remove(prop); trail.dispose(); }
   setMap(start);
 }
 
@@ -504,12 +544,13 @@ function startWave() {
   let comp = waveComposition(G.wave, cfg.waves);
   if (comp.boss && !sidorakTpl) comp = waveComposition(G.wave, { ...cfg.waves, boss: null }); // model missing: a normal wave
   if (comp.boss) {
-    // the boss wave: no spawning, the encounter takes over (warning, cinematic, fight)
+    // the boss wave: no spawning, the encounter takes over (warning, cinematic, fight) — after the
+    // greatsword's manifestation when its owner fights the first boss wave (once per run)
     G.toSpawn = [];
     G.waveActive = true;
-    encounter = new BossEncounter(cfg.sidorak.intro, { ui: bossUi, clearEnemies: clearForBoss, spawn: spawnSidorak, audio });
-    encounter.start();
     bump('#wave-panel');
+    if (canManifest()) { startManifestation(); G.bossPending = true; return; }
+    startBossEncounter();
     return;
   }
   G.toSpawn = [];
@@ -520,6 +561,63 @@ function startWave() {
   banner(`WAVE ${pad2(G.wave)}`, 'wave');
   bump('#wave-panel');
   audio.charge();
+}
+
+function startBossEncounter() {
+  encounter = new BossEncounter(cfg.sidorak.intro, { ui: bossUi, clearEnemies: clearForBoss, spawn: spawnSidorak, audio });
+  encounter.start();
+}
+
+// ---------- THE GREATSWORD in the horde (src/js/weaponEvent.js) ----------
+/** The sword manifests at the start of the first boss wave, for its owner, once per run (its model loaded). */
+function canManifest() {
+  const p = G.player, def = cfg.weapons.greatsword;
+  return !!(p && p.kind === def.owner && p.equipWeapon && !p.armed && !G.manifested && weaponTpl[def.id] && G.wave === cfg.waves.boss.first);
+}
+/** A random valid spot, the field cleared, the director started (the boss's own intro waits for it). */
+function startManifestation() {
+  const def = cfg.weapons.greatsword, p = G.player;
+  clearForBoss();
+  const spot = pickManifestSpot(G.map, p, [p, ...G.enemies], def.manifest.spot) || fallbackSpot(p);
+  G.manifested = true;
+  G.weaponEvent = new WeaponManifestation(def.manifest, {
+    fx, audio, ui: { cinematic: bossUi.cinematic, flash }, map: G.map,
+    placePickup: (s) => placePickup(def, s),
+  });
+  G.weaponEvent.start(spot, p);
+  return G.weaponEvent;
+}
+function fallbackSpot(p) {
+  const s = G.map.spawnPoint(p.pos, 9, 14);
+  return { x: s.x, y: G.map.groundHeight(s.x, s.z), z: s.z };
+}
+/** The weapon standing in the ground at `s`, glowing, collectable (G.pickup). */
+function placePickup(def, s) {
+  const tpl = weaponTpl[def.id], holder = tplOf(def.owner);
+  if (!tpl || !holder) return null;
+  const glow = glowSprite(def.pickup.glow, def.pickup.glowSize);
+  glow.position.y = def.grip.primary * holder.scale * (def.sizeFactor || 1) * 0.9;
+  const pk = new WeaponPickup(def, buildWeaponProp(tpl), holder.scale, { glow });
+  pk.place(s.x, s.y, s.z, Math.random() * Math.PI * 2);
+  scene.add(pk.root);
+  G.pickup = pk;
+  return pk;
+}
+/** PICK UP THE SWORD: the pickup cinematic (the owner near the sword, free, nothing scripted running). */
+function startPickup() {
+  const p = G.player, pk = G.pickup, def = cfg.weapons.greatsword;
+  if (!pk || pk.taken || !p || !p.equipWeapon || p.armed || G.pickupScene || G.mode !== 'playing') return false;
+  const w = createWeapon(def.id);
+  if (!w) return false;
+  G.pickupScene = new WeaponPickupScene(p.cfg.sword.pickup, p, pk, w, { fx, audio, ui: { cinematic: bossUi.cinematic, banner }, map: G.map, restArm: p.cfg.breathLoops.SwordIdle.arm });
+  G.pickupScene.start();
+  G.canPick = false;
+  return true;
+}
+/** Whether the PICK UP button is up: the owner standing near the sword, unarmed, free. */
+function pickupAvailable(p, scripted) {
+  const pk = G.pickup, def = cfg.weapons.greatsword;
+  return !!(pk && !pk.taken && !scripted && p && p.alive && p.kind === def.owner && !p.armed && p.state === 'idle' && p.onGround && pk.near(p));
 }
 
 // ---------- HUD ----------
@@ -578,6 +676,7 @@ function updateHud(dt) {
   put('charge', Math.round(ch * 50) / 50, (v) => { hud.punch.style.setProperty('--charge', v * 360 + 'deg'); hud.punch.classList.toggle('charging', v > 0); });
   put('charged', ch >= 1, (v) => hud.punch.classList.toggle('charged', v));
   put('specialOn', p.state === 'special', (v) => document.body.classList.toggle('special-on', v));
+  put('canPick', !!G.canPick, (v) => document.body.classList.toggle('can-pickup', v));
   put('wave', G.wave, (v) => { hud.wave.textContent = pad2(v); });
   put('score', G.score, (v) => { hud.score.textContent = v.toLocaleString(); });
   let left = G.toSpawn.length;
@@ -599,8 +698,20 @@ function setEmblem(el, c) {
   else if (c.emblem) use.setAttribute('href', '#' + c.emblem);
   else img.src = portraits[c.id] || '';
 }
-/** Per-fighter HUD: theme, name, portrait, energy label, button set. */
-function configureHud(c) {
+/**
+ * The PUNCH button and the GRAB button follow the player's weapon (CONFIG.weapons.<id>.hud): SWORD for
+ * PUNCH and no GRAB while the greatsword is held; his own buttons again without it.
+ */
+function applyWeaponHud(p) {
+  const c = rosterOf(p ? p.kind : G.charId) || rosterOf(G.charId) || ROSTER[0];
+  const H = p && p.weapon && p.weapon.def.hud;
+  const label = H && H.punch ? H.punch : 'PUNCH', icon = H && H.punchIcon ? H.punchIcon : 'i-punch';
+  hud.punch.innerHTML = `<svg class="ic"><use href="#${icon}"></use></svg><span>${label}</span>`;
+  document.body.classList.toggle('has-grab', !!c.buttons.grab && !(H && H.grab === false));
+  document.body.classList.toggle('armed', !!(p && p.weapon));
+}
+/** Per-fighter HUD: theme, name, portrait, energy label, button set (`f`: the fighter, for his weapon's buttons). */
+function configureHud(c, f = null) {
   for (const k of Object.keys(shown)) delete shown[k]; // force a full refresh for the new fighter
   document.body.dataset.fighter = c.id;
   $('#pname').textContent = c.name;
@@ -622,6 +733,7 @@ function configureHud(c) {
   if (B.special) $('#btn-special').innerHTML = `<svg class="ic"><use href="#${B.specialIcon}"></use></svg><span>${B.special}</span>`;
   if (B.dodge) $('#btn-dodge').innerHTML = `<svg class="ic"><use href="#${B.dodgeIcon}"></use></svg><span>${B.dodge}</span>`;
   hud.punch.classList.remove('charging', 'charged');
+  applyWeaponHud(f);
 }
 
 // ---------- flow ----------
@@ -635,6 +747,9 @@ function clearWorld() {
   elements.clear();
   if (bossFx) bossFx.clear();
   encounter = null; G.bossRef = null;
+  if (G.pickup) { G.pickup.remove(); G.pickup = null; }
+  G.weaponEvent = null; G.pickupScene = null; G.bossPending = false; G.manifested = false; G.canPick = false;
+  document.body.classList.remove('can-pickup', 'armed');
   resetBossUi();
   $('#frost').classList.remove('on');
   document.body.classList.remove('raging', 'overflowing');
@@ -677,7 +792,7 @@ function newGame(id = G.charId, mapId) {
   G.tonuaRef = null;
   G.breakT = 1.2; G.waveActive = false;
   hpLag = 1;
-  configureHud(c);
+  configureHud(c, p);
   $('#bossbar').classList.remove('show');
   G.mode = 'playing';
   setScreen(null);
@@ -785,8 +900,10 @@ function showSelect() {
 // (CONFIG.<id>.cinematic: Dreadnought rises from his throne, Toaku charges ENERGY OVERFLOW and unleashes
 // MACHINEGUN IMPACT) or the default push-in. It plays on his showcase spot of its map; tap / Enter / Esc /
 // back skips it; then the location menu.
-let intro = null;     // the SelectCinematic playing (G.mode === 'intro')
-let introMap = null;  // the map it plays on
+let intro = null;         // the SelectCinematic playing (G.mode === 'intro')
+let introMap = null;      // the map it plays on
+let introFighter = null;  // the showcase fighter in it
+let introDone = null;     // what follows it (null: the location menu)
 /** The fighter's cinematic definition: his own, or the default sequence sized to him. */
 function cinematicOf(c, f) {
   return (cfg[c.id] && cfg[c.id].cinematic) || defaultCinematic(f ? f.height : 3);
@@ -823,18 +940,35 @@ function confirmFighter(id) {
   const c = rosterOf(id);
   if (!assetsReady || !c || !available(c) || G.mode !== 'select') return;
   G.charId = id;
-  if (!G.introSeen.has(id) && showcases[id]) startIntro(c);
+  if (!G.introSeen.has(id) && showcases[id]) { G.introSeen.add(id); startIntro(c); }
   else showLocations();
 }
-function startIntro(c) {
+/**
+ * A fighter's cinematic on request (VS MODE: Dreadnought's throne after the weapon choice; `variant`: the
+ * weapon that appears in his hand once he stands — his cinematic's own `weaponAt`, else near its end), then
+ * `done()`. The showcase fighter is left as the menus had him (unarmed).
+ */
+function playCinematic(id, opts, done) {
+  const c = rosterOf(id), f = showcases[id];
+  if (!c || !f || !assetsReady) { done(); return false; }
+  let def = cinematicOf(c, f);
+  if (opts && opts.variant && cfg.weapons[opts.variant] && f.equipWeapon) {
+    const w = createWeapon(opts.variant);
+    if (w) { f.cineWeapon = w; def = { ...def, sequence: [...(def.sequence || []), { at: def.weaponAt ?? Math.max(0, def.duration - 1.15), move: 'manifestWeapon' }] }; }
+  }
+  startIntro(c, { def, onEnd: () => { if (f.weapon) f.unequipWeapon().dispose(); if (f.cineWeapon) { f.cineWeapon.dispose(); f.cineWeapon = null; } done(); } });
+  return true;
+}
+function startIntro(c, opts = {}) {
   const f = showcases[c.id];
-  const def = cinematicOf(c, f);
+  const def = opts.def || cinematicOf(c, f);
   const mapId = maps[def.map] ? def.map : maps[c.map] ? c.map : G.showMap;
   const map = maps[mapId], sc = map.showcase;
   showShowcase(c.id, mapId);
   if (showTonua) showTonua.root.visible = false; // his moment: nobody else on the spot
   G.mode = 'intro';
-  G.introSeen.add(c.id);
+  introFighter = f;
+  introDone = opts.onEnd || null;
   G.cineHits = 0;
   $('#it-name').textContent = c.name;
   $('#it-title').textContent = c.title || '';
@@ -851,7 +985,7 @@ function startIntro(c) {
   applyShot(intro.start());
 }
 function stepIntro(dt) {
-  const f = showcases[G.charId], map = introMap;
+  const f = introFighter, map = introMap;
   holdOnSpot(f, map, dt, idleInput, intro.d.world);
   applyShot(intro.update(dt));
   map.update(dt, f.pos);
@@ -868,14 +1002,17 @@ function skipIntro() {
 }
 function endIntro() {
   G.camFrom = { pos: camera.position.clone(), look: menuLook.clone(), t: 0 };
+  const done = introDone;
+  introDone = null;
   endIntroUi();
-  showLocations();
+  if (done) done(); else showLocations();
 }
 /** Whatever ends a cinematic: nothing of it is left (fighter, effects' owner, light, aura, name card). */
 function endIntroUi() {
   if (intro) intro.end();
   intro = null;
   introMap = null;
+  introFighter = null;
   document.body.classList.remove('cine');
   $('#intro-title').classList.remove('show');
 }
@@ -1077,7 +1214,7 @@ function flash(kind) {
 const vsMode = createVsMode({
   cfg, $, scene, camera, audio, fx, fire, maps, ROSTER, portraits, headshots, setEmblem,
   available: (c) => assetsReady && available(c),
-  createFighter, setScreen, setMap, hideShowcases, configureHud, banner, flash, reticle,
+  createFighter, setScreen, setMap, hideShowcases, configureHud, banner, flash, reticle, playCinematic, weaponHud: applyWeaponHud,
   clearHorde: () => { if (G.player || G.enemies.length) clearWorld(); endIntroUi(); },
   toTitle,
   setMode: (m) => { G.mode = m; },
@@ -1111,7 +1248,7 @@ window.addEventListener('keydown', (e) => {
 // ---------- loop ----------
 const clock = new THREE.Clock();
 const camPos = new THREE.Vector3(), look = new THREE.Vector3(), camScript = new THREE.Vector3(), menuLook = new THREE.Vector3();
-const idleInput = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, dodge: false, special: false, overflow: false, lock: false, lockPrev: false, lockNext: false, punchHeld: false };
+const idleInput = { moveX: 0, moveY: 0, camDX: 0, punch: false, kick: false, grab: false, jump: false, dodge: false, special: false, overflow: false, lock: false, lockPrev: false, lockNext: false, pickup: false, punchHeld: false };
 const NO_CAM = { distance: 1, height: 1, look: 1 }; // fighters without their own camera framing
 let titleT = 0;
 
@@ -1176,9 +1313,15 @@ function stepGame(dt, inp) {
   if (G.mode !== 'playing') return;
   if (G.hitStop > 0) { G.hitStop -= dt; dt *= 0.05; }
   const p = G.player;
-  // boss warning / cinematic / defeat focus: controls locked, the player cannot be hurt
-  const scripted = encounter && encounter.active && encounter.lockInput;
+  // boss warning / cinematic / defeat focus, the greatsword's manifestation or its pickup: controls locked,
+  // the player cannot be hurt; during the pickup the enemies are held where they stand
+  const held = !!((G.weaponEvent && G.weaponEvent.active) || (G.pickupScene && G.pickupScene.active));
+  const frozen = !!(G.pickupScene && G.pickupScene.active);
+  const scripted = (encounter && encounter.active && encounter.lockInput) || held;
   if (scripted) { inp = idleInput; p.invuln = Math.max(p.invuln || 0, 0.25); }
+  // PICK UP THE SWORD: the button is up while the owner stands near the standing sword; a press starts the pickup
+  G.canPick = pickupAvailable(p, scripted);
+  if (G.canPick && inp.pickup) startPickup();
   // TARGET LOCK-ON: the button toggles it, the arrows switch targets (to the left / right on screen); it
   // follows its target's fate (dead or gone: the next one, or off). The fighter reads lockTarget.
   const viewYaw = G.camYaw + Math.PI, LC = cfg.lockOn.camera;
@@ -1232,8 +1375,10 @@ function stepGame(dt, inp) {
   // the stick's frame: the camera's, less the lock's turn off the target's line (blended in and out with
   // the lock), so while locked forward heads at the target and sideways circles it
   p.update(dt, inp, G.camYaw - G.lockOff * G.lockW, world);
-  for (const e of G.enemies) e.update(dt, world);
-  if (bossFx) bossFx.update(dt, world);
+  if (!frozen) {
+    for (const e of G.enemies) e.update(dt, world);
+    if (bossFx) bossFx.update(dt, world);
+  }
   // body separation (same level only; bodies being swung or thrown pass through)
   const all = [p, ...G.enemies.filter((e) => !e.removed && e.state !== 'spawn' && e.state !== 'grabbed' && e.state !== 'thrown')];
   for (let i = 0; i < all.length; i++) {
@@ -1262,8 +1407,10 @@ function stepGame(dt, inp) {
     }
   }
 
-  // waves
-  if (p.alive && !G.noWaves) {
+  // the boss's introduction follows the sword's manifestation
+  if (G.bossPending && G.weaponEvent && G.weaponEvent.done) { G.weaponEvent = null; G.bossPending = false; startBossEncounter(); }
+  // waves (held while a weapon sequence plays)
+  if (p.alive && !G.noWaves && !held && !G.bossPending) {
     if (G.waveActive) {
       G.spawnT -= dt;
       const alive = G.enemies.filter((e) => e.alive).length;
@@ -1286,8 +1433,16 @@ function stepGame(dt, inp) {
     }
   }
 
-  // boss encounter: warning -> cinematic -> fight -> defeat (it may take the camera for a while)
-  const camOverride = encounter && encounter.active ? encounter.update(dt, world) : null;
+  // boss encounter: warning -> cinematic -> fight -> defeat (it may take the camera for a while); the
+  // sword's manifestation and pickup take it too
+  let camOverride = encounter && encounter.active ? encounter.update(dt, world) : null;
+  if (G.weaponEvent && G.weaponEvent.active) camOverride = G.weaponEvent.update(dt, world) || camOverride;
+  if (G.pickupScene) {
+    const c = G.pickupScene.update(dt, world);
+    if (c) camOverride = c;
+    if (G.pickupScene.done) G.pickupScene = null;
+  }
+  if (G.pickup && !G.pickup.taken) G.pickup.update(dt, fx);
 
   // camera: chase cam that rises over terrace walls instead of clipping into them; it pulls back a
   // little during a boss fight (his charge and projectiles cover ground). A bigger fighter is framed
@@ -1346,7 +1501,7 @@ function stepGame(dt, inp) {
   G.map.update(dt, p.pos);
   fx.update(dt);
   fire.update(dt);
-  elements.update(dt, world);
+  if (!frozen) elements.update(dt, world);
   updateHud(dt);
 }
 
@@ -1386,6 +1541,16 @@ window.__game = {
   get sidorakTemplate() { return sidorakTpl; },
   /** Test harness: jump straight to the boss wave (it starts after a short break). */
   startBoss() { G.wave = cfg.waves.boss.first - 1; G.waveActive = false; G.toSpawn = []; G.noWaves = false; G.breakT = 0.05; for (const e of G.enemies) { e.alive = false; e.removed = true; } },
+  /** THE GREATSWORD (tests): the manifestation now, the pickup, a weapon for a fighter, the templates' grips. */
+  manifestNow() { if (G.mode === 'playing' && G.player && !G.weaponEvent) { G.manifested = false; return startManifestation(); } return null; },
+  startPickup, createWeapon, placePickup: (s) => placePickup(cfg.weapons.greatsword, s),
+  get pickup() { return G.pickup; },
+  get weaponEvent() { return G.weaponEvent; },
+  get pickupScene() { return G.pickupScene; },
+  get weaponTemplates() { return weaponTpl; },
+  get dreadnoughtGrips() { return dreadTpl && dreadTpl.grips; },
+  /** Look-dev: the showcase fighter `id` armed (or disarmed) with the greatsword. */
+  armShowcase(id = 'dreadnought', on = true) { const f = showcases[id]; if (!f || !f.equipWeapon) return false; if (on && !f.weapon) f.equipWeapon(createWeapon('greatsword'), { grip: 'rest', immediate: true }); else if (!on && f.weapon) f.unequipWeapon().dispose(); return true; },
   get bohrokTemplates() { return bohrokTpl; },
   manual: false,
   get ready() { return assetsReady; },
@@ -1411,7 +1576,7 @@ window.__game = {
   step(frames = 1, inp = {}, fps = 60) {
     for (let i = 0; i < frames; i++) {
       const tickInput = { ...idleInput, ...inp };
-      if (i > 0) { tickInput.punch = false; tickInput.kick = false; tickInput.grab = false; tickInput.jump = false; tickInput.dodge = false; tickInput.special = false; tickInput.overflow = false; tickInput.lock = false; tickInput.lockPrev = false; tickInput.lockNext = false; }
+      if (i > 0) { tickInput.punch = false; tickInput.kick = false; tickInput.grab = false; tickInput.jump = false; tickInput.dodge = false; tickInput.special = false; tickInput.overflow = false; tickInput.lock = false; tickInput.lockPrev = false; tickInput.lockNext = false; tickInput.pickup = false; }
       if (G.mode === 'title') stepShowcase(1 / fps, true);
       else stepMode(1 / fps, tickInput);
     }

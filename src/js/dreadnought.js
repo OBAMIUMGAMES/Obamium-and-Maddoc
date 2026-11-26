@@ -31,6 +31,7 @@ import { smooth } from './pose.js';
 import { glowSpriteTexture } from './characterModel.js';
 import { createRageAura } from './rageAura.js';
 import { pickGrabTarget, assistReach, offAngle, clearLine } from './grabAssist.js';
+import { SweepStrike, secondaryHand, areaStrike, poseArmForWeapon } from './weapons.js';
 
 /** Enemy states that cannot be grabbed. */
 const UNGRABBABLE = new Set(['spawn', 'dying', 'grabbed', 'thrown']);
@@ -61,8 +62,12 @@ function palmPoint(inst) {
 }
 
 /** The heavyweight warlord. Same public surface as Toaku / Super Tahu (update, takeHit, meter, combo...). */
-/** Every action Dreadnought blends (the instance must carry each). */
-export const DREADNOUGHT_CHANNELS = ['Idle', 'Walk', 'Run', 'Punch', 'Uppercut', 'Kick', 'Grab', 'Dodge', 'StandUp', 'Seated', 'Scream', 'Launch', 'GetUp'];
+/** Every action Dreadnought blends (the instance must carry each). The Sword* ones are his armed moveset's. */
+export const DREADNOUGHT_CHANNELS = ['Idle', 'Walk', 'Run', 'Punch', 'Uppercut', 'Kick', 'Grab', 'Dodge', 'StandUp', 'Seated', 'Scream', 'Launch', 'GetUp',
+  'SwordIdle', 'SwordGuard', 'SwordAttack', 'SwordHeavy', 'SwordParry', 'SwordShout'];
+/** Arm bones the armed stances layer over his gait and his kick (both arms, hands and fingers). */
+const ARM_LAYER = /^(Left|Right)(Shoulder|Arm|ForeArm|Hand)/;
+const _lq = new THREE.Quaternion();
 
 export class Dreadnought extends ClipFighter {
   /**
@@ -94,6 +99,21 @@ export class Dreadnought extends ClipFighter {
     this.roared = false;
     this.palmLocal = palmPoint(inst);
     this.grabHit = { ...cfg.grab }; // the slam's damage this grab (WARLORD RAGE multiplies it)
+    // THE GREATSWORD (cfg.sword, src/js/weapons.js): the weapon in his hand, the stance (0 resting on his
+    // shoulder, one hand .. 1 the two-handed guard), the arm layer over his gait / kick, the off hand's IK,
+    // the swing in progress (swept blade hits, the trail)
+    this.weapon = null;
+    this.combatT = 0;       // s left in the two-handed guard
+    this.stanceW = 0;       // eased stance (0 rest .. 1 guard)
+    this.layerW = 0;        // eased weight of the arm layer
+    this.ikW = 0;           // eased weight of the off hand's IK onto the handle
+    this.nearT = 0;         // enemy-proximity check timer
+    this.swing = null;      // { h, heavy, slammed }
+    this.sweep = new SweepStrike();
+    this.ikSaved = [];
+    this.layerQ = null;     // scratch quaternions for the arm layer
+    this.driver = null;     // a scripted sequence driving him (state 'scripted': the sword pickup)
+    this.armOverride = null; // look-dev / scripted: an arm spec (weapons.js poseArmForWeapon) posed live over the animation
     // purple fire gathering in his right fist while the uppercut charges; gold when it is unleashed
     const map = glowSpriteTexture();
     this.fistGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map, color: PURPLE, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
@@ -108,7 +128,55 @@ export class Dreadnought extends ClipFighter {
     super.dispose();
     this.fistGlow.material.dispose();
     this.aura.dispose();
+    if (this.weapon) { const w = this.weapon; this.weapon = null; w.dispose(); }
   }
+
+  // ---------------------------------------------------------------- THE GREATSWORD
+  /** Holding a weapon: the armed moveset is in force. */
+  get armed() { return !!this.weapon; }
+  /** The weapon definition in hand (CONFIG.weapons.<id>) or null. */
+  get weaponDef() { return this.weapon ? this.weapon.def : null; }
+  /** The regular attack in use: the sword's chop while armed, his punches otherwise. */
+  punchCfg() { return this.weapon ? this.cfg.sword.light : this.cfg.punch; }
+  /** The heavy (held) attack in use: the sword's slam while armed, the uppercut otherwise. */
+  heavyCfg() { return this.weapon ? this.cfg.sword.heavy : this.cfg.uppercut; }
+  coolCfg() { return this.weapon ? this.cfg.sword.cooldowns : this.cfg.cooldowns; }
+  dodgeCfg() { return this.weapon ? this.cfg.sword.dodge : this.cfg.dodge; }
+  /** No grab while armed (the weapon takes both hands); otherwise the usual rules. */
+  canAttack(kind) { return !(kind === 'grab' && this.weapon) && super.canAttack(kind); }
+  /** The moves the CPU may consider while armed: no grab (src/js/vsAI.js movesOf reads it). */
+  get armedMoves() { return this.weapon ? { grab: false } : null; }
+
+  /**
+   * Take a weapon (src/js/weapons.js Weapon) into his hand: in grip `grip` ('rest': resting on his
+   * shoulder) at once or easing from the socket's current transform (`immediate` false: the pickup, where
+   * the socket was captured from the sword's place in the ground). Health, meter and everything else stay.
+   */
+  equipWeapon(weapon, { grip = 'rest', immediate = true, engage = false } = {}) {
+    if (this.weapon && this.weapon !== weapon) this.unequipWeapon();
+    this.weapon = weapon;
+    weapon.attach(this.inst, grip, immediate);
+    this.combatT = engage ? this.cfg.sword.stance.combatFor : 0;
+    this.stanceW = engage ? 1 : 0;
+    this.layerW = 0; this.ikW = engage ? 1 : 0;
+    this.swing = null;
+    this.held = null; this.grabTarget = null;
+    if (this.world && this.world.onWeapon) this.world.onWeapon(this, weapon);
+    return weapon;
+  }
+  /** Out of his hand (returned to the caller). */
+  unequipWeapon() {
+    const w = this.weapon;
+    if (!w) return null;
+    this.weapon = null;
+    this.swing = null;
+    this.combatT = 0; this.stanceW = 0; this.layerW = 0; this.ikW = 0;
+    w.detach();
+    if (this.world && this.world.onWeapon) this.world.onWeapon(this, null);
+    return w;
+  }
+  /** Combat: into the two-handed guard for a while (a blow of his, a hit taken, an enemy near). */
+  engage() { if (this.weapon) this.combatT = Math.max(this.combatT, this.cfg.sword.stance.combatFor); }
 
   // ---------------------------------------------------------------- WARLORD RAGE state (HUD)
   /** True while WARLORD RAGE is active. */
@@ -154,11 +222,12 @@ export class Dreadnought extends ClipFighter {
     this.age += dt;
     this.dodgeCool = Math.max(0, this.dodgeCool - dt);
     this.rageQueue = Math.max(0, this.rageQueue - dt);
-    const U = this.cfg.uppercut, R = this.cfg.rage;
+    const U = this.heavyCfg(), R = this.cfg.rage;
     // 0 -> 1 from the moment the wind-up shows (a quick tap shows nothing) to the threshold; held
     // full for a moment as the blow comes out
     this.charge = this.state === 'charge' ? clamp01((this.stateT - U.windFrom) / (U.hold - U.windFrom))
       : this.state === 'uppercut' && this.stateT < 0.3 ? 1 : 0;
+    if (this.weapon) this.tickStance(dt);
     // 30 s of active play: counted from the end of the scream, standing still while a scripted
     // sequence holds the fight (the boss warning and cinematic, controls locked)
     const held = this.world && this.world.cinematic && this.world.cinematic();
@@ -171,7 +240,25 @@ export class Dreadnought extends ClipFighter {
     this.runW += ((this.gait === 'run' ? 1 : 0) - this.runW) * (1 - Math.exp(-this.cfg.locomotion.gaitBlend * dt));
   }
 
-  armored() { return ARMORED.has(this.state); }
+  armored() { return ARMORED.has(this.state) || this.state === 'scripted'; }
+
+  /**
+   * The armed stances: the sword rests on his shoulder (one hand) until combat — a blow of his, a hit
+   * taken, a locked target or an enemy within `stance.near` m — puts him in the two-handed guard for
+   * `stance.combatFor` s; both ease (no snap).
+   */
+  tickStance(dt) {
+    const S = this.cfg.sword.stance;
+    this.combatT = Math.max(0, this.combatT - dt);
+    if ((this.nearT -= dt) <= 0) {
+      this.nearT = 0.25;
+      const W = this.world;
+      if (W && W.enemies && W.enemies.some((e) => e.alive && e.targetable !== false && Math.hypot(e.pos.x - this.pos.x, e.pos.z - this.pos.z) < S.near)) this.combatT = Math.max(this.combatT, 0.6);
+    }
+    if (this.lockTarget && this.lockTarget.alive !== false) this.combatT = Math.max(this.combatT, 0.6);
+    const want = this.combatT > 0 ? 1 : 0;
+    this.stanceW += (want - this.stanceW) * (1 - Math.exp(-S.blend * dt));
+  }
 
   think(ctl, world) {
     const B = this.buffer;
@@ -189,6 +276,7 @@ export class Dreadnought extends ClipFighter {
     }
     if (free) {
       if (B.grab > 0 && this.canAttack('grab')) { B.grab = 0; this.startGrab(world); return; }
+      if (B.grab > 0 && this.weapon) B.grab = 0; // no grab while armed: the press is dropped, nothing else fires
       if (B.kick > 0 && this.canAttack('kick')) { B.kick = 0; this.startKick(world); return; }
     }
     this.handlePunchHold(ctl, world);
@@ -199,7 +287,7 @@ export class Dreadnought extends ClipFighter {
    * heavy uppercut (no regular punch is ever thrown first). Mid-combo taps chain at once.
    */
   handlePunchHold(ctl, world) {
-    const inp = ctl.input, P = this.cfg.punch, U = this.cfg.uppercut;
+    const inp = ctl.input, P = this.punchCfg(), U = this.heavyCfg();
     if (this.state === 'punch') { if (inp.punch) this.punchQueued = true; return; }
     if (this.state === 'charge') {
       if (!inp.punchHeld) { this.startPunch(0, world); return; } // let go early: a regular punch
@@ -228,8 +316,9 @@ export class Dreadnought extends ClipFighter {
       case 'uppercut': this.updateUppercut(dt, world); return 10;
       case 'kick': this.updateKick(dt, world); return 10;
       case 'grab': this.updateGrab(dt, ctl, world); return 0;
-      case 'dodge': this.updateRoll(dt, world); return 0;
+      case 'dodge': return this.weapon ? this.updateParry(dt, world) : (this.updateRoll(dt, world), 0);
       case 'scream': this.updateScream(dt, world); return 10;
+      case 'scripted': return this.driver ? this.driver.step(dt, this, world) : (this.setState('idle'), 10);
       case 'standup':
         this.vel.x = 0; this.vel.z = 0;
         if (this.standHold > 0) this.standHold -= dt; // still seated
@@ -273,7 +362,7 @@ export class Dreadnought extends ClipFighter {
     const L = this.cfg.locomotion, A = this.inst.actions;
     const hs = Math.hypot(this.vel.x, this.vel.z);
     const move = this.state === 'dead' ? 0 : smooth(0.15, 0.9, hs);
-    T.Idle = 1 - move;
+    if (this.weapon) { T.Idle = 0; T.SwordIdle = (1 - move) * (1 - this.stanceW); T.SwordGuard = (1 - move) * this.stanceW; } else T.Idle = 1 - move;
     T.Walk = move * (1 - this.runW);
     T.Run = move * this.runW;
     A.Walk.timeScale = Math.max(0.2, hs / L.walkClipSpeed);
@@ -314,9 +403,9 @@ export class Dreadnought extends ClipFighter {
   // ---------------------------------------------------------------- attack tracking
   /** The hit description of the move being played. */
   currentHit() {
-    if (this.state === 'punch') return this.cfg.punch.hits[Math.max(0, this.punchIdx)];
+    if (this.state === 'punch') return this.punchCfg().hits[Math.max(0, this.punchIdx)];
     if (this.state === 'kick') return this.cfg.kick;
-    return this.cfg.uppercut;
+    return this.heavyCfg();
   }
 
   /** Nothing solid between him and the enemy (samples along the line through the map's collision). */
@@ -386,6 +475,8 @@ export class Dreadnought extends ClipFighter {
    * multiplies the damage.
    */
   strike(world, h, heavy, except = null) {
+    // armed, a sword blow: no punch volume — the blade is swept frame by frame from here (swingUpdate)
+    if (this.weapon && h.active) { this.swing = { h, heavy, slammed: false, hits: 0 }; this.sweep.begin(); return 0; }
     const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
     const mul = this.dmgMul;
     let top = this.pos.y + this.height * (h.top || 1);
@@ -406,41 +497,97 @@ export class Dreadnought extends ClipFighter {
     return hits;
   }
 
+  startPunch(i, world) {
+    super.startPunch(i, world);
+    if (this.weapon) { this.engage(); world.audio.charge(); }
+  }
+
   updatePunch(dt, world) {
     super.updatePunch(dt, world); // advances the clip, strikes at the impact, chains or ends
     if (this.state === 'punch') {
-      const h = this.cfg.punch.hits[this.punchIdx];
+      const h = this.punchCfg().hits[this.punchIdx];
       this.track(dt, h, this.clipT < h.impact);
     }
   }
 
   // ---------------------------------------------------------------- heavy uppercut
   startUppercut(world) {
-    const U = this.cfg.uppercut;
+    const U = this.heavyCfg();
     this.setState('uppercut');
     this.clipT = U.windTo;
     this.hitDone = false;
     this.aimAssist(world);
     world.audio.whoosh();
+    if (this.weapon) { this.engage(); world.audio.charge(); return; }
     world.fx.sparks(this.fistGlow.getWorldPosition(tmpV), 10, GOLD, 5);
   }
 
   updateUppercut(dt, world) {
-    const U = this.cfg.uppercut;
+    const U = this.heavyCfg();
     this.clipT += dt * U.speed;
     this.vel.x *= 0.7; this.vel.z *= 0.7;
     this.track(dt, U, this.clipT < U.impact);
     if (!this.hitDone && this.clipT >= U.impact) {
       this.hitDone = true;
-      const hits = this.strike(world, U, true); // launched up and back (lift + knockback)
-      const fist = this.fistGlow.getWorldPosition(tmpV);
-      world.fx.shockwave(tmpH.set(this.pos.x + Math.sin(this.facing) * 2.9, this.pos.y + 0.2, this.pos.z + Math.cos(this.facing) * 2.9), 4.6, PURPLE);
-      world.fx.sparks(fist, 26, GOLD, 12);
-      world.fx.sparks(fist, 14, PURPLE, 9);
-      world.shake(hits ? 0.6 : 0.25);
-      if (hits) { world.hitStop(0.08); world.audio.hit(true); }
+      const hits = this.strike(world, U, true); // launched up and back (lift + knockback); armed: the sweep begins
+      if (!this.weapon) {
+        const fist = this.fistGlow.getWorldPosition(tmpV);
+        world.fx.shockwave(tmpH.set(this.pos.x + Math.sin(this.facing) * 2.9, this.pos.y + 0.2, this.pos.z + Math.cos(this.facing) * 2.9), 4.6, PURPLE);
+        world.fx.sparks(fist, 26, GOLD, 12);
+        world.fx.sparks(fist, 14, PURPLE, 9);
+        world.shake(hits ? 0.6 : 0.25);
+        if (hits) { world.hitStop(0.08); world.audio.hit(true); }
+      }
     }
     if (this.clipT >= U.end) this.setState('idle'); // (its cooldown starts as the state is left)
+  }
+
+  // ---------------------------------------------------------------- the sword's swings
+  /**
+   * The blow in progress (a chop or the slam), every frame after the pose is final: over the hit's
+   * `active` clip window the blade's segment is swept against every enemy (one hit each); over its `trail`
+   * window the trail records the blade; the slam's ground impact (`slamAt`) cracks the ground and strikes
+   * everyone around the point of impact.
+   */
+  swingUpdate(dt, world) {
+    const W = this.weapon, sw = this.swing;
+    if (!W) return;
+    const t = this.clipT, live = sw && (this.state === 'punch' || this.state === 'uppercut');
+    if (live) {
+      const h = sw.h;
+      if (t >= h.active[0] && t <= h.active[1]) {
+        const n = this.sweep.step(this, W, world, h, sw.heavy);
+        if (n) {
+          sw.hits += n;
+          this.registerHits(n, world);
+          W.bladePoints(tmpV, tmpH);
+          world.fx.sparks(tmpV.lerp(tmpH, 0.6), sw.heavy ? 18 : 10, PURPLE, 8);
+        }
+      }
+      if (W.trail && h.trail && t >= h.trail[0] && t <= h.trail[1]) { W.bladePoints(tmpV, tmpH); W.trail.push(tmpV, tmpH, sw.heavy ? 1 : 0.8); }
+      if (h.slam && h.slamAt != null && !sw.slammed && t >= h.slamAt) this.swordSlam(world, h);
+    } else if (sw) this.swing = null;
+    if (W.trail) W.trail.update(dt);
+  }
+
+  /** The slam's blade meets the ground: a purple shockwave, the sand cracked, everyone around it struck. */
+  swordSlam(world, h) {
+    this.swing.slammed = true;
+    const W = this.weapon;
+    W.bladePoints(tmpV, tmpH);
+    const at = tmpP.set(tmpH.x, this.pos.y, tmpH.z);
+    const far = Math.hypot(at.x - this.pos.x, at.z - this.pos.z), lim = h.reach * 0.9;
+    if (far > lim) { at.x = this.pos.x + (at.x - this.pos.x) * lim / far; at.z = this.pos.z + (at.z - this.pos.z) * lim / far; }
+    const hits = areaStrike(world, this, at, h.slam.radius, h.slam, true, this.sweep.hit);
+    world.fx.shockwave(tmpW.set(at.x, at.y + 0.2, at.z), h.slam.radius * 2.2, PURPLE, 0.45);
+    world.fx.shockwave(tmpW, h.slam.radius * 1.2, GOLD, 0.3);
+    if (world.fx.crack) world.fx.crack(at, 2.6, this.facing);
+    world.fx.dust(at, 22, 5, 1.4);
+    world.fx.sparks(tmpW.set(at.x, at.y + 0.5, at.z), 30, PURPLE, 12);
+    world.fx.sparks(tmpW, 14, GOLD, 9);
+    world.shake(hits ? 0.85 : 0.55);
+    world.audio.slam();
+    if (hits) { this.registerHits(hits, world); world.hitStop(0.1); world.audio.hit(true); }
   }
 
   // ---------------------------------------------------------------- kick
@@ -472,7 +619,34 @@ export class Dreadnought extends ClipFighter {
   /** Roll toward yaw (the roll goes where the stick points); the attack target is dropped. */
   startDodge(yaw, world) {
     this.target = null;
-    this.startRoll(yaw, world);
+    if (this.weapon) this.startParry(world); else this.startRoll(yaw, world);
+  }
+
+  /** Armed DODGE: Sword_Parry_Backward — the blade up in guard, a hop straight back (cfg.sword.dodge). */
+  startParry(world) {
+    const D = this.cfg.sword.dodge;
+    this.setState('dodge');
+    this.clipT = D.start;
+    this.dodgeFacing = this.facing;
+    this.vel.x = -Math.sin(this.facing) * D.back; this.vel.z = -Math.cos(this.facing) * D.back;
+    this.engage();
+    world.audio.whoosh();
+    world.fx.dust(this.pos, 8, 3.5);
+  }
+
+  /** The parry hop: the clip plays, the hop brakes (walls stop it), an evasion window, then the guard. */
+  updateParry(dt, world) {
+    const D = this.cfg.sword.dodge;
+    this.clipT = Math.min(D.end, this.clipT + dt * D.speed);
+    const k = Math.max(0, 1 - D.brake * dt);
+    this.vel.x *= k; this.vel.z *= k;
+    this.facing = this.dodgeFacing;
+    if (this.clipT >= D.invuln[0] && this.clipT <= D.invuln[1]) this.invuln = Math.max(this.invuln, 0.05);
+    if (this.clipT >= D.end || (this.clipT >= D.cancelAfter && this.inputActive)) {
+      this.setState('idle');
+      this.dodgeCool = D.cooldown;
+    }
+    return 0;
   }
 
   onLanded(vy, world) {
@@ -497,6 +671,7 @@ export class Dreadnought extends ClipFighter {
   }
 
   startGrab(world) {
+    if (this.weapon) return; // both hands on the sword: no grab
     this.setState('grab');
     this.clipT = 0;
     this.held = null;
@@ -626,7 +801,19 @@ export class Dreadnought extends ClipFighter {
     e.sync();
   }
 
+  takeHit(dmg, fromX, fromZ, world) {
+    const r = super.takeHit(dmg, fromX, fromZ, world);
+    if (r) this.engage();
+    return r;
+  }
+  vsReceive(dmg, dirX, dirZ, knock, lift, stun, world) {
+    const r = super.vsReceive(dmg, dirX, dirZ, knock, lift, stun, world);
+    if (r.landed) this.engage();
+    return r;
+  }
+
   onDeath() {
+    this.swing = null;
     if (this.held) { const e = this.held; this.held = null; e.release(); }
     // knocked out mid-rage: the transformation ends at once
     if (this.rageT > 0) { this.rageT = 0; this.auraW = 0; this.aura.set(0, this.age); if (this.world && this.world.onRage) this.world.onRage(false); }
@@ -693,6 +880,20 @@ export class Dreadnought extends ClipFighter {
    */
   cineMove(name, world, step) {
     if (name === 'throneRise') { this.playStandUp(step.from, step.to, step.hold || 0, step.speed || 1); return true; }
+    if (name === 'manifestWeapon') {
+      // VS MODE's WITH SWORD: the greatsword appears in his hand (resting on his shoulder) in a pulse of
+      // purple energy once he stands, after the throne and stand-up (prepared by the mode: cineWeapon)
+      if (!this.cineWeapon) return false;
+      this.equipWeapon(this.cineWeapon, { grip: 'rest', immediate: true });
+      this.cineAuraFlash = 0.9;
+      const c = this.center(tmpV);
+      world.fx.sparks(c, 36, PURPLE, 11);
+      world.fx.sparks(c, 16, GOLD, 8);
+      world.fx.shockwave(tmpH.set(this.pos.x, this.pos.y + 0.2, this.pos.z), 7, PURPLE);
+      world.shake(0.5);
+      if (world.audio.special) world.audio.special();
+      return true;
+    }
     return false;
   }
 
@@ -712,6 +913,29 @@ export class Dreadnought extends ClipFighter {
     this.standHold = 0;
     this.auraW = 0;
     this.aura.set(0, this.age);
+    // the weapon (if any) stays in his hand, resting on his shoulder; no swing, no guard left over
+    this.combatT = 0; this.stanceW = 0; this.layerW = 0; this.ikW = 0; this.swing = null; this.driver = null;
+    this.cineAuraFlash = 0;
+    if (this.weapon) { this.weapon.setGrip('rest', true); if (this.weapon.trail) this.weapon.trail.clear(); }
+  }
+
+  // ---------------------------------------------------------------- scripted sequences
+  /**
+   * Hand him to a scripted driver (the sword pickup, a cinematic attack: src/js/weaponEvent.js): state
+   * 'scripted', in which the driver moves him (step(dt, fighter, world) -> ground friction), picks his
+   * animation (driver.weights: channel -> weight, driver.blend) and may pose his bones after the mixer
+   * (driver.pose(fighter, dt)). endScripted() hands him back in his stance.
+   */
+  startScripted(driver) {
+    this.driver = driver;
+    this.target = null; this.held = null;
+    this.setState('scripted');
+    this.vel.x = 0; this.vel.z = 0;
+    this.swing = null;
+  }
+  endScripted() {
+    this.driver = null;
+    if (this.state === 'scripted') this.setState('idle');
   }
 
   /** Skip the stand-up: standing in the idle stance at once. */
@@ -724,20 +948,26 @@ export class Dreadnought extends ClipFighter {
 
   // ---------------------------------------------------------------- animation
   animTargets(T, A) {
-    const cfg = this.cfg;
+    const cfg = this.cfg, W = !!this.weapon;
     switch (this.state) {
       case 'charge': {
-        const U = cfg.uppercut;
+        const U = this.heavyCfg(), ch = W ? 'SwordHeavy' : 'Uppercut';
         if (this.stateT < U.windFrom) return 0; // a quick tap shows nothing but the punch
-        T.Uppercut = 1;
-        A.Uppercut.time = U.windTo * smooth(U.windFrom, U.hold, this.stateT);
+        T[ch] = 1;
+        A[ch].time = U.windTo * smooth(U.windFrom, U.hold, this.stateT);
         return 14;
       }
-      case 'punch': T.Punch = 1; A.Punch.time = this.clipT; return 18; // a heavy body: ~0.17 s cross-fades
-      case 'uppercut': T.Uppercut = 1; A.Uppercut.time = this.clipT; return 18;
+      case 'punch': if (W) { T.SwordAttack = 1; A.SwordAttack.time = this.clipT; return 14; } T.Punch = 1; A.Punch.time = this.clipT; return 18; // a heavy body: ~0.17 s cross-fades
+      case 'uppercut': if (W) { T.SwordHeavy = 1; A.SwordHeavy.time = this.clipT; return 14; } T.Uppercut = 1; A.Uppercut.time = this.clipT; return 18;
       case 'kick': T.Kick = 1; A.Kick.time = this.clipT; return 18;
       case 'grab': T.Grab = 1; A.Grab.time = Math.min(this.clipT, cfg.grab.end); return 15;
-      case 'dodge': T.Dodge = 1; A.Dodge.time = this.clipT; return 16;
+      case 'dodge': if (W) { T.SwordParry = 1; A.SwordParry.time = this.clipT; return 16; } T.Dodge = 1; A.Dodge.time = this.clipT; return 16;
+      case 'scripted': {
+        const D = this.driver;
+        if (!D || !D.weights) return 0;
+        for (const [n, w] of Object.entries(D.weights)) if (n in T) { T[n] = w; if (D.times && D.times[n] != null && A[n]) A[n].time = D.times[n]; }
+        return D.blend || 10;
+      }
       case 'scream': T.Scream = 1; A.Scream.time = Math.min(this.clipT, cfg.rage.scream.end); return 14;
       case 'standup':
         if (this.standHold > 0) { T.Seated = 1; return 40; }
@@ -746,14 +976,22 @@ export class Dreadnought extends ClipFighter {
     return super.animTargets(T, A);
   }
 
-  /** VS MODE: he wins with the roar of his scream (the clip alone: no WARLORD RAGE). */
+  /** VS MODE: he wins with the roar of his scream (the clip alone: no WARLORD RAGE); armed, the sword raised in a roar. */
   vsPose(T, A) {
     if (this.state !== 'victory') return false;
+    if (this.weapon) {
+      const V = this.cfg.sword.victory;
+      T.SwordShout = 1;
+      A.SwordShout.time = Math.min(this.stateT * V.speed, V.to);
+      return true;
+    }
     const S = this.cfg.rage.scream;
     T.Scream = 1;
     A.Scream.time = Math.min(this.stateT * S.speed, S.end);
     return true;
   }
+  /** How long his armed celebration takes (the results wait for it); the roar alone: the mode's own timing. */
+  victoryLength() { return this.weapon ? this.cfg.sword.victory.to / this.cfg.sword.victory.speed : 0; }
 
   postAnimate(dt, world) {
     // the fist glow: purple while the uppercut charges, a gold burst when it is unleashed
@@ -763,8 +1001,54 @@ export class Dreadnought extends ClipFighter {
     else if (this.state === 'uppercut' && this.clipT < this.cfg.uppercut.impact + 0.25) { size = 1.9; col = GOLD; }
     g.material.color.setHex(col);
     g.scale.setScalar(Math.max(1e-4, size / s));
+    if (this.cineAuraFlash > 0) { this.cineAuraFlash = Math.max(0, this.cineAuraFlash - dt * 1.4); this.auraW = Math.max(this.auraW, this.cineAuraFlash); }
     this.aura.set(this.auraW, this.age);
     if (this.held) this.holdUpdate(dt, world);
+    if (this.weapon) this.weaponUpdate(dt, world);
+    if (this.driver && this.driver.pose && this.state === 'scripted') this.driver.pose(this, dt);
     this.footfalls(world);
+  }
+
+  // ---------------------------------------------------------------- the weapon, every frame
+  /** The grip the sword is eased into now: the slam's wide haft, the shoulder rest, or the ready grip. */
+  gripName() {
+    if (this.state === 'uppercut' || this.state === 'charge') return 'heavy';
+    if ((this.state === 'idle' || this.state === 'hurt' || this.state === 'scripted' || this.state === 'standup') && this.stanceW < 0.5) return 'rest';
+    return 'default';
+  }
+
+  /**
+   * After the pose is final: the sword's grip eased, the arm layer (the stances' arms over his gait and
+   * his kick), the off hand onto the handle by arm IK (the two-handed clips and the guard), the swing's
+   * hits and trail. Everything blends; nothing snaps.
+   */
+  weaponUpdate(dt, world) {
+    const W = this.weapon, S = this.cfg.sword.stance, B = this.inst.bones, st = this.state;
+    W.setGrip(this.gripName());
+    W.update(dt);
+    this.root.updateMatrixWorld(true);
+    // the arm layer: walking / running in a stance, and the kick, keep the stance's arms (the sword on the
+    // shoulder, or both hands on the handle); nothing else (the clips pose the whole body)
+    const P = this.inst.bonePoses || {}, rest = P.SwordRestArms, guard = P.SwordGuardArms;
+    const moving = this.weights.Walk + this.weights.Run;
+    const layerWant = st === 'kick' ? 1 : st === 'idle' && moving > 0.01 ? Math.min(1, moving) : 0;
+    this.layerW += (layerWant - this.layerW) * (1 - Math.exp(-S.layerBlend * dt));
+    if (rest && guard && this.layerW > 0.002) {
+      const names = Object.keys(rest), k = st === 'kick' ? 1 : this.stanceW;
+      for (const n of names) {
+        const b = B[n], g = guard[n];
+        if (!b || !g) continue;
+        _lq.copy(rest[n]).slerp(g, k);
+        b.quaternion.slerp(_lq, this.layerW);
+      }
+      if (B.LeftShoulder) B.LeftShoulder.updateMatrixWorld(true);
+      if (B.RightShoulder) B.RightShoulder.updateMatrixWorld(true);
+    }
+    if (this.armOverride) { poseArmForWeapon(B, this.armOverride, W.grips[this.armOverride.grip || 'rest'] || W.grips.default, this.inst.model, this.armOverride.w ?? 1, W.def.grip.inset); this.root.updateMatrixWorld(true); }
+    // the off hand meets the handle in every two-handed moment: the chop, the slam, the guard, the kick
+    const twoHanded = st === 'punch' || st === 'uppercut' || st === 'charge' ? 1 : st === 'kick' ? 1 : st === 'idle' || st === 'hurt' ? this.stanceW : 0;
+    this.ikW += (twoHanded - this.ikW) * (1 - Math.exp(-S.layerBlend * dt));
+    if (this.ikW > 0.01) secondaryHand(W, B, this.ikW, this.ikSaved);
+    this.swingUpdate(dt, world);
   }
 }

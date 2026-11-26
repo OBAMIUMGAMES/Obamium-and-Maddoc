@@ -212,6 +212,59 @@ export function createFx(scene, camera, overlay) {
     c.m.material.opacity = 1;
   }
 
+  // ---- lightning bolts and glows (weapon manifestations, energy effects) ----
+  // Pooled jagged lines and soft sprites, created once (their shaders are compiled with the arena's).
+  const BOLTS = 6, boltPts = 9;
+  const bolts = [];
+  for (let i = 0; i < BOLTS; i++) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(boltPts * 3), 3));
+    const m = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xd9b3ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    m.visible = false; m.frustumCulled = false;
+    scene.add(m);
+    bolts.push({ m, t: 0, max: 0.08 });
+  }
+  let bi = 0;
+  /**
+   * A lightning bolt from `from` to `to` (world), jagged by `jag` m, lit for `life` s. Callers strike new
+   * ones every few frames for a crackling discharge.
+   */
+  function bolt(from, to, hex = 0xd9b3ff, life = 0.08, jag = 0.6) {
+    const b = bolts[bi = (bi + 1) % bolts.length];
+    const a = b.m.geometry.attributes.position.array;
+    for (let i = 0; i < boltPts; i++) {
+      const k = i / (boltPts - 1), j = i === 0 || i === boltPts - 1 ? 0 : jag;
+      a[i * 3] = from.x + (to.x - from.x) * k + (Math.random() - 0.5) * j;
+      a[i * 3 + 1] = from.y + (to.y - from.y) * k + (Math.random() - 0.5) * j;
+      a[i * 3 + 2] = from.z + (to.z - from.z) * k + (Math.random() - 0.5) * j;
+    }
+    b.m.geometry.attributes.position.needsUpdate = true;
+    b.m.material.color.setHex(hex);
+    b.m.material.opacity = 1;
+    b.m.visible = true;
+    b.t = 0; b.max = life;
+  }
+  const glows = [];
+  for (let i = 0; i < 4; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+    sp.visible = false;
+    scene.add(sp);
+    glows.push({ sp, t: 0, max: 1, size: 1, hold: false });
+  }
+  let gli = 0;
+  /**
+   * A soft glow at `at`: `size` m across, fading over `life` s — or held (`life` <= 0) until glowOff():
+   * returns a handle whose position / size the caller may keep updating.
+   */
+  function glow(at, size = 3, hex = 0xa64dff, life = 0.4) {
+    const g = glows[gli = (gli + 1) % glows.length];
+    g.sp.position.copy(at); g.sp.scale.set(size, size, 1); g.sp.material.color.setHex(hex); g.sp.material.opacity = 0.9;
+    g.sp.visible = true; g.t = 0; g.max = life; g.size = size; g.hold = life <= 0;
+    return g;
+  }
+  /** End a held glow. */
+  function glowOff(g) { if (g) { g.hold = false; g.max = 0.3; g.t = 0; } }
+
   // ---- floating damage numbers ----
   // A fixed pool of elements, reused round-robin: MACHINEGUN IMPACT lands ~40 hits a second and
   // creating/removing a DOM node per hit cost layout work and garbage every frame.
@@ -292,6 +345,20 @@ export function createFx(scene, camera, overlay) {
       g.m.material.opacity = 0.35 * (1 - g.t / g.max);
       if (g.t >= g.max) g.m.visible = false;
     }
+    for (const b of bolts) {
+      if (!b.m.visible) continue;
+      b.t += dt;
+      b.m.material.opacity = Math.max(0, 1 - b.t / b.max);
+      if (b.t >= b.max) b.m.visible = false;
+    }
+    for (const g of glows) {
+      if (!g.sp.visible || g.hold) continue;
+      g.t += dt;
+      const f = Math.max(0, 1 - g.t / g.max);
+      g.sp.material.opacity = 0.9 * f;
+      g.sp.scale.set(g.size * (1 + (1 - f) * 0.5), g.size * (1 + (1 - f) * 0.5), 1);
+      if (g.t >= g.max) g.sp.visible = false;
+    }
     const w = overlay.clientWidth, h = overlay.clientHeight;
     for (const n of nums) {
       if (!n.live) continue;
@@ -305,6 +372,8 @@ export function createFx(scene, camera, overlay) {
 
   function clear() {
     for (const c of cracks) c.m.visible = false;
+    for (const b of bolts) b.m.visible = false;
+    for (const g of glows) { g.sp.visible = false; g.hold = false; }
     for (const n of nums) { n.live = false; n.el.style.display = 'none'; }
     for (const r of rings) r.m.visible = false;
     for (const p of parts) p.life = 0;
@@ -314,5 +383,5 @@ export function createFx(scene, camera, overlay) {
   /** Floor height lookup for particle bounces (the active map's ground). */
   function setGround(fn) { groundAt = fn; }
 
-  return { sparks, dust, exhaust, explode, shockwave, fistGhost, crack, damageNumber, update, clear, setGround, emit: (o, isSmoke = false) => emit(isSmoke ? smoke : parts, isSmoke, o) };
+  return { sparks, dust, exhaust, explode, shockwave, fistGhost, crack, bolt, glow, glowOff, damageNumber, update, clear, setGround, emit: (o, isSmoke = false) => emit(isSmoke ? smoke : parts, isSmoke, o) };
 }

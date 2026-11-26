@@ -35,6 +35,8 @@ export function createVsMode(d) {
   const lock = new LockOn(cfg.lockOn);
   const lockEls = { btn: $('#btn-lock'), ui: $('#lock-ui') };
   let picks = [null, null];
+  let variants = [null, null]; // each slot's weapon configuration (characters.js `weapons`): null = the fighter's own moveset
+  let pending = null;          // a pick waiting for its weapon choice: { slot, id }
   let m = null;            // the match in progress
   let paused = false;
   let menuT = 0;
@@ -75,7 +77,10 @@ export function createVsMode(d) {
   /** PLAYER VS CPU / CPU VS CPU picked: the character select. */
   function chooseType(type) {
     if (!flow.toSelect(type)) return false;
+    const prev = picks.slice();
     picks = defaultPicks(d.ROSTER, type, d.available, picks);
+    variants = variants.map((v, i) => (picks[i] === prev[i] ? v : null));
+    closeWeaponMenu();
     disposeMatch();
     d.setScreen('vs-select');
     renderSelect();
@@ -94,7 +99,7 @@ export function createVsMode(d) {
       const img = el.querySelector('.vs-big img');
       img.src = (c && d.portraits[c.id]) || '';
       const tag = el.querySelector('.vs-cpu-tag');
-      tag.textContent = c && c.vs && c.vs.counter ? 'CPU ONLY · NEVER STRIKES FIRST' : '';
+      tag.textContent = c && c.vs && c.vs.counter ? 'CPU ONLY · NEVER STRIKES FIRST' : c && c.weapons ? variantTag(c, variants[slot]) : '';
       const row = el.querySelector('.vs-cards');
       row.innerHTML = '';
       for (const r of vsRoster(d.ROSTER, d.available)) {
@@ -110,25 +115,82 @@ export function createVsMode(d) {
     $('#vs-go').disabled = !pairingOk(d.ROSTER, type, picks, d.available);
   }
 
-  /** Put fighter `id` in `slot` if the rules allow it. */
-  function pick(slot, id) {
+  /** The tag under a fighter with weapon configurations: which one this slot holds. */
+  function variantTag(c, v) {
+    const w = v && c.weapons.find((x) => x.id === v);
+    return w ? w.tag : (c.weaponless && c.weaponless.tag) || '';
+  }
+  /**
+   * Put fighter `id` in `slot` if the rules allow it. A fighter with weapon configurations (Dreadnought)
+   * first asks which one (SELECT WEAPON CONFIGURATION), unless `variant` is given (null: his own moveset);
+   * the choice then plays his selection cinematic (the throne, the sword appearing in his hand for WITH
+   * SWORD) and the select screen returns.
+   */
+  function pick(slot, id, variant) {
     if (flow.state !== VS.SELECT) return false;
     const c = rosterOf(id);
     if (!slotCheck(c, flow.type, slot, picks[1 - slot], d.available).ok) return false;
+    if (c.weapons && c.weapons.length && variant === undefined) { openWeaponMenu(slot, c); return true; }
     picks[slot] = id;
+    variants[slot] = c.weapons && variant && c.weapons.some((w) => w.id === variant) ? variant : null;
     renderSelect();
+    return true;
+  }
+
+  // ------------------------------------------------------------------ weapon configurations
+  const weaponMenu = $('#vs-weapon');
+  /** SELECT WEAPON CONFIGURATION for `c` in `slot`. */
+  function openWeaponMenu(slot, c) {
+    pending = { slot, id: c.id };
+    if (!weaponMenu) return;
+    weaponMenu.dataset.fighter = c.id;
+    weaponMenu.querySelector('.vw-name').textContent = c.name;
+    weaponMenu.querySelector('.vw-slot').textContent = slotLabel(flow.type, slot);
+    const row = weaponMenu.querySelector('.vw-opts');
+    row.innerHTML = '';
+    const opts = [{ id: null, ...(c.weaponless || { label: 'WITHOUT WEAPON', blurb: '' }) }, ...c.weapons];
+    for (const o of opts) {
+      const b = document.createElement('button');
+      b.className = 'vw-opt' + (variants[slot] === o.id && picks[slot] === c.id ? ' on' : '');
+      b.innerHTML = `<b>${o.label}</b><small>${o.blurb || ''}</small>`;
+      b.addEventListener('click', (e) => { e.preventDefault(); d.audio.unlock(); chooseVariant(o.id); });
+      row.appendChild(b);
+    }
+    weaponMenu.classList.add('show');
+  }
+  function closeWeaponMenu() {
+    pending = null;
+    if (weaponMenu) weaponMenu.classList.remove('show');
+  }
+  /** The configuration chosen for the pending pick: stored, then his selection cinematic, then back here. */
+  function chooseVariant(variant) {
+    if (!pending || flow.state !== VS.SELECT) return false;
+    const { slot, id } = pending;
+    closeWeaponMenu();
+    if (!pick(slot, id, variant || null)) return false;
+    if (d.playCinematic) {
+      d.setMode('intro');
+      d.playCinematic(id, { variant: variant || null }, () => {
+        // back to the select screen (nothing of the cinematic is left: the showcase hidden, the arena's menu view)
+        d.setMode('vs');
+        d.setMap('glatorian');
+        d.hideShowcases();
+        document.body.dataset.fighter = 'menu';
+        if (flow.state === VS.SELECT) { d.setScreen('vs-select'); renderSelect(); }
+      });
+    }
     return true;
   }
 
   /** FIGHT on the select screen. */
   function go() {
-    if (flow.state !== VS.SELECT || !pairingOk(d.ROSTER, flow.type, picks, d.available)) return false;
-    return startMatch(picks.slice());
+    if (flow.state !== VS.SELECT || pending || !pairingOk(d.ROSTER, flow.type, picks, d.available)) return false;
+    return startMatch(picks.slice(), variants.slice());
   }
 
   // ------------------------------------------------------------------ the match
-  /** ARENA_LOADING: both fighters in the Glatorian Arena, facing each other; then the intro. */
-  function startMatch(ids) {
+  /** ARENA_LOADING: both fighters in the Glatorian Arena, facing each other; then the intro. `vars`: each slot's weapon configuration. */
+  function startMatch(ids, vars = [null, null]) {
     if (!flow.load(ids)) return false;
     disposeMatch();
     $('#banner').className = ''; // nothing from the previous match carries over (a K.O.! still showing)
@@ -137,8 +199,8 @@ export function createVsMode(d) {
     d.hideShowcases();
     d.setMode('vs');
     const type = flow.type;
-    const fighters = ids.map((id) => {
-      const f = d.createFighter(id, vsFighterConfig(cfg, id));
+    const fighters = ids.map((id, i) => {
+      const f = d.createFighter(id, vsFighterConfig(cfg, id), { variant: vars[i] });
       f.vs = vsRulesFor(cfg, id);
       return f;
     });
@@ -160,11 +222,12 @@ export function createVsMode(d) {
       const role = MATCH_TYPES[type].roles[i], c = rosterOf(ids[i]), foe = fighters[1 - i];
       if (role === 'player') return { kind: 'player' };
       if (c.vs.counter) return { kind: 'counter', ai: new SuperTahuCounter(f, foe, V.superTahu, match, counterHooks(f)) };
-      const prof = V.ai[ids[i]] || V.ai.default;
+      // a weapon configuration has its own personality (CONFIG.vs.ai['<id>:<weapon>']), else the fighter's
+      const prof = (vars[i] && V.ai[`${ids[i]}:${vars[i]}`]) || V.ai[ids[i]] || V.ai.default;
       return { kind: 'cpu', ai: createCombatAI(f, foe, prof, { common: V.ai, rng, map, buttons: c.buttons, foeButtons: rosterOf(ids[1 - i]).buttons }) };
     });
     m = {
-      type, ids, fighters, worlds, ctrls, frame: 0, t: 0, koT: -1, victoryAt: -1, victoryLen: 0, resultsShown: false, intro: null, fightT: 0,
+      type, ids, variants: vars.slice(), fighters, worlds, ctrls, frame: 0, t: 0, koT: -1, victoryAt: -1, victoryLen: 0, resultsShown: false, intro: null, fightT: 0,
       versus: new VersusCamera(V.camera.versus, cfg.camera, map),
       spectator: new SpectatorCamera(V.camera, map),
       cine: null, rng,
@@ -199,7 +262,8 @@ export function createVsMode(d) {
       p.dataset.fighter = c.id;
       p.querySelector('.vsi-role').textContent = slotLabel(m.type, i);
       p.querySelector('.vsi-name').textContent = c.name;
-      p.querySelector('.vsi-title').textContent = c.vs.counter ? 'THE TOA OF FIRE · CPU ONLY' : (c.title || '');
+      const v = m.variants[i] && c.weapons && c.weapons.find((w) => w.id === m.variants[i]);
+      p.querySelector('.vsi-title').textContent = c.vs.counter ? 'THE TOA OF FIRE · CPU ONLY' : v ? `${c.title || ''} · ${v.tag}` : (c.title || '');
       $(`.vsi-n${i}`).textContent = c.name;
     }
     document.body.classList.add('cine', 'vs-intro');
@@ -302,12 +366,13 @@ export function createVsMode(d) {
   /** REMATCH: same match type, same fighters, the same arena; everything reset. */
   function rematch() {
     if (!m || flow.state !== VS.DONE) return false;
-    return startMatch(m.ids.slice());
+    return startMatch(m.ids.slice(), m.variants.slice());
   }
   /** CHARACTER SELECTION. */
   function reselect() {
     if (flow.state !== VS.DONE && flow.state !== VS.SELECT) return false;
     const type = m ? m.type : flow.type;
+    if (m) variants = m.variants.slice();
     disposeMatch();
     flow.state = VS.TYPE;
     return chooseType(type);
@@ -319,6 +384,7 @@ export function createVsMode(d) {
   }
   /** Leave VS MODE (cleans everything up). */
   function exit() {
+    closeWeaponMenu();
     disposeMatch();
     flow.exit();
     paused = false;
@@ -398,6 +464,10 @@ export function createVsMode(d) {
       if (i >= 0) $(`#vs-side-${i}`).classList.toggle('overflowing', on);
       if (m && m.type === 'pvc' && i === 0) document.body.classList.toggle('overflowing', on);
     },
+    /** A fighter's weapon came or went (the pickup only happens in the horde; here: the start): the player's buttons. */
+    weapon(f) {
+      if (m && m.type === 'pvc' && f === m.fighters[0] && d.weaponHud) d.weaponHud(f);
+    },
     heal(f, n) {
       const i = m ? m.fighters.indexOf(f) : -1;
       if (i < 0 || !(n > 0)) return;
@@ -448,7 +518,7 @@ export function createVsMode(d) {
     const type = m.type;
     document.body.classList.toggle('vs-pvc', type === 'pvc');
     document.body.classList.toggle('vs-cvc', type === 'cvc');
-    if (type === 'pvc') d.configureHud(rosterOf(m.ids[0])); // the player's own buttons and colours
+    if (type === 'pvc') d.configureHud(rosterOf(m.ids[0]), m.fighters[0]); // the player's own buttons and colours (and his weapon's)
     else document.body.dataset.fighter = 'menu';
     m.lag = [1, 1];
     m.ids.forEach((id, i) => {
@@ -636,7 +706,7 @@ export function createVsMode(d) {
   function back() {
     const st = flow.state;
     if (st === VS.TYPE) { toMenu(); return true; }
-    if (st === VS.SELECT) { flow.toType(); d.setScreen('vs-type'); return true; }
+    if (st === VS.SELECT) { if (pending) { closeWeaponMenu(); return true; } flow.toType(); d.setScreen('vs-type'); return true; }
     if (st === VS.INTRO) { skip(); return true; }
     if (st === VS.FIGHT) { pause(!paused); return true; }
     if (st === VS.DONE) { if (m && m.resultsShown) reselect(); return true; }
@@ -661,10 +731,20 @@ export function createVsMode(d) {
     }
     if (st === VS.TYPE && (code === 'Digit1' || code === 'Numpad1')) return chooseType('pvc');
     if (st === VS.TYPE && (code === 'Digit2' || code === 'Numpad2')) return chooseType('cvc');
+    if (st === VS.SELECT && pending) {
+      // the weapon menu: 1 WITHOUT, 2 WITH (the first configuration), Escape backs out
+      const c = rosterOf(pending.id);
+      if (code === 'Digit1' || code === 'Numpad1') return chooseVariant(null);
+      if (code === 'Digit2' || code === 'Numpad2') return chooseVariant(c.weapons[0].id);
+      return false;
+    }
     if (st === VS.SELECT) {
       // left / right browse fighter 1's slot, up / down fighter 2's (refused fighters are skipped)
       const slot = code === 'ArrowLeft' || code === 'ArrowRight' ? 0 : code === 'ArrowUp' || code === 'ArrowDown' ? 1 : -1;
-      if (slot >= 0) return pick(slot, cyclePick(d.ROSTER, flow.type, slot, picks, code === 'ArrowLeft' || code === 'ArrowUp' ? -1 : 1, d.available));
+      if (slot >= 0) {
+        const id = cyclePick(d.ROSTER, flow.type, slot, picks, code === 'ArrowLeft' || code === 'ArrowUp' ? -1 : 1, d.available);
+        return pick(slot, id, rosterOf(id).weapons ? variants[slot] : undefined); // browsing keeps the slot's configuration
+      }
     }
     if (st === VS.DONE && m && m.resultsShown && code === 'KeyM') { toMenu(); return true; }
     if (code === 'KeyC' && st === VS.FIGHT && m && m.type === 'cvc') { toggleCam(); return true; }
@@ -675,7 +755,8 @@ export function createVsMode(d) {
   const tap = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('click', (e) => { e.preventDefault(); d.audio.unlock(); fn(); }); };
   tap('#vs-type-back', toMenu);
   for (const el of document.querySelectorAll('.vs-type')) el.addEventListener('click', (e) => { e.preventDefault(); d.audio.unlock(); chooseType(el.dataset.type); });
-  tap('#vs-sel-back', () => { flow.toType(); d.setScreen('vs-type'); });
+  tap('#vs-sel-back', () => { closeWeaponMenu(); flow.toType(); d.setScreen('vs-type'); });
+  tap('#vw-cancel', closeWeaponMenu);
   tap('#vs-go', go);
   tap('#vs-skip', skip);
   tap('#vs-rematch', rematch);
@@ -684,7 +765,9 @@ export function createVsMode(d) {
   tap('#vs-cam', toggleCam);
 
   return {
-    open, chooseType, pick, go, skip, rematch, reselect, toMenu, exit, back, pause, key, step, toggleCam, startMatch,
+    open, chooseType, pick, chooseVariant, closeWeaponMenu, go, skip, rematch, reselect, toMenu, exit, back, pause, key, step, toggleCam, startMatch,
+    get variants() { return variants.slice(); },
+    get pendingPick() { return pending; },
     get state() { return flow.state; },
     get active() { return flow.state !== null; },
     get paused() { return paused; },

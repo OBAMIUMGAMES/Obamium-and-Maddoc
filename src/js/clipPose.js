@@ -46,7 +46,7 @@ export function turnBone(b, euler, toModel) {
  * source frame had them (the hips move up/down by what the edits lifted or sank the feet).
  * @returns {{model:THREE.Object3D, bones:Object<string,THREE.Bone>, toModel:THREE.Matrix4, mixer:THREE.AnimationMixer}}
  */
-function posedCopy(scene, clip, at, edits = {}, hips = {}) {
+function posedCopy(scene, clip, at, edits = {}, hips = {}, overlay = null, adjust = null) {
   const model = cloneSkinned(scene);
   const mixer = new THREE.AnimationMixer(model);
   mixer.clipAction(clip).play();
@@ -54,6 +54,8 @@ function posedCopy(scene, clip, at, edits = {}, hips = {}) {
   model.updateMatrixWorld(true);
   const toModel = new THREE.Matrix4().copy(model.matrixWorld).invert();
   const bones = boneIndex(model);
+  // some bones from another clip's frame (e.g. fingers closed on a handle from a sword clip)
+  if (overlay && overlay.clip) overlayBones(model, bones, overlay);
   const footY = () => { let lo = Infinity; for (const [n, b] of Object.entries(bones)) if (FEET.test(n)) lo = Math.min(lo, _v.setFromMatrixPosition(b.matrixWorld).applyMatrix4(toModel).y); return lo; };
   const before = footY();
   const order = Object.keys(edits).map((k) => Object.values(bones).find((b) => shortName(b.name) === k))
@@ -67,7 +69,38 @@ function posedCopy(scene, clip, at, edits = {}, hips = {}) {
     H.position.y += before - footY(); // feet back on the source frame's floor
     H.updateMatrixWorld(true);
   }
+  // a custom posing step on the posed copy (e.g. an arm solved onto a weapon's grip)
+  if (adjust) { adjust(model, bones, toModel); model.updateMatrixWorld(true); }
   return { model, bones, toModel, mixer };
+}
+
+/**
+ * Pose the bones `o.bones` (short names, or a RegExp) as `o.clip` has them at time `o.at`: the overlay
+ * clip is sampled on a second copy of the rig and those bones' local rotations are copied over.
+ */
+function overlayBones(model, bones, o) {
+  const other = cloneSkinned(model);
+  const mixer = new THREE.AnimationMixer(other);
+  mixer.clipAction(o.clip).play();
+  mixer.setTime(o.at || 0);
+  const src = boneIndex(other);
+  const wanted = (n) => (o.bones instanceof RegExp ? o.bones.test(n) : o.bones.includes(n));
+  for (const [name, b] of Object.entries(bones)) if (src[name] && wanted(shortName(name))) b.quaternion.copy(src[name].quaternion);
+  mixer.stopAllAction(); mixer.uncacheRoot(other);
+  model.updateMatrixWorld(true);
+}
+
+/**
+ * The local rotations of `names` (short bone names) in `clip` at time `at`, with `edits` applied and an
+ * optional `overlay` (see overlayBones): a pose layer the fighter blends over its animation at run time
+ * (e.g. the arms holding a weapon while the legs walk). Returns short name -> quaternion.
+ */
+export function bakeBonePose(scene, clip, at, names, edits = {}, overlay = null) {
+  const { model, bones, mixer } = posedCopy(scene, clip, at, edits, {}, overlay);
+  const out = {};
+  for (const [n, b] of Object.entries(bones)) { const s = shortName(n); if (names.includes(s)) out[s] = b.quaternion.clone(); }
+  mixer.stopAllAction(); mixer.uncacheRoot(model);
+  return out;
 }
 
 /**
@@ -90,11 +123,11 @@ export function bakeEditedPose(scene, clip, name, at, edits = {}, hips = {}) {
  * @param {THREE.Object3D} scene template scene (left untouched)
  * @param {THREE.AnimationClip} clip source of the frame
  * @param {string} name
- * @param {{at:number, edits?:object, hips?:object, period:number, fps?:number, breathe?:Object<string,{amp?:number[], phase?:number, lift?:number, harmonic?:number}>}} o
+ * @param {{at:number, edits?:object, hips?:object, period:number, fps?:number, breathe?:Object<string,{amp?:number[], phase?:number, lift?:number, harmonic?:number}>, overlay?:{clip:THREE.AnimationClip, at?:number, bones:string[]|RegExp}}} o
  * @returns {THREE.AnimationClip} duration = period; first and last keys are identical
  */
 export function bakeEditedLoop(scene, clip, name, o) {
-  const { model, bones, toModel, mixer } = posedCopy(scene, clip, o.at, o.edits, o.hips);
+  const { model, bones, toModel, mixer } = posedCopy(scene, clip, o.at, o.edits, o.hips, o.overlay, o.adjust);
   const fps = o.fps || 30;
   // the bones the source clip animates (rotation; position only for the hips)
   const animated = new Map();

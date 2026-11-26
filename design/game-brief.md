@@ -22,7 +22,7 @@ One visual language: angular metal frames, Oxanium display type, Rajdhani text (
 | Character select | name plate, subtitle (Toaku: THE BUILDER; Super Tahu: none; Dreadnought: A MEANS TO ALL ENDS), five animated stat bars, special, moves, home arena, roster strip with 3D-rendered portraits, **SELECT**, ◀ MENU; the fighter idles live in their home arena (Dreadnought sits on his throne) |
 | Selection cinematic | every fighter, once per visit to the menus, on his showcase spot (`src/js/selectCinematic.js`, data in `CONFIG.<id>.cinematic`; how-to: `design/selection-cinematics.md`): **Dreadnought** rises from his throne into his stance under a pushing-in front camera (4.1 s); **Toaku** in his stance, his ENERGY OVERFLOW emote with the green aura gathering and bursting, a cut to a low side angle for the whole MACHINEGUN IMPACT (for show: nothing hit, nothing spent), a hero framing in his stance (7.3 s); anyone else a short push-in (2.4 s). Letterbox, his name card in his colours (**DREADNOUGHT / A MEANS TO ALL ENDS**, **TOAKU / THE BUILDER**); TAP TO SKIP (also Enter, Esc, Android back) — a skip leaves no effect, aura, light tint or move behind |
 | Select location | **SELECT LOCATION** heading, a large card (pre-rendered arena preview, tag, name, one-line description), a strip of location cards with ◀ ▶, **FIGHT**, ◀ FIGHTER; the chosen fighter idles live in the focused arena behind the menu |
-| Combat HUD | portrait — his head and mask rendered from his own model at load (same framing and light for everyone, transparent background, cached), in a frame of his colours: Toaku gunmetal with a neon-green ring, Dreadnought gold with purple, Super Tahu gold with fire orange (`src/js/portraits.js`; the SVG emblem only until it exists) — name, health bar, thinner/shorter energy bar under it (Toaku: ENERGY OVERFLOW, Super Tahu: INFERNO ENERGY, Dreadnought: INSATIABLE DOMINION — fills with his damage and kills, then counts down his 30 s of rage with the seconds left), WAVE 0N panel, separate red enemies-left chip, score, pause; the **LOCK** button above the stick (◀ ▶ switch arrows beside it while locked) and the target reticle (see Target lock-on); cooldown wipes on KICK, GRAB and DODGE |
+| Combat HUD | portrait — his head and mask rendered from his own model at load (same framing and light for everyone, transparent background, cached), in a frame of his colours: Toaku gunmetal with a neon-green ring, Dreadnought gold with purple, Super Tahu gold with fire orange (`src/js/portraits.js`; the SVG emblem only until it exists) — name, health bar, thinner/shorter energy bar under it (Toaku: ENERGY OVERFLOW, Super Tahu: INFERNO ENERGY, Dreadnought: INSATIABLE DOMINION — fills with his damage and kills, then counts down his 30 s of rage with the seconds left), WAVE 0N panel, separate red enemies-left chip, score, pause; the **LOCK** button above the stick (◀ ▶ switch arrows beside it while locked) and the target reticle (see Target lock-on); cooldown wipes on KICK, GRAB and DODGE; while Dreadnought holds his greatsword PUNCH reads **SWORD** (gold) and GRAB is gone; **PICK UP THE SWORD** (a purple-and-gold prompt above the action buttons) while he stands near the sword standing in the arena (see Dreadnought's greatsword) |
 | Effects | wave announcement sweep, combo counter, banners, damage numbers (pop-in; heavy hits bigger and gold, 30+ largest with a red-orange glow), special-ready ring around the special button; Dreadnought's rage: **INSATIABLE DOMINION!!** banner, a violet vignette while it lasts, a green **+N** pop and flash on his health bar for each healing kill |
 | Pause / defeat | framed panels; defeat lists wave, robots scrapped, best combo, score, personal best |
 
@@ -385,6 +385,29 @@ health he finished the wave with (only INSATIABLE DOMINION kills heal him). A ne
 **Size and framing.** Collision radius 1.35 m (Toaku 0.9); his chase camera sits 1.42 × further back and
 1.55 × higher than the standard one, looking 1.45 × higher, so enemies at mid range and a boss stay
 visible over his shoulders.
+
+## Dreadnought's greatsword
+`design/weapons.md` is the full record. In short: an enormous two-handed greatsword (its own model,
+`assets/models/greatsword.glb`, 4.7 m at his scale) rides on his right hand in a socket fitted from the
+uploaded sword clips (the two-handed grip the animator implied); the off hand meets the handle by arm IK.
+It rests on his right shoulder, one-handed, in a baked idle after the reference image (the fist before the
+right pectoral, the blade up and back behind the head, the pommel below, the left arm loose), and goes to
+both hands — the guard, the Attack clip's ready stance — as combat starts; walking and running keep the
+stance's arms over the gait. **SWORD** tap: an overhead two-handed chop (Attack) landing 4–5 m ahead, the
+blade swept frame by frame through everything in its path, once each (34, cooldown 0.7 s), a purple trail
+on the real blade; **SWORD** held: the slam (Heavy_Hammer_Swing, 72, launches) whose ground impact strikes
+everyone within 3.4 m (36), cracks the sand and shakes the screen; **KICK** kept with the sword in both
+hands; **DODGE** a guard hop back (Sword_Parry_Backward); **no GRAB**; INSATIABLE DOMINION ×1.5 on every
+blow; VS victory the raised-sword roar (Sword_Shout). It **manifests on wave 5**, before Sidorak's warning —
+the camera flies to a random valid spot, purple energy and lightning gather, the blast, the sword drops in
+and impales the sand, a dwell, then the boss intro as before — and stays collectable through the boss
+fight and later waves; **PICK UP THE SWORD** near it starts a ~5 s cinematic (turn, step, the low camera,
+bend and grip by IK, the sword changing hands exactly where it stood, the extraction, the shoulder, a pulse)
+with enemies held and him untouchable. In VS MODE picking him asks **SELECT WEAPON CONFIGURATION**
+(WITHOUT SWORD / WITH SWORD, per slot, mirror matches included), plays his throne cinematic with the sword
+appearing once he stands, and the armed CPU fights at the blade's reach with its own personality, never
+grabbing. Health, meter, the no-heal rule and the dodge rules are untouched; nothing carries over between
+runs or modes.
 
 ## Dreadnought's throne & intro
 `src/js/throne.js` builds the throne from ~60 blocks merged into three meshes (one per material: black

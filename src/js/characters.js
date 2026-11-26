@@ -56,6 +56,10 @@ export const ROSTER = [
     // a grounded heavyweight: no jump. DODGE takes the JUMP slot, DOMINION (his rage mode) the special's
     buttons: { jump: null, special: 'DOMINION', specialIcon: 'i-rage', dodge: 'DODGE', dodgeIcon: 'i-dodge', kick: true, grab: true },
     vs: { player: true, cpu: true },
+    // VS MODE: his weapon configurations (CONFIG.weapons), chosen after he is picked — WITHOUT SWORD (his
+    // own moveset) or WITH SWORD (the greatsword already in hand). In the horde the sword manifests on wave 5.
+    weapons: [{ id: 'greatsword', label: 'WITH SWORD', tag: 'WITH GREATSWORD', blurb: 'Greatsword chops and the slam, no grab' }],
+    weaponless: { label: 'WITHOUT SWORD', tag: 'WITHOUT SWORD', blurb: 'Fists, the crushing grab, the uppercut' },
   },
   { id: 'locked-2', locked: true },
 ];

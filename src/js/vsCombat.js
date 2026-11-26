@@ -50,7 +50,7 @@ export const massOf = (f) => 1 / Math.max(0.01, f.vs ? f.vs.knockMul : 1);
  * @param {object} other
  * @param {{fighting:boolean, ko:(fighter:object)=>void}} match
  * @param {object} [hooks] presentation: hit(attacker, target, info), combo(f, n), special(f, name, kind),
- *   specialImpact(f, world), rage(f, on), heal(f, n), hurt(f, dmg)
+ *   specialImpact(f, world), rage(f, on), heal(f, n), hurt(f, dmg), weapon(f, weapon|null)
  */
 export function makeVsWorld(env, self, other, match, hooks = {}) {
   const call = (k, ...a) => (hooks[k] ? hooks[k](...a) : undefined);
@@ -97,6 +97,7 @@ export function makeVsWorld(env, self, other, match, hooks = {}) {
     onPlayerHeal: (n) => call('heal', self, n),
     onPlayerHurt: (d) => call('hurt', self, d),
     onPlayerDead: () => match.ko(self),
+    onWeapon: (w) => call('weapon', self, w),
     onFrozen() {},
   };
   return world;

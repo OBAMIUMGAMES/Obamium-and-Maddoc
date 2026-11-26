@@ -75,6 +75,13 @@ Horde mode (waves, bosses, locations) is untouched.
   interrupted attacks used less, a choice on getting up, MACHINEGUN IMPACT on a vulnerable opponent,
   ENERGY OVERFLOW from a safe moment and more assertive in it (the brief's VS MODE → CPU). Same perception
   delay, buttons, cooldowns and stagger as any fighter: no bonus.
+- **Weapon configurations** (`characters.js` → `weapons` / `weaponless`; `design/weapons.md`): picking a
+  fighter that has them (Dreadnought: WITHOUT SWORD / WITH SWORD) opens SELECT WEAPON CONFIGURATION; the
+  choice is stored per slot (independent in a mirror match), his selection cinematic plays (the sword
+  appearing in his hand once he stands), and the select screen returns with the tag. The fighters are built
+  with the configuration (`createFighter(id, cfg, { variant })`), so he enters the fight armed; the armed
+  CPU uses `vs.ai['dreadnought:greatsword']` (sweeps from range, the slam on openings, close kicks, the
+  guard hop, DOMINION; never a grab). REMATCH keeps the configurations. No collectable weapons in VS arenas.
 - **Victory**: after the K.O. the winner celebrates once his last exchange is over (on his feet, out of his
   move; at most `vs.victoryWait` s after `vs.victoryDelay`) — Dreadnought's roar, **Toaku's ENERGY OVERFLOW
   emote with its aura, for show** (no mode, no meter, health or cooldown change) — and the results wait for
@@ -105,6 +112,8 @@ Horde mode (waves, bosses, locations) is untouched.
 - `src/js/vsMode.js` — the mode: menus, match lifecycle, loop step, HUD, results, rematch.
 - `src/js/lockOn.js`, `src/js/grabAssist.js`, `src/js/cooldownHud.js` — target lock-on, grab magnetism and
   the cooldown wipes, shared with the horde.
+- `src/js/weapons.js`, `src/js/armIk.js` — the weapon framework (sockets, grips, arm IK, swept hits, the
+  trail); `src/js/dreadnought.js` "THE GREATSWORD" — his armed moveset (`design/weapons.md`).
 - `main.js`, `index.html`, `style.css` — wiring, screens, HUD.
 - Tuning: `CONFIG.vs` in `config.js`.
 
@@ -115,7 +124,7 @@ Horde mode (waves, bosses, locations) is untouched.
 names. 5. 7–8 s FIGHT!, blend into the gameplay camera, controls / AI on. Distances and heights scale with
 each fighter's height. SKIP ends it at once and starts the fight (once).
 
-## Tests (automated: `npm test`, 109 of the suite's 327 in `tests/unit/vs/`)
+## Tests (automated: `npm test`, 112 of the suite's 361 in `tests/unit/vs/`)
 
 - **rules** (8): roster flags; PvC — Super Tahu refused as the player, allowed as the CPU; CvC — never
   twice, ordinary mirrors allowed; locked / unavailable fighters refused; default picks legal; the
@@ -133,6 +142,8 @@ each fighter's height. SKIP ends it at once and starts the fight (once).
   freely as the grappler, punishes, evades heavy blows); INSATIABLE DOMINION when full; nothing pressed
   outside FIGHTING; wall avoidance; Toaku waits at the edge of a longer reach and fights back against a
   striker; an attack decided with the opponent behind is carried out after the turn.
+- **weapon variants** (3): a mirror match with one armed Dreadnought (own moveset and personality each);
+  the armed CPU never presses GRAB and chops, slams and kicks; the chop lands on Toaku.
 - **Toaku's tactician** (8): the profile picks the class; slow wind-ups grabbed out of, never sooner than
   his reaction time; four-blow chains and chains cancelled into a grab or the kick; he walks away after
   under 20% of his attacks; interrupted attacks chosen less; ENERGY OVERFLOW while the opponent is down,
@@ -246,8 +257,9 @@ cost at load on a phone GPU, and how the new CPU Toaku feels to fight as a playe
 
 ## Known limits
 
-- No dedicated victory clips: Dreadnought roars (his Scream clip), Toaku raises a fist (key pose), Super
-  Tahu stays calm. INFERNO SLAM is Super Tahu's existing `Charged_Ground_Slam` clip plus a fire column.
+- No dedicated victory clips: Dreadnought roars (his Scream clip; armed, the first 2.5 s of Sword_Shout),
+  Toaku raises a fist (key pose), Super Tahu stays calm. INFERNO SLAM is Super Tahu's existing
+  `Charged_Ground_Slam` clip plus a fire column.
 - The ragdoll has no self-collision (a limb can pass through the body for a moment) and does not simulate
   hands and toes (they keep their animated rotation; a tip under the sand turns them up to rest on it).
   The turn-over is procedural (no clip): the torso is carried, the limbs follow physically.

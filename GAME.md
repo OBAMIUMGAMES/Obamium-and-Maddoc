@@ -3,10 +3,10 @@
 - **Play in a browser:** `npm install && npm run build:web`, open `dist/index.html`.
   Keys: WASD move (Dreadnought: a light push walks, a full one runs), J punch (hold: Dreadnought's heavy uppercut), K kick, G grab,
   Space jump (not Dreadnought), Shift dodge, L special (Dreadnought: INSATIABLE DOMINION when the meter is full),
-  O ENERGY OVERFLOW (Toaku, when its green bar is full), T target lock-on (on / off), Z / X previous / next target, Q/R camera,
+  O ENERGY OVERFLOW (Toaku, when its green bar is full), T target lock-on (on / off), Z / X previous / next target, F PICK UP THE SWORD (Dreadnought, near it), Q/R camera,
   Enter confirm (start / select / skip the intro / fight), ←/→ browse fighters and locations, Esc back / pause.
   VS MODE: V on the main menu opens it; 1 / 2 (or Enter = 1) pick PLAYER VS CPU / CPU VS CPU; on the select screen
-  ←/→ browse fighter 1, ↑/↓ fighter 2, Enter FIGHT; Enter / Space skip the intro; C switches the CPU VS CPU camera;
+  ←/→ browse fighter 1, ↑/↓ fighter 2 (Dreadnought asks SELECT WEAPON CONFIGURATION: 1 WITHOUT SWORD, 2 WITH SWORD), Enter FIGHT; Enter / Space skip the intro; C switches the CPU VS CPU camera;
   on the results Enter REMATCH, Esc CHARACTER SELECTION, M MAIN MENU.
 - **Build the APK:** `npm run build:apk` (needs `apt-get install aapt apksigner zipalign dalvik-exchange` + JDK). Output: `builds/toaku-desert-brawl.apk` (debug-signed).
 - **Tests:** `npm test`
@@ -53,6 +53,14 @@
   throne, Toaku's ENERGY OVERFLOW + MACHINEGUN IMPACT, a default for everyone else; to add one for a new Self-MOC
   follow `design/selection-cinematics.md` (template included). Toaku's VS CPU is `src/js/vsTactician.js` (profile
   `CONFIG.vs.ai.toaku`, style `tactician`); his VS victory is his ENERGY OVERFLOW emote, for show.
+- **DREADNOUGHT's greatsword (0.16.0):** a reusable weapon framework (`src/js/weapons.js`, `src/js/armIk.js`:
+  hand-bone sockets fitted from the holder's clips, two-handed grips by arm IK, swept blade hits, a blade
+  trail, collectables, manifest spots; `src/js/weaponEvent.js`: the manifestation and pickup directors) and his
+  armed moveset (`src/js/dreadnought.js`, `CONFIG.dreadnought.sword`, `CONFIG.weapons.greatsword`). The sword's
+  model: `node tools/build-weapon.mjs assets/models/greatsword.glb <Meshy export>`; his four sword clips were
+  added with `node tools/build-character.mjs assets/models/dreadnought.glb --keep-textures assets/models/dreadnought.glb Attack_1.glb Heavy_Sword_Swing_1.glb Sword_Parry_Backward_1.glb Sword_Shout_.glb`.
+  Horde: the sword manifests on wave 5 before Sidorak and is picked up with PICK UP THE SWORD; VS MODE: SELECT
+  WEAPON CONFIGURATION when he is picked. Design: `design/weapons.md`.
 - **App icon:** `node tools/build-icons.mjs` rebuilds `android/res/mipmap-*` from `assets/branding/app-icon-source.jpg`.
 - **Interface:** `src/index.html` + `src/style.css` (per-fighter themes = `body[data-fighter]` blocks); fonts in `assets/fonts/` are inlined at build, the main-menu art comes from `assets/branding/key-art.jpg`.
 - **Tuning:** everything is in `src/js/config.js` — the fighters' moves and clip timings, their look, enemies, waves, the arena and the throne intro; the roster is `src/js/characters.js`, the locations `src/js/locations.js`. Design: `design/game-brief.md`.

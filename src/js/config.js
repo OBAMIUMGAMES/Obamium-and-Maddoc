@@ -270,11 +270,16 @@ export const CONFIG = {
       Grab: 'Grip_and_Throw_Down', Dodge: 'Roll_Dodge_2', StandUp: 'Sit_to_standTransition_Female_2', Scream: 'Skill_01',
       Launch: 'Fall3',    // knocked flying (VS): the fall while airborne
       GetUp: 'Stand_Up1', // up again after a knockdown
+      // the GREATSWORD (the sword update, `sword` below): Mixamo sword clips re-exported on his rig
+      SwordAttack: 'Attack',               // the light attack: an overhead chop (2.8 s)
+      SwordHeavy: 'Heavy_Hammer_Swing',    // the heavy attack: a huge two-handed overhead slam (1.83 s)
+      SwordParry: 'Sword_Parry_Backward',  // the armed dodge: a guard hop back (1.33 s)
+      SwordShout: 'Sword_Shout',           // the armed victory: the sword raised, a roar (6.17 s, 2.5 used)
     },
-    rootMotion: ['Dodge', 'Walk'], // played in place: gameplay moves him along their hips travel (walls stop him)
+    rootMotion: ['Dodge', 'Walk', 'SwordShout'], // played in place: gameplay moves him along their hips travel (walls stop him)
     rootMotionCentred: ['GetUp', 'Launch'], // hips over the root (the get-up's drift moves the root)
     groundAnchor: ['Launch'], // the fall's height is gameplay's: the body rests on the root
-    recentre: { StandUp: 2.2 },    // he rises from a seat behind him: recentred where he ends up standing
+    recentre: { StandUp: 2.2, SwordHeavy: 0 },    // he rises from a seat behind him: recentred where he ends up standing; the slam's hips start off-centre
     // analog movement from the virtual joystick: idle under deadZone, walking up to walkTop (speed
     // follows the stick), running from runEnter (back to walking under runExit: hysteresis) up to
     // moveSpeed at full stick. Both clips play at the rate the ground moves under the planted foot
@@ -329,6 +334,49 @@ export const CONFIG = {
           Neck: { amp: [0.012, 0, 0] }, Head: { amp: [0, 0.035, 0], phase: 1.2 },
         },
       },
+      // ARMED IDLE (the reference image): the upright stand-up frame, feet wide, chest up, the left arm
+      // relaxed at his side; his right arm is posed by arm IK (`arm`: the fist's grip point in his own
+      // frame, source units, and the blade's direction out of the fist, pointing up and back over his
+      // right shoulder) so the greatsword rests diagonally across the shoulder with the blade behind and
+      // above his head; the fingers close on the handle from a two-handed frame of the Attack clip.
+      // Breathing moves the chest and the sword arm a little: the weight of the sword shifts with him.
+      SwordIdle: {
+        clip: 'StandUp', at: 2.2, period: 3.8,
+        edits: {
+          Spine1: [-0.02, 0, 0], Spine2: [-0.05, 0.08, 0], Head: [0.03, -0.06, 0],                 // chest up, a touch turned toward the sword
+          LeftUpLeg: [-0.03, 0, 0.09], RightUpLeg: [-0.03, 0, -0.09],                             // a wide, planted stance
+          LeftLeg: [0.07, 0, 0], RightLeg: [0.07, 0, 0],
+          LeftFoot: [-0.04, 0, -0.08], RightFoot: [-0.04, 0, 0.08],
+          LeftShoulder: [0, 0, 0.04], LeftArm: [0.02, 0, 0.1], LeftForeArm: [-0.14, 0, 0],          // the free arm loose at his side
+        },
+        overlay: { clip: 'SwordAttack', at: 1.5, bones: 'RightHandFingers' },
+        arm: { side: 'Right', weapon: 'greatsword', grip: 'rest', palm: [-0.22, 1.15, 0.3], aim: [0.3, 0.72, -0.62], roll: 0.4, pole: [-0.6, -0.3, 0.8] },
+        breathe: {
+          Hips: { lift: 0.004 },
+          Spine1: { amp: [-0.008, 0, 0] }, Spine2: { amp: [-0.012, 0, 0] },
+          LeftShoulder: { amp: [0, 0, 0.014] }, RightShoulder: { amp: [0, 0, -0.012] },
+          RightArm: { amp: [0.012, 0, 0.006] }, LeftArm: { amp: [0.01, 0, -0.008] },
+          Neck: { amp: [0.012, 0, 0] }, Head: { amp: [0, 0.03, 0], phase: 1.2 },
+        },
+      },
+      // ARMED GUARD (the two-handed combat stance between blows): the ready stance the Attack clip starts
+      // from, both hands on the handle, the blade low to his right, breathing
+      SwordGuard: {
+        clip: 'SwordAttack', at: 0.05, period: 3.2,
+        breathe: {
+          Hips: { lift: 0.003 },
+          Spine1: { amp: [-0.008, 0, 0] }, Spine2: { amp: [-0.01, 0, 0] },
+          RightArm: { amp: [0.008, 0, 0] }, LeftArm: { amp: [0.008, 0, 0] },
+          Neck: { amp: [0.01, 0, 0] }, Head: { amp: [0, 0.025, 0], phase: 1.2 },
+        },
+      },
+    },
+    // the arm poses his armed moveset layers over his gait and his kick (src/js/dreadnought.js): the arms
+    // of the two stances above, so the sword stays on his shoulder while he walks and in both hands while
+    // he kicks (the off hand then meets the handle by arm IK)
+    bonePoses: {
+      SwordRestArms: { loop: 'SwordIdle', bones: 'Arms' },
+      SwordGuardArms: { loop: 'SwordGuard', bones: 'Arms' },
     },
     material: { metalness: 0.55, roughness: 0.5, envMapIntensity: 0.75 },
     // attack tracking: when a melee move starts, the nearest enemy within its reach (+ lunge) in a
@@ -405,10 +453,100 @@ export const CONFIG = {
         pan: [[0, 0], [2.7, 0], [4.1, 2.8]],
       },
       title: 2.7,
+      weaponAt: 2.95, // VS MODE's WITH SWORD: the greatsword appears in his hand once he stands (after the rise)
     },
     hurtInvuln: 0.5,
     cooldowns: { punch: 0.35, uppercut: 0.8, kick: 1.5, grab: 3.0, special: 1.5 }, // s, per attack
     hurtTime: 0.3,
+    /**
+     * THE GREATSWORD (design/weapons.md): his armed moveset, once CONFIG.weapons.greatsword is in his
+     * hand (the wave-5 manifestation of the horde, or VS MODE's WITH SWORD). Clip times are the clips'
+     * own seconds, measured from the blade's trajectory on the rig (tools: the blade's tip through every
+     * frame of the Mixamo clips). Same health, meter, INSATIABLE DOMINION, dodge rules and kick; no grab.
+     */
+    sword: {
+      weapon: 'greatsword',
+      // SWORD (tap): the Attack clip, an overhead two-handed chop that lands ~4-5 m ahead: the blade is
+      // swept frame by frame over `active` (clip s), everything in its path struck once; reach = where
+      // the tip lands (attack tracking turns him toward the nearest enemy in it). Deliberate: 0.55 s of
+      // wind-up, the chop, then the recovery back to the guard (the clip's long hold is cut short)
+      light: {
+        start: 0.25, speed: 1.35, window: 0,
+        hits: [{ end: 2.0, impact: 0.98, active: [0.98, 1.17], damage: 34, reach: 5.4, arc: 1.4, knockback: 9, lift: 0, top: 1.2, hand: 'RightHand', pad: 0.4, trail: [0.8, 1.35] }],
+      },
+      // SWORD (held `hold` s): Heavy_Hammer_Swing. The wind-up shows from `windFrom` s of holding and
+      // reaches clip time `windTo` at `hold` s (the blade drawn back over his shoulder); released, the
+      // slam comes down (active) and the blade hits the ground (`slamAt`): a shockwave that strikes
+      // everyone within `slam.radius` of the impact, the ground cracked, the screen shaken. Launches.
+      heavy: {
+        windFrom: 0.15, hold: 0.5, windTo: 1.3, speed: 1.15,
+        impact: 1.45, active: [1.45, 1.68], slamAt: 1.62, end: 1.83, damage: 72, reach: 5.6, arc: 1.6, knockback: 16, lift: 12, top: 1.5, hand: 'RightHand', pad: 0.45, trail: [1.3, 1.75],
+        slam: { radius: 3.4, damage: 36, knockback: 14, lift: 8 },
+      },
+      // DODGE while armed: Sword_Parry_Backward, a guard hop back of ~`back` m (gameplay moves him: walls
+      // stop him), evasion window `invuln`, then the same cooldown as his roll
+      dodge: { start: 0.0, end: 1.25, speed: 1.4, invuln: [0.08, 0.7], back: 11, brake: 4, cancelAfter: 0.95, cooldown: 0.5 }, // back: m/s of the hop (~2.7 m)
+      victory: { to: 2.5, speed: 1 }, // Sword_Shout: the sword raised, the roar, held
+      // the stances: the sword rests on his shoulder (one hand) until combat; a blow of his, a hit taken,
+      // a target locked or an enemy within `near` m puts him in the two-handed guard for `combatFor` s
+      stance: { combatFor: 4.0, near: 11, blend: 4.5, layerBlend: 9 },
+      cooldowns: { punch: 0.7, uppercut: 1.9, kick: 1.5, special: 1.5 }, // s, per attack while armed (no grab)
+      hud: { punch: 'SWORD', punchIcon: 'i-sword' },
+      // the pickup cinematic (src/js/weaponEvent.js WeaponPickupScene), ~5 s: turn, step, the low camera,
+      // bend and grip (arm IK onto the handle), the extraction, the sword up onto the shoulder, the pulse
+      pickup: {
+        turn: 0.35, step: 0.7, reach: 1.55, grab: 1.8, pull: 2.75, shoulder: 3.55, pulse: 3.6, end: 5.0,
+        standOff: 2.2,        // m from the sword's spot he stops at (body centre)
+        bend: 0.42,           // rad the spine folds forward reaching for the handle
+        camera: { in: 0.5, out: 1.0, angle: 0.9, dist: 2.2, height: 0.12, look: 0.45, rise: 0.4 }, // x his height; angle from his facing
+        shake: 0.6,
+      },
+    },
+  },
+
+  /**
+   * WEAPONS (src/js/weapons.js, design/weapons.md). A weapon is a rigid prop on a fighter's hand bone; a
+   * definition is all the game knows about one: its model, its landmarks (in the model's own units: +Y from
+   * the pommel to the tip), the grips its holder's clips imply, its trail, how it stands in the ground as
+   * a collectable and how it manifests. The holder's moveset (CONFIG.<fighter>.sword) does the fighting.
+   */
+  weapons: {
+    greatsword: {
+      id: 'greatsword', name: 'GREATSWORD', owner: 'dreadnought', hand: 'Right', offHand: 'Left',
+      model: 'greatsword',  // assets/models/greatsword.glb (tools/build-weapon.mjs, from Meshy's Golden Flame Trident)
+      sizeFactor: 1.0,      // x the holder's model scale (at Dreadnought's 2.75 x: 4.7 m from pommel to tip)
+      material: { metalness: 0.62, roughness: 0.42, envMapIntensity: 0.9 }, // the export is matte: gold and steel need reflections
+      // landmarks along the handle (model units): the leading hand's grip, the trailing hand's, the guard, the blade
+      grip: { primary: 0.47, secondary: 0.27, inset: 0.015 },
+      guard: 0.62, blade: [0.72, 1.70], thickness: 0.05, edgeSign: 1,
+      // the grips: fitted at load from the holder's two-handed clips (where the trailing hand sits in the
+      // leading hand's frame = the handle's axis); the slam holds the haft wider (the trailing hand at the
+      // pommel); the rest grip is the ready grip turned a little in the fist (tweak: [pitch, yaw, roll])
+      grips: {
+        default: { clip: 'SwordAttack', from: 0.2, to: 2.6, frames: 24 },
+        heavy: { clip: 'SwordHeavy', from: 0.2, to: 1.7, frames: 24, primary: 0.56, secondary: 0.1 },
+        rest: { from: 'default', tweak: [0, 0, 0] },
+      },
+      gripBlend: 5, // /s: the socket eases between grips (never snaps)
+      trail: { color: 0x8a35ff, core: 0xd9b3ff, samples: 22, life: 0.16 },
+      hud: { punch: 'SWORD', punchIcon: 'i-sword', grab: false }, // the PUNCH button's label while held; no GRAB
+      // standing in the ground as a collectable: tilted `tilt` rad, the blade `embed` of its length under
+      // the sand; collectable within `radius` m (body to spot); a purple glow and rising embers
+      pickup: { tilt: 0.32, spin: 0.6, embed: 0.42, radius: 3.6, label: 'PICK UP THE SWORD', glow: 0xa64dff, glowSize: 3.4, embers: 8 },
+      // the manifestation (src/js/weaponEvent.js WeaponManifestation): at the start of the horde's first boss
+      // wave, before the boss's own introduction, once per run, for its owner only: the camera flies to a
+      // random valid spot (`spot`: m from the player, clear of everyone), purple energy gathers (`gather` s),
+      // lightning and swirling embers build, the blast (`blast`), the sword drops in and impales the ground
+      // (`drop` s later), the camera dwells on it (`focus`), then eases back (`blendBack`)
+      manifest: {
+        wave: 'boss', once: true,
+        spot: { minD: 9, maxD: 16, radius: 1.3, clear: 3.0 },
+        camIn: 1.2, gather: 2.6, blast: 3.3, drop: 0.18, focus: 5.3, blendBack: 0.7,
+        shake: { gather: 0.12, blast: 0.95, impact: 0.6 },
+        camera: { far: 16, near: 9, height: 5.5, low: 2.6, look: 1.4 }, // m: the approach from `far` to `near`, the focus low and close
+        colors: { core: 0x8a35ff, bolt: 0xd9b3ff, ring: 0x8a35ff, gold: 0xffcf5a },
+      },
+    },
   },
 
   // DREADNOUGHT's throne and his character-select cinematic (rising from it). The throne stands on
@@ -678,6 +816,14 @@ export const CONFIG = {
         feint: 0.12,       // neutral: a quick step in to draw a whiff
         hold: 0.25,        // neutral, at the edge of his reach: a moment watching him in his stance
         overflowAggro: 1.35, // ENERGY OVERFLOW: this much more assertive
+      },
+      // the armed warlord (WITH SWORD): the same juggernaut fighting at the blade's reach: sweeps from range,
+      // the overhead slam on openings, kicks when the opponent is inside the blade's arc (closeKick: the
+      // kick's extra pull when the opponent is within half the sweep's reach), a guard hop from heavy
+      // blows, INSATIABLE DOMINION; it never grabs (the weapon has no grab) nor punches bare-handed
+      'dreadnought:greatsword': {
+        aggression: 0.88, range: 0.82, moveFreq: 0.4, dodge: 0.3, heavy: 0.68, grab: 0, combo: 0.4,
+        counter: 0.7, special: 0.9, reaction: 0.3, defense: 0.14, retreat: 0.06, jump: 0, think: 0.2, spacing: 0, closeKick: 0.9,
       },
       default: {
         aggression: 0.7, range: 0.85, moveFreq: 0.6, dodge: 0.45, heavy: 0.4, grab: 0.35, combo: 0.7,
