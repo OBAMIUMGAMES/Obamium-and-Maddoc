@@ -111,7 +111,7 @@ export function movesOf(f, buttons) {
  * @param {object} self the fighter it drives
  * @param {object} foe the opponent
  * @param {object} profile CONFIG.vs.ai.<id> (aggression, range, moveFreq, dodge, heavy, grab, combo,
- *   counter, special, reaction, defense, retreat, jump, think)
+ *   counter, special, reaction, defense, retreat, jump, think, spacing, closeKick, hurtDodge)
  * @param {{common?:object, rng?:()=>number, map?:object, buttons?:object, foeButtons?:object}} [opts]
  */
 export class CombatAI {
@@ -240,8 +240,14 @@ export class CombatAI {
     const S = this.self, P = this.p;
     if (this.seenDist(seen) > this.foeReach + S.radius + 1.2) return;
     const hpS = S.hp / S.maxHp;
-    if (this.rng() >= P.dodge * (1 + (1 - hpS) * 0.4)) return;
-    if (!free) return; // committed to its own move: nothing cancels it
+    const canDodge = this.moves.dodge && (S.dodgeCool || 0) <= 0;
+    // the blow had landed by the time it was seen (a quick jab, a combination): a fighter whose dodge cancels
+    // hitstun may spend it to break out (profile `hurtDodge`, its own chance); nothing else it is doing is cancelled
+    const breakOut = !free && S.state === 'hurt' && canDodge && (P.hurtDodge || 0) > 0 && this.rng() < P.hurtDodge;
+    if (!breakOut) {
+      if (this.rng() >= P.dodge * (1 + (1 - hpS) * 0.4)) return;
+      if (!free) return; // committed to its own move: nothing cancels it
+    }
     const toFoe = Math.atan2(seen.x - S.pos.x, seen.z - S.pos.z);
     const side = this.rng() < 0.5 ? 1 : -1;
     // a fighter that keeps its distance steps back out of reach; others go sideways and a little back
@@ -250,7 +256,7 @@ export class CombatAI {
     // the roll carries a body far: a fighter that keeps its distance (a counter-puncher) rolls away from
     // heavy blows and grabs, and side-steps light ones so it stays close enough to punish the miss
     const heavy = HEAVY_STATES.has(seen.state);
-    const roll = this.moves.dodge && (S.dodgeCool || 0) <= 0 && (heavy || (P.spacing || 0) <= 0.5);
+    const roll = breakOut || (canDodge && (heavy || (P.spacing || 0) <= 0.5));
     if (roll) {
       this.press('dodge');
       this.stick(dir, 1);

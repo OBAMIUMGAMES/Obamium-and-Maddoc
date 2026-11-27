@@ -53,3 +53,37 @@ test('the armed warlord\'s chop lands on Toaku in a duel (the swept blade agains
   assert.equal(hp - T.hp, CONFIG.dreadnought.sword.light.hits[0].damage);
   assert.ok(D.log.hits.filter((h) => h.from === 0).length === 1, 'once per swing');
 });
+
+test('the armed CPU hops out of hitstun: a blow that landed before it was seen is answered with the guard hop (hurtDodge)', () => {
+  // the CPU sees the opponent's attack a reaction time late; a quick jab has landed by then and the warlord is
+  // in hitstun — not free, so the ordinary reaction gives up. With `hurtDodge` he spends the hop to break out,
+  // which his fighter honours from the hurt state. The unarmed profile (no knob) stays put.
+  const run = (variant, profile) => {
+    const D = duel(['dreadnought', 'toaku'], { type: 'cvc', seed: 3, scripted: [false, true], variants: [variant, null] });
+    const [W, T] = D.fighters, ai = D.ctrls[0].ai;
+    ai.p = { ...ai.p, dodge: 0, ...profile }; // no ordinary reaction dodge: only the break-out can press it
+    D.place(0, 0, 0, 0).place(1, 0, 2.5, Math.PI);
+    // the CPU has been watching an idle opponent (its perception memory is warm, as in a fight)
+    for (let k = 0; k < secs(0.5); k++) ai.update(dt, true);
+    // Toaku's jab lands: hitstun, within the warlord's seen distance; Toaku is still in his punch
+    W.vsReceive(10, 0, -1, 2, 0, 0.5, D.worlds[0]);
+    assert.equal(W.state, 'hurt');
+    T.state = 'punch'; T.hitDone = false;
+    let pressedAt = -1;
+    for (let k = 0; k < secs(0.45) && pressedAt < 0; k++) { ai.update(dt, true); if (ai.input.dodge) pressedAt = k; }
+    return { D, W, ai, pressedAt };
+  };
+  const armed = run('greatsword', { hurtDodge: 1 });
+  assert.ok(armed.pressedAt >= 0, 'the hop is pressed while hurt');
+  assert.ok(armed.pressedAt * dt >= CONFIG.vs.ai['dreadnought:greatsword'].reaction - dt, `not before his reaction time (${(armed.pressedAt * dt).toFixed(2)} s)`);
+  assert.equal(armed.ai.stats.dodge, 1);
+  // the fighter honours it: the parry starts from hitstun
+  armed.W.update(dt, { ...armed.ai.input }, 0, armed.D.worlds[0]);
+  assert.equal(armed.W.state, 'dodge');
+  const unarmed = run(null, {});
+  assert.equal(unarmed.pressedAt, -1, 'without the knob nothing cancels hitstun');
+  assert.equal(unarmed.ai.stats.dodge, 0);
+  // the knob is set on the armed profile only
+  assert.ok(CONFIG.vs.ai['dreadnought:greatsword'].hurtDodge > 0);
+  assert.equal(CONFIG.vs.ai.dreadnought.hurtDodge, undefined);
+});

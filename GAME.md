@@ -61,6 +61,8 @@
   added with `node tools/build-character.mjs assets/models/dreadnought.glb --keep-textures assets/models/dreadnought.glb Attack_1.glb Heavy_Sword_Swing_1.glb Sword_Parry_Backward_1.glb Sword_Shout_.glb`.
   Horde: the sword manifests on wave 5 before Sidorak and is picked up with PICK UP THE SWORD; VS MODE: SELECT
   WEAPON CONFIGURATION when he is picked. Design: `design/weapons.md`.
+- **0.16.1:** the armed VS CPU hops out of hitstun (`hurtDodge` in `CONFIG.vs.ai['dreadnought:greatsword']`): a
+  jab that landed before he saw it coming no longer pins him; the unarmed CPU is unchanged.
 - **App icon:** `node tools/build-icons.mjs` rebuilds `android/res/mipmap-*` from `assets/branding/app-icon-source.jpg`.
 - **Interface:** `src/index.html` + `src/style.css` (per-fighter themes = `body[data-fighter]` blocks); fonts in `assets/fonts/` are inlined at build, the main-menu art comes from `assets/branding/key-art.jpg`.
 - **Tuning:** everything is in `src/js/config.js` — the fighters' moves and clip timings, their look, enemies, waves, the arena and the throne intro; the roster is `src/js/characters.js`, the locations `src/js/locations.js`. Design: `design/game-brief.md`.

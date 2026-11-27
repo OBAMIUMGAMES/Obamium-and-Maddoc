@@ -824,6 +824,9 @@ export const CONFIG = {
       'dreadnought:greatsword': {
         aggression: 0.88, range: 0.82, moveFreq: 0.4, dodge: 0.3, heavy: 0.68, grab: 0, combo: 0.4,
         counter: 0.7, special: 0.9, reaction: 0.3, defense: 0.14, retreat: 0.06, jump: 0, think: 0.2, spacing: 0, closeKick: 0.9,
+        // a blow that landed before he saw it coming (a quick jab, a combination): the chance he spends the hop
+        // to break out of hitstun — his dodge cancels the hurt state, the universal reaction otherwise gives up
+        hurtDodge: 0.6,
       },
       default: {
         aggression: 0.7, range: 0.85, moveFreq: 0.6, dodge: 0.45, heavy: 0.4, grab: 0.35, combo: 0.7,

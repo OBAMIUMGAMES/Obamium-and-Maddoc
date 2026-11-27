@@ -82,6 +82,11 @@ Horde mode (waves, bosses, locations) is untouched.
   with the configuration (`createFighter(id, cfg, { variant })`), so he enters the fight armed; the armed
   CPU uses `vs.ai['dreadnought:greatsword']` (sweeps from range, the slam on openings, close kicks, the
   guard hop, DOMINION; never a grab). REMATCH keeps the configurations. No collectable weapons in VS arenas.
+  The universal CPU's reaction gives up when the fighter is not free — and a quick jab has landed by the time
+  it is seen (reaction time), so the armed warlord was in hitstun for half the blows he saw and hopped once
+  in six matches. Profile `hurtDodge` (armed profile only, 0.6) is the chance he spends the hop to break out
+  of the hurt state, which his fighter honours (a dodge cancels hitstun; the unarmed profile has no knob and
+  keeps its behaviour). Measured over six CPU VS CPU matches against Toaku: 1 -> 29 hops.
 - **Victory**: after the K.O. the winner celebrates once his last exchange is over (on his feet, out of his
   move; at most `vs.victoryWait` s after `vs.victoryDelay`) — Dreadnought's roar, **Toaku's ENERGY OVERFLOW
   emote with its aura, for show** (no mode, no meter, health or cooldown change) — and the results wait for
@@ -124,7 +129,7 @@ Horde mode (waves, bosses, locations) is untouched.
 names. 5. 7–8 s FIGHT!, blend into the gameplay camera, controls / AI on. Distances and heights scale with
 each fighter's height. SKIP ends it at once and starts the fight (once).
 
-## Tests (automated: `npm test`, 112 of the suite's 361 in `tests/unit/vs/`)
+## Tests (automated: `npm test`, 113 of the suite's 362 in `tests/unit/vs/`)
 
 - **rules** (8): roster flags; PvC — Super Tahu refused as the player, allowed as the CPU; CvC — never
   twice, ordinary mirrors allowed; locked / unavailable fighters refused; default picks legal; the
@@ -142,8 +147,10 @@ each fighter's height. SKIP ends it at once and starts the fight (once).
   freely as the grappler, punishes, evades heavy blows); INSATIABLE DOMINION when full; nothing pressed
   outside FIGHTING; wall avoidance; Toaku waits at the edge of a longer reach and fights back against a
   striker; an attack decided with the opponent behind is carried out after the turn.
-- **weapon variants** (3): a mirror match with one armed Dreadnought (own moveset and personality each);
-  the armed CPU never presses GRAB and chops, slams and kicks; the chop lands on Toaku.
+- **weapon variants** (4): a mirror match with one armed Dreadnought (own moveset and personality each);
+  the armed CPU never presses GRAB and chops, slams and kicks; the chop lands on Toaku; the armed CPU hops
+  out of hitstun (`hurtDodge`), not before its reaction time, and the fighter honours the hop from the hurt
+  state — the unarmed profile does not.
 - **Toaku's tactician** (8): the profile picks the class; slow wind-ups grabbed out of, never sooner than
   his reaction time; four-blow chains and chains cancelled into a grab or the kick; he walks away after
   under 20% of his attacks; interrupted attacks chosen less; ENERGY OVERFLOW while the opponent is down,

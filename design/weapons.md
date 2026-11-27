@@ -145,9 +145,10 @@ attachment: nothing interferes with the stand-up), and the select screen returns
 GREATSWORD / WITHOUT SWORD; the intro's nameplate shows it too). He enters the fight with the configuration
 already in force. The armed CPU has its own personality (`CONFIG.vs.ai['dreadnought:greatsword']`): the same
 juggernaut at the blade's reach — chops from range, the slam on openings, kicks when the opponent is inside
-half the sweep's reach (`closeKick`), the guard hop from heavy blows, INSATIABLE DOMINION; it never grabs
-(no grab in its moveset) nor punches bare-handed (the button is the same, the move is the sword's). No
-collectable swords are placed in VS arenas. Keyboard: 1 WITHOUT, 2 WITH, Esc back.
+half the sweep's reach (`closeKick`), the guard hop from heavy blows and out of hitstun (`hurtDodge`: a jab
+that landed before he saw it is answered with the hop, which cancels the hurt state), INSATIABLE DOMINION; it
+never grabs (no grab in its moveset) nor punches bare-handed (the button is the same, the move is the
+sword's). No collectable swords are placed in VS arenas. Keyboard: 1 WITHOUT, 2 WITH, Esc back.
 
 ## Adding a weapon to another fighter
 
@@ -190,8 +191,9 @@ collectable swords are placed in VS arenas. Keyboard: 1 WITHOUT, 2 WITH, Esc bac
 - `ui/weapon-event` (2): the manifestation's phases, camera, effects, the pickup placed and dropped in; the
   pickup scene — turned, stepped, gripped at 1.8 s with the sword not jumping, armed and resting at the end
   in 4–6 s, untouchable, health and meter unchanged, the camera in / held / out.
-- `vs/weapon-variants` (3): a mirror match with one armed slot (own moveset and personality each); the armed
-  CPU never presses GRAB and chops, slams and kicks; the chop lands on Toaku in a duel.
+- `vs/weapon-variants` (4): a mirror match with one armed slot (own moveset and personality each); the armed
+  CPU never presses GRAB and chops, slams and kicks; the chop lands on Toaku in a duel; the armed CPU hops out
+  of hitstun (`hurtDodge`) after its reaction time, which the fighter honours from the hurt state.
 
 ## Limits
 
